@@ -27,6 +27,8 @@ RP-Koala/ (root)
 ├── docs/ # Documentation files
 │   └── changelog.md # Changelog for each sprint
 ├── src/ # Source code
+│   └── backend/
+│   └── frontend/
 └── README.md # This file
 ```
 
