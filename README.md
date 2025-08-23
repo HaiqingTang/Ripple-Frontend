@@ -6,17 +6,20 @@
 ---
 
 ## Overview
-**RiPPLE** is a wellbeing-focused application designed to **prevent burnout** and foster **peer connection** among young community service and social sector workers. Burnout is especially prevalent in this sector, where staff often face emotional exhaustion, lack of career support, and systemic pressures.
+### What is RiPPLE?
+RiPPLE is a wellbeing and peer-support app designed for people working in the community service sector, especially those early in their careers. Many young workers in this space struggle with high stress, isolation, and the risk of burnout. Our app provides simple tools to help them check in with their wellbeing, share experiences with peers, and build small, positive habits that support a healthier work life.
 
+### Why we built it
+Burnout is a common issue in non-profit and social service organisations because staff are often expected to prioritise clients over themselves. Through our research, we found that young workers wanted a way to connect with others who understand their challenges, while also having access to practical and engaging self-care strategies. RiPPLE was created to fill this gap.
 ---
 
 ## Key Features
 - **Wellbeing Check-in** → Quick emotional and energy-level surveys to track day-to-day health
-- **Journaling** → Log thoughts via text; track emotions and reflections over time
+- **Journaling** → Personal space for daily reflections
 - **Community Feed** → Share uplifting moments, resources, and tips to community and friends;
 - **Local Events & Meetups** → Connect with peers through real-world gatherings
-- **Discussion Boards** → Build supportive conversations and reduce isolation
-- **Challenges & Rewards** → Gamified self-care tasks and practical rewards from local business partners (e.g., gym memberships, yoga, dining discounts)
+- **Discussion Boards** → Spaces for open conversation and peer support
+- **Challenges & Rewards** → Gamified activities like step challenges
 
 ---
 
@@ -32,7 +35,7 @@ RP-Koala/ (root)
 └── README.md # This file
 ```
 
-# Commit Message Convention
+## Commit Message Convention
 
 This project follows the [Conventional Commits](https://www.conventionalcommits.org/) specification.
 
@@ -63,4 +66,31 @@ This project follows the [Conventional Commits](https://www.conventionalcommits.
 feat(auth): add user login API
 ```
 
+--- 
+## Branch Naming Convention
+
+This project follows a consisten branch naming format to make the purpose of each branch clear.
+
+**Format**
+```
+<type>/<short-description>
+
+```
+**Types (aligned with commit types)**
+- **feat/** – new feature development
+- **fix/** – bug fixes
+- **docs/** – documentation updates
+- **chore/** – maintenance or setup tasks
+- **efactor/** – code refactoring without new features or bug fixes
+- **test/** – testing-related changes
+
+**Example**
+```
+feat/login-page
+fix/navbar-overlap
+docs/update-readme
+chore/setup-ci
+refactor/auth-service
+
+```
 ---
