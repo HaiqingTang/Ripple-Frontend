@@ -11,6 +11,7 @@ RiPPLE is a wellbeing and peer-support app designed for people working in the co
 
 ### Why we built it
 Burnout is a common issue in non-profit and social service organisations because staff are often expected to prioritise clients over themselves. Through our research, we found that young workers wanted a way to connect with others who understand their challenges, while also having access to practical and engaging self-care strategies. RiPPLE was created to fill this gap.
+
 ---
 
 ## Key Features
@@ -74,7 +75,6 @@ This project follows a consisten branch naming format to make the purpose of eac
 **Format**
 ```
 <type>/<short-description>
-
 ```
 **Types (aligned with commit types)**
 - **feat/** – new feature development
@@ -91,6 +91,5 @@ fix/navbar-overlap
 docs/update-readme
 chore/setup-ci
 refactor/auth-service
-
 ```
 ---
