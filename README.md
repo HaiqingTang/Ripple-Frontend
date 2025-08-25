@@ -7,10 +7,10 @@
 
 ## Overview
 ### What is RiPPLE?
-RiPPLE is a wellbeing and peer-support app designed for people working in the community service sector, especially those early in their careers. Many young workers in this space struggle with high stress, isolation, and the risk of burnout. Our app provides simple tools to help them check in with their wellbeing, share experiences with peers, and build small, positive habits that support a healthier work life.
+RiPPLE is a wellbeing and peer-support mobile app designed to support community service workers, especially those early in their careers who are at high risk of burnout. Many young workers in this space struggle with high stress, isolation, and the risk of burnout. Our app provides simple tools to help them check in with their wellbeing, share experiences with peers, and build small, positive habits that support a healthier work life.
 
 ### Why we built it
-Burnout is a common issue in non-profit and social service organisations because staff are often expected to prioritise clients over themselves. Through our research, we found that young workers wanted a way to connect with others who understand their challenges, while also having access to practical and engaging self-care strategies. RiPPLE was created to fill this gap.
+Burnout is a common issue in non-profit and social service organisations because staff are often expected to prioritise clients over themselves. Community service organisations, while focused on helping clients, often lack the resources and systems to adequately support their employees’ wellbeing. Through our research, we found that young workers wanted a way to connect with others who understand their challenges, while also having access to practical and engaging self-care strategies. RiPPLE was created to fill this gap.
 
 ---
 
