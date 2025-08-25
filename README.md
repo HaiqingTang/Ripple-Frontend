@@ -25,33 +25,38 @@ Earn rewards through the gamified system
 The app is specifically designed for early-career community service workers who are experiencing emotional exhaustion, lack of career support, and systematic pressures that lead to burnout.
 
 ## Features
-Wellbeing Check-in
-Quick survey to track emotional and energy levels
-Visual representation of wellbeing trends over time
-Personalized recommendations based on check-in results
-Journaling
-Voice and text logging options for convenience
-Promoted questions to guide reflection
-Emotion and health tracking capabilities
-Integration with existing wellness apps
-Community Feed
-Share moments from your day with the community
-Color-tagged posts for easy categorization
-Filter feed by categories (fitness/health, well-being, appreciation of beauty)
-Build connections with fellow community service workers
-Discussion Board
-Engage with other workers through topic-based discussions
-Directly addresses isolation associated with community work
-Safe space for sharing challenges and solutions
-Local Events & Meetups
-Discover and host local events
-Connect with nearby community service workers
-Organize coffee meetups, walks, and professional development sessions
-Challenges & Rewards
-Participate in weekly or monthly challenges
-Customize personal challenges
-Earn rewards through partnerships with local businesses (gym memberships, yoga classes, restaurant discounts)
-Gamified system to make self-care engaging
+## Wellbeing Check-in <br>
+- Quick survey to track emotional and energy levels <br>
+- Visual representation of wellbeing trends over time <br>
+- Personalized recommendations based on check-in results <br>
+
+## Journaling <br>
+- Voice and text logging options for convenience <br>
+- Promoted questions to guide reflection <br>
+- Emotion and health tracking capabilities <br>
+- Integration with existing wellness apps <br>
+
+## Community Feed <br>
+- Share moments from your day with the community <br>
+- Color-tagged posts for easy categorization <br>
+- Filter feed by categories (fitness/health, well-being, appreciation of beauty) <br>
+- Build connections with fellow community service workers <br>
+
+## Discussion Board <br>
+- Engage with other workers through topic-based discussions <br>
+- Directly addresses isolation associated with community work <br>
+- Safe space for sharing challenges and solutions <br>
+
+## Local Events & Meetups <br>
+- Discover and host local events <br>
+- Connect with nearby community service workers <br>
+- Organize coffee meetups, walks, and professional development sessions <br>
+
+## Challenges & Rewards <br>
+- Participate in weekly or monthly challenges <br>
+- Customize avatars <br>
+- Earn rewards through partnerships with local businesses (gym memberships, yoga classes, restaurant discounts) <br>
+- Gamified system to make self-care engaging <br>
 
 
 ## Contributing
