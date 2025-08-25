@@ -2,7 +2,7 @@
 
 ## Table of Contents
 
-- [About RiPPLE](#About RiPPLE)
+- [About RiPPLE](#about-ripple)
 - [Usage](#usage)
 - [Features](#Features)
 - [Contributing](#contributing)
