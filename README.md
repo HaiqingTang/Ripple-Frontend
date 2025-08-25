@@ -11,13 +11,6 @@
 
 RiPPLE is a design-led solution for smart community service organizations to help their millennial workforce thrive. It's an application designed to prevent burnout by normalizing self-care, strengthening peer connections, and providing flexible, accessible burnout prevention strategies tailored for community service workers.
 
-Wellbeing that flows through you and beyond.
-```sh
-curl -LO http://git.io/Xy0Chg
-git add README.md
-git commit -m "Use README Boilerplate"
-```
-
 ## Usage
 
 RiPPLE is designed to help community service workers like Ellie (our persona - a 23-year-old youth caseworker in Sydney) combat burnout through meaningful connections and self-care practices.
