@@ -53,7 +53,6 @@ The app is specifically designed for early-career community service workers who 
 
 ## Challenges & Rewards <br>
 - Participate in weekly or monthly challenges <br>
-- Customize avatars <br>
 - Earn rewards through partnerships with local businesses (gym memberships, yoga classes, restaurant discounts) <br>
 - Gamified system to make self-care engaging <br>
 
