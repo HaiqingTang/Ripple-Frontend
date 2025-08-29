@@ -30,6 +30,13 @@ Burnout is a common issue in non-profit and social service organisations because
 ---
 
 ## Get Started
+### Installation
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/COMP90082-2025-sem2/RP-Koala.git
+
+Navigate to the project directory:
 
 ---
 
