@@ -24,6 +24,15 @@ Burnout is a common issue in non-profit and social service organisations because
 
 ---
 
+## Tech Stack
+
+
+---
+
+## Get Started
+
+__ 
+
 ## Project Structure
 
 ```
@@ -93,3 +102,7 @@ chore/setup-ci
 refactor/auth-service
 ```
 ---
+
+## Changelog
+
+📖 **See full Changelog:** [Changelog.md](docs/changelog.md)
