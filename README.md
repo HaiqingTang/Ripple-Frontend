@@ -31,7 +31,7 @@ Burnout is a common issue in non-profit and social service organisations because
 
 ## Get Started
 
-__ 
+---
 
 ## Project Structure
 
