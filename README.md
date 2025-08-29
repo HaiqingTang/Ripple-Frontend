@@ -56,3 +56,6 @@ The app is specifically designed for early-career community service workers who 
 - Earn rewards through partnerships with local businesses (gym memberships, yoga classes, restaurant discounts) <br>
 - Gamified system to make self-care engaging <br>
 
+## Changelog <br>
+- Adjusting Platform Development Strategy: We originally planned to develop both iOS and Android versions simultaneously. After discussions with stakeholders, the team has decided to prioritize iOS development for this phase. <br>
+- Development of the Android version has been temporarily suspended, and related tasks will be rescheduled and resumed later based on resources and demand. <br>
