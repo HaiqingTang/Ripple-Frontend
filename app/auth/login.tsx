@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Dimensions,KeyboardAvoidingView,
+	Platform,
+	TouchableWithoutFeedback,
+	Keyboard, } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import CustomButton from '@/components/CustomButton';
+import {signInWithEmailAndPassword} from 'firebase/auth';
+import {auth} from '@/lib/firebase';
 
 const { width, height } = Dimensions.get('window');
 
@@ -11,11 +16,51 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+	const [errorMessage, setErrorMessage] = useState('');
+	const [loading, setLoading] = useState(false); // to disable button while loading
+	const validateEmail = (email: string) => {
+		const re = /\S+@\S+\.\S+/;
+		return re.test(email);
+	};
 
-  const handleLogin = () => {
-    // Handle login logic here
-    console.log('Login:', { email, password });
-    router.push('/(tabs)/quickNote');
+  const handleLogin = async () => {
+	  if (!validateEmail(email)) {
+		  setErrorMessage('Please enter a valid email address');
+		  return;
+	  }
+	  if (!email || !password) {
+		  setErrorMessage('Please enter both email and password');
+		  return;
+	  }
+
+	  setLoading(true);
+	  setErrorMessage('');
+	  try {
+		  const userCredential = await signInWithEmailAndPassword(auth, email, password);
+		  console.log('Logged in user:', userCredential.user.uid);
+		  // Navigate to quicknote tab after successful login
+		  router.push('/(tabs)/quickNote');
+	  } catch (error: any) {
+		  let message = "Login failed. Please try again later";
+
+		  switch (error.code) {
+			  case "auth/invalid-email":
+			  case "auth/wrong-password":
+			  case"auth/invalid-credential":
+				  message = "Invalid email or password";
+				  break;
+			  case "auth/user-disabled":
+				  message = "User account has been disabled";
+				  break;
+			  case "auth/user-not-found":
+				  message = "No account found with this email";
+				  break;
+		  }
+		  console.log('Login failed:', message);
+		  setErrorMessage(message);
+	  } finally {
+		  setLoading(false);
+	  }
   };
 
   const handleForgotPassword = () => {
@@ -24,6 +69,12 @@ export default function LoginPage() {
   };
 
   return (
+	  <KeyboardAvoidingView
+		  style={{flex: 1,  backgroundColor: 'white' }}
+		  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+		  keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+	  >
+		  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
     <View style={styles.container}>
       {/* Header with only back button */}
       <View style={styles.header}>
@@ -36,6 +87,11 @@ export default function LoginPage() {
       <View style={styles.form}>
         {/* Login Title */}
         <Text style={styles.title}>Login</Text>
+
+	      {/* Error Message */}
+	      {errorMessage ? (
+		      <Text style={{color: 'red', marginBottom: 10}}>{errorMessage}</Text>
+	      ) : null}
 
         {/* Email Input */}
         <View style={styles.inputContainer}>
@@ -86,14 +142,17 @@ export default function LoginPage() {
 
         {/* Login Button */}
         <CustomButton
-          title="Login"
+          title={loading? "Logging in...": "Login"}
           onPress={handleLogin}
           variant="primary"
           size="large"
           style={styles.loginButton}
+          disabled={loading}
         />
       </View>
     </View>
+		  </TouchableWithoutFeedback>
+	  </KeyboardAvoidingView>
   );
 }
 
