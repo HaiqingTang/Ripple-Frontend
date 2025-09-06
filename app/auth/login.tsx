@@ -74,7 +74,7 @@ export default function LoginPage() {
 		  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
 		  keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
 	  >
-		  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+	  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
     <View style={styles.container}>
       {/* Header with only back button */}
       <View style={styles.header}>
@@ -151,7 +151,7 @@ export default function LoginPage() {
         />
       </View>
     </View>
-		  </TouchableWithoutFeedback>
+	  </TouchableWithoutFeedback>
 	  </KeyboardAvoidingView>
   );
 }
