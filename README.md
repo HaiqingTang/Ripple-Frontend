@@ -20,22 +20,25 @@ git clone https://github.com/your-username/RP-Wombat.git
 
 cd RP-Wombat
 
+
 Install dependencies (example for Node.js/React):
 
-
+```sh
 npm install
-
+```
 
 ## Getting Started
 Run the development server:
 
-
+```sh
 npm start
+```
 
 Open your browser and navigate to:
 
-
+```sh
 http://localhost:3000
+```
 
 Now you can explore the UI prototype.
 
