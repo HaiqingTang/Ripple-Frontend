@@ -1,61 +1,72 @@
-# README RP-Wombat
+# RP-Wombat
 
 ## Table of Contents
-
-- [About RiPPLE](#about-ripple)
+- [About RIPPLE](#about-ripple)
+- [Installation](#installation)
+- [Getting Started](#getting-started)
 - [Usage](#usage)
-- [Features](#Features)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Changelog](#changelog)
 
-## About RiPPLE  
+## About RIPPLE
 
-RiPPLE is a design-led solution for smart community service organizations to help their millennial workforce thrive. It's an application designed to prevent burnout by normalizing self-care, strengthening peer connections, and providing flexible, accessible burnout prevention strategies tailored for community service workers.
+RIPPLE is a design-led solution created for smart community service organizations, aiming to support early-career community service workers in managing their emotional wellbeing and preventing burnout.
 
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/your-username/RP-Wombat.git
+cd RP-Wombat
+
+Install dependencies (example for Node.js/React):
+npm install
+
+Open your browser and navigate to:
+http://localhost:3000
+
+Now you can explore the UI prototype.
 ## Usage
-
-RiPPLE is designed to help community service workers like Ellie (our persona - a 23-year-old youth caseworker in Sydney) combat burnout through meaningful connections and self-care practices.
-
+RiPPLE is designed for early-career community service workers, such as Ellie (a 23-year-old youth caseworker in Sydney), who face challenges like emotional exhaustion, lack of career support, and systematic pressures that often lead to burnout.
 After downloading the app, users can:
-
-Complete a quick emotional and energy level check-in
-Start journaling their thoughts and experiences
-Connect with peers through the community feed
-Participate in challenges and local events
-Earn rewards through the gamified system
-The app is specifically designed for early-career community service workers who are experiencing emotional exhaustion, lack of career support, and systematic pressures that lead to burnout.
-
+- Complete a quick emotional and energy check-in  
+- Start journaling their thoughts and experiences  
+- Connect with peers through the community feed  
+- Participate in challenges and local events  
+- Earn rewards via the gamified system  
 ## Features
-## Wellbeing Check-in <br>
-- Quick survey to track emotional and energy levels <br>
-- Visual representation of wellbeing trends over time <br>
-- Personalized recommendations based on check-in results <br>
-
-## Journaling <br>
-- Voice and text logging options for convenience <br>
-- Promoted questions to guide reflection <br>
-- Emotion and health tracking capabilities <br>
-- Integration with existing wellness apps <br>
-
-## Community Feed <br>
-- Share moments from your day with the community <br>
-- Color-tagged posts for easy categorization <br>
-- Filter feed by categories (fitness/health, well-being, appreciation of beauty) <br>
-- Build connections with fellow community service workers <br>
-
-## Discussion Board <br>
-- Engage with other workers through topic-based discussions <br>
-- Directly addresses isolation associated with community work <br>
-- Safe space for sharing challenges and solutions <br>
-
-## Local Events & Meetups <br>
-- Discover and host local events <br>
-- Connect with nearby community service workers <br>
-- Organize coffee meetups, walks, and professional development sessions <br>
-
-## Challenges & Rewards <br>
-- Participate in weekly or monthly challenges <br>
-- Earn rewards through partnerships with local businesses (gym memberships, yoga classes, restaurant discounts) <br>
-- Gamified system to make self-care engaging <br>
-
-## Changelog <br>
-- Adjusting Platform Development Strategy: We originally planned to develop both iOS and Android versions simultaneously. After discussions with stakeholders, the team has decided to prioritize iOS development for this phase. <br>
-- Development of the Android version has been temporarily suspended, and related tasks will be rescheduled and resumed later based on resources and demand. <br>
+### Wellbeing Check-in
+- Quick survey to track emotional and energy levels  
+- Visual representation of wellbeing trends over time  
+- Personalized recommendations based on check-in results  
+### Journaling
+- Voice and text logging options  
+- Guided reflection through promoted questions  
+- Emotion and health tracking  
+- Integration with existing wellness apps  
+### Community Feed
+- Share daily moments with peers  
+- Color-tagged posts for easy categorization  
+- Filter feed by categories (fitness/health, well-being, appreciation of beauty)  
+- Build connections with fellow workers  
+### Discussion Board
+- Topic-based discussions to share ideas and solutions  
+- Directly addresses isolation in community work  
+- Safe space for experiences and peer support  
+### Local Events & Meetups
+- Discover and host local events  
+- Organize coffee meetups, walks, or development sessions  
+- Connect with nearby community service workers  
+### Challenges & Rewards
+- Join weekly or monthly challenges  
+- Earn rewards through local business partnerships (gym, yoga, dining discounts)  
+- Gamified system to encourage self-care  
+## Screenshots
+> _Coming soon_  
+> Add app UI mockups or prototype screenshots here.
+## Changelog
+- Current stage: **UI development only**  
+- We only have a UI developer on the team.  
+- No functional features are available at this stage.  
