@@ -1,4 +1,6 @@
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { Link } from 'expo-router';
 
 export default function Interest() {
   return (
@@ -10,13 +12,15 @@ export default function Interest() {
         </Text>
       </View>
 
-      <View style={styles.card}>
-        <View style={styles.imagePlaceholder} />
-        <Text style={styles.cardTitle}>Clubs</Text>
-        <Text style={styles.cardDesc}>
-          Share your thoughts, ask questions, and interact with other members.
-        </Text>
-      </View>
+      <Link href="/Interest/clubMainPage" asChild>
+        <Pressable style={styles.card} accessibilityRole="button" hitSlop={8}>
+          <View style={styles.imagePlaceholder} />
+          <Text style={styles.cardTitle}>Clubs</Text>
+          <Text style={styles.cardDesc}>
+            Share your thoughts, ask questions, and interact with other members.
+          </Text>
+        </Pressable>
+      </Link>
 
       <View style={styles.card}>
         <View style={styles.imagePlaceholder} />
