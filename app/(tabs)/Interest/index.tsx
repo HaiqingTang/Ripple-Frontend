@@ -1,4 +1,8 @@
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
+
+const router = useRouter();
 
 export default function Interest() {
   return (
@@ -25,6 +29,15 @@ export default function Interest() {
           Discover nearby meetups and join others for coffee, walks, or shared activities.
         </Text>
       </View>
+
+      <TouchableOpacity style={styles.card} onPress={() => router.push('/Interest/Discussion')}>
+        <View style={styles.imagePlaceholder} />
+        <Text style={styles.cardTitle}>Discussion Boards</Text>
+        <Text style={styles.cardDesc}>
+          Share your thoughts, ask questions, and interact with other members.
+        </Text>
+      </TouchableOpacity>
+      
     </ScrollView>
   );
 }
