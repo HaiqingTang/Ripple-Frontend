@@ -15,8 +15,7 @@ export default function LandingPage() {
   };
 
   const handleSignUp = () => {
-    //Todo : signup page
-    //router.push('/auth/signup');
+    router.push('/auth/signup');
   };
 
   const handleLogout = () => {
