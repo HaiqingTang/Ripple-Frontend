@@ -41,7 +41,7 @@ yarn-error.*
 # Local env files
 .env*.local
 # 如果你用的是根目录 .env，也建议忽略：
-# .env
+.env
 
 # TypeScript
 *.tsbuildinfo
