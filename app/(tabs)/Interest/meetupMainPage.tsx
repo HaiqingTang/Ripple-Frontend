@@ -13,6 +13,7 @@ import {
   ScrollView,
 } from "react-native";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import {
   Ionicons,
   MaterialIcons,
@@ -30,10 +31,13 @@ const MY_MEETUPS: Meetup[] = [
 ];
 
 export default function MeetupMainPage() {
+  const router = useRouter();
   const onBack = () => console.log("Back pressed");
   const onAdd = () => console.log("Add meetup");
-  const onAllMeetups = () => console.log("Go to all meetups");
-  const onExplore = () => console.log("Explore more meetups");
+  const onAllMeetups = () => {
+      router.push("/Interest/myMeetups");
+    };
+  const onExplore = () => router.push("/Interest/allMeetups");
   const onBottomNav = (key: string) => console.log("Bottom nav ->", key);
   const onOpenMeetup = (m: Meetup) => console.log("Open meetup", m);
 

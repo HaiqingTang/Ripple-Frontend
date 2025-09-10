@@ -25,7 +25,7 @@ export default function Interest() {
       <Link href="/Interest/meetupMainPage" asChild>
         <Pressable style={styles.card} accessibilityRole="button" hitSlop={8}>
           <View style={styles.imagePlaceholder} />
-          <Text style={styles.cardTitle}>Meetups1</Text>
+          <Text style={styles.cardTitle}>Meetups</Text>
           <Text style={styles.cardDesc}>
             Discover nearby meetups and join others for coffee, walks, or shared activities.
           </Text>
