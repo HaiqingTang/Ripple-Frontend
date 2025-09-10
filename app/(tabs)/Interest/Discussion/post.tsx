@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, Alert, ScrollView, Modal, StyleSheet} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, Alert, ScrollView, Modal, StyleSheet } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useColorScheme } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { v4 as uuidv4 } from 'uuid';
 
 export default function CreatePostScreen() {
@@ -14,79 +15,95 @@ export default function CreatePostScreen() {
   const [content, setContent] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [address, setAddress] = useState('');
+  const [showAddressModal, setShowAddressModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const router = useRouter();
 
+  // back to discussion/search page
   const handleGoBack = () => {
-    // close post
-    router.replace('/Interest/Discussion'); 
+    router.replace('/(tabs)/Interest/Discussion');
   };
 
+  // pop-up window for publish confirmation
   const handlePublish = () => {
     if (!title.trim() || !content.trim()) {
       Alert.alert('Error', 'Please fill in both title and content.');
       return;
     }
     setShowConfirmModal(true);
-  }
+  };
 
+  // confirm publish
   const confirmPublish = () => {
-    const newPostId = uuidv4(); // create new post id 
+    const newPostId = uuidv4(); 
     const post = {
       id: newPostId,
       title,
       content,
+      image,
+      address,
       createdAt: new Date().toISOString(),
     };
+
     setShowConfirmModal(false);
 
-    router.push({
-      pathname: '/Interest/Discussion/detail',
-      params: post,  
+    // see post details
+    router.replace({
+      pathname: '/(tabs)/Interest/Discussion/detail',
+      params: post,
     });
   };
 
-  const handleImageSelect = () => {
-    // add image
-    Alert.alert('Add Image');
+  // select image  (PERMISSION ?) ***
+  const handleImageSelect = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+    }
   };
 
+  // select address  (CURRENTLY IS ENTER MANUALLY) ***
   const handleAddressSelect = () => {
-    // select address
-    Alert.alert('Select Address');
+    setAddress(address);
+    setShowAddressModal(true);
   };
 
-  // get colors
+  const confirmAddressInput = () => {
+    if (address.trim()) {
+      setAddress(address.trim());
+    }
+    setShowAddressModal(false);
+  };
+
+  const cancelAddressInput = () => {
+    setShowAddressModal(false);
+  };
+
   const currentColorScheme = colorScheme ?? 'light';
   const colors = Colors[currentColorScheme];
 
   return (
     <ThemedView style={styles.container}>
-      {/* head nevigation bar */}
+      {/* head navigation bar */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={handleGoBack}
-          >
-            <Ionicons 
-              name="close" 
-              size={24} 
-              color={colors.tint} 
-            />
+          <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
+            <Ionicons name="close" size={24} color={colors.tint} />
           </TouchableOpacity>
-                
+
           <View style={styles.centerTitle}>
             <ThemedText type="subtitle" style={styles.titleText}>
               Publish
             </ThemedText>
           </View>
-                
-          <TouchableOpacity 
-            style={[
-              styles.publishButton,
-              { backgroundColor: colors.tint }
-            ]}
+
+          <TouchableOpacity
+            style={[styles.publishButton, { backgroundColor: colors.tint }]}
             onPress={handlePublish}
           >
             <ThemedText style={styles.publishButtonText}>Publish</ThemedText>
@@ -94,8 +111,8 @@ export default function CreatePostScreen() {
         </View>
       </View>
 
+      {/* input post content */}
       <ScrollView style={styles.content}>
-        {/* enter topic title */}
         <View style={styles.inputContainer}>
           <TextInput
             style={[
@@ -104,7 +121,7 @@ export default function CreatePostScreen() {
                 backgroundColor: currentColorScheme === 'dark' ? '#333' : '#f5f5f5',
                 color: currentColorScheme === 'dark' ? '#fff' : '#000',
                 borderColor: currentColorScheme === 'dark' ? '#555' : '#ddd',
-              }
+              },
             ]}
             placeholder="Enter topic title"
             placeholderTextColor={currentColorScheme === 'dark' ? '#888' : '#999'}
@@ -113,7 +130,6 @@ export default function CreatePostScreen() {
           />
         </View>
 
-        {/* enter content */}
         <View style={styles.inputContainer}>
           <TextInput
             style={[
@@ -122,7 +138,7 @@ export default function CreatePostScreen() {
                 backgroundColor: currentColorScheme === 'dark' ? '#333' : '#f5f5f5',
                 color: currentColorScheme === 'dark' ? '#fff' : '#000',
                 borderColor: currentColorScheme === 'dark' ? '#555' : '#ddd',
-              }
+              },
             ]}
             placeholder="Enter your thoughts"
             placeholderTextColor={currentColorScheme === 'dark' ? '#888' : '#999'}
@@ -134,41 +150,25 @@ export default function CreatePostScreen() {
           />
         </View>
 
-        {/* "add image button" */}
-        <TouchableOpacity 
-          style={[
-            styles.actionButton,
-            { borderColor: colors.tint }
-          ]}
+        {/* add image */}
+        <TouchableOpacity
+          style={[styles.actionButton, { borderColor: colors.tint }]}
           onPress={handleImageSelect}
         >
-          <ThemedText style={{ color: colors.tint }}>
-              Add Image
-          </ThemedText>
+          <ThemedText style={{ color: colors.tint }}>Add Image</ThemedText>
         </TouchableOpacity>
 
-        {/* image preview */}
-        {image && (
-        <Image source={{ uri: image }} style={styles.imagePreview} />
-        )}
+        {image && <Image source={{ uri: image }} style={styles.imagePreview} />}
 
-        {/* "select address" button */}
-        <TouchableOpacity 
-          style={[
-            styles.actionButton,
-            { borderColor: colors.tint }
-          ]}
+        {/* add address */}
+        <TouchableOpacity
+          style={[styles.actionButton, { borderColor: colors.tint }]}
           onPress={handleAddressSelect}
         >
-          <ThemedText style={{ color: colors.tint }}>
-            Select Address
-          </ThemedText>
+          <ThemedText style={{ color: colors.tint }}>Select Address</ThemedText>
         </TouchableOpacity>
 
-        {/* show address */}
-        {address ? (
-        <ThemedText style={styles.addressText}>{address}</ThemedText>
-        ) : null}
+        {address ? <ThemedText style={styles.addressText}>{address}</ThemedText> : null}
       </ScrollView>
 
       {/* confirmation pop-up */}
@@ -179,156 +179,113 @@ export default function CreatePostScreen() {
         onRequestClose={() => setShowConfirmModal(false)}
       >
         <View style={styles.modalOverlay}>
-        <ThemedView style={styles.modalContent}>
-          <ThemedText type="subtitle" style={styles.modalTitle}>
-          Confirm Post
-          </ThemedText>
-          <ThemedText style={styles.modalMessage}>
-          Are you sure you want to publish this post?
-          </ThemedText>
-                
-          <View style={styles.modalButtons}>
-          <TouchableOpacity
-            style={[styles.modalButton, styles.cancelButton]}
-            onPress={() => setShowConfirmModal(false)}
-          >
-            <ThemedText>Cancel</ThemedText>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.modalButton, { backgroundColor: colors.tint }]}
-            onPress={confirmPublish}
-          >
-            <ThemedText style={styles.confirmButtonText}>Publish</ThemedText>
-          </TouchableOpacity>
-          </View>
-        </ThemedView>
+          <ThemedView style={styles.modalContent}>
+            <ThemedText type="subtitle" style={styles.modalTitle}>
+              Confirm Post
+            </ThemedText>
+            <ThemedText style={styles.modalMessage}>
+              Are you sure you want to publish this post?
+            </ThemedText>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setShowConfirmModal(false)}
+              >
+                <ThemedText>Cancel</ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.tint }]}
+                onPress={confirmPublish}
+              >
+                <ThemedText style={styles.confirmButtonText}>Publish</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </ThemedView>
         </View>
       </Modal>
+
+      {/* add address pop-up */}
+      <Modal
+        visible={showAddressModal}
+        transparent
+        animationType="slide"
+        onRequestClose={cancelAddressInput}
+      >
+        <View style={styles.modalOverlay}>
+          <ThemedView style={styles.modalContent}>
+            <ThemedText type="subtitle" style={styles.modalTitle}>
+              Enter Address
+            </ThemedText>
+            <ThemedText style={styles.modalMessage}>
+              Please enter the post location:
+            </ThemedText>
+
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: currentColorScheme === 'dark' ? '#333' : '#f5f5f5',
+                  color: currentColorScheme === 'dark' ? '#fff' : '#000',
+                  borderColor: currentColorScheme === 'dark' ? '#555' : '#ddd',
+                  marginBottom: 20,
+                },
+              ]}
+              placeholder="Enter address here..."
+              placeholderTextColor={currentColorScheme === 'dark' ? '#888' : '#999'}
+              value={address}
+              onChangeText={setAddress}
+              autoFocus={true}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={cancelAddressInput}
+              >
+                <ThemedText>Cancel</ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.tint }]}
+                onPress={confirmAddressInput}
+              >
+                <ThemedText style={styles.confirmButtonText}>Confirm</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </ThemedView>
+        </View>
+      </Modal>
+
+
+
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-      flex: 1,
-  },
-  header: {
-      padding: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: '#e0e0e0',
-  },
-  headerContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-  },
-  backButton: {
-      padding: 8,
-      width: 40,
-      height: 40,
-      alignItems: 'center',
-      justifyContent: 'center',
-  },
-  centerTitle: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      alignItems: 'center',
-      justifyContent: 'center',
-  },
-  titleText: {
-      fontSize: 18,
-      fontWeight: '600',
-      textAlign: 'center',
-  },
-  publishButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
-      minWidth: 80,
-      alignItems: 'center',
-  },
-  publishButtonText: {
-      color: '#fff',
-      fontWeight: '600',
-  },
-  content: {
-      flex: 1,
-      padding: 16,
-  },
-  inputContainer: {
-      marginBottom: 20,
-  },
-  input: {
-      borderWidth: 1,
-      borderRadius: 8,
-      padding: 12,
-      fontSize: 16,
-  },
-  textArea: {
-      borderWidth: 1,
-      borderRadius: 8,
-      padding: 12,
-      fontSize: 16,
-      minHeight: 120,
-      textAlignVertical: 'top',
-  },
-  actionButton: {
-      borderWidth: 1,
-      borderRadius: 8,
-      padding: 16,
-      alignItems: 'center',
-      marginBottom: 16,
-  },
-  imagePreview: {
-      width: '100%',
-      height: 200,
-      borderRadius: 8,
-      marginBottom: 16,
-      resizeMode: 'cover',
-  },
-  addressText: {
-      marginTop: 8,
-      padding: 12,
-      backgroundColor: 'rgba(0,0,0,0.05)',
-      borderRadius: 8,
-  },
-  modalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
-  },
-  modalContent: {
-      width: '80%',
-      padding: 24,
-      borderRadius: 12,
-      alignItems: 'center',
-  },
-  modalTitle: {
-      marginBottom: 12,
-      fontSize: 20,
-  },
-  modalMessage: {
-      marginBottom: 24,
-      textAlign: 'center',
-  },
-  modalButtons: {
-      flexDirection: 'row',
-      gap: 12,
-  },
-  modalButton: {
-      flex: 1,
-      padding: 12,
-      borderRadius: 8,
-      alignItems: 'center',
-  },
-  cancelButton: {
-      backgroundColor: '#f0f0f0',
-  },
-  confirmButtonText: {
-      color: '#fff',
-      fontWeight: '600',
-  },
+  container: { flex: 1 },
+  header: { padding: 10, borderBottomWidth: 1, borderColor: '#ccc' },
+  headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  backButton: { padding: 5 },
+  centerTitle: { flex: 1, alignItems: 'center' },
+  titleText: { fontWeight: 'bold' },
+  publishButton: { padding: 6, borderRadius: 8 },
+  publishButtonText: { color: '#fff', fontWeight: 'bold' },
+  content: { padding: 10 },
+  inputContainer: { marginBottom: 10 },
+  input: { padding: 10, borderRadius: 8, borderWidth: 1 },
+  textArea: { padding: 10, borderRadius: 8, borderWidth: 1, minHeight: 100 },
+  actionButton: { padding: 10, borderRadius: 8, borderWidth: 1, marginBottom: 10, alignItems: 'center' },
+  imagePreview: { width: '100%', height: 200, marginTop: 10, borderRadius: 8 },
+  addressText: { marginTop: 10, fontStyle: 'italic' },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalContent: { width: '80%', padding: 20, borderRadius: 12, backgroundColor: '#fff' },
+  modalTitle: { fontWeight: 'bold', marginBottom: 10 },
+  modalMessage: { marginBottom: 20 },
+  modalButtons: { flexDirection: 'row', justifyContent: 'space-between' },
+  modalButton: { flex: 1, padding: 10, marginHorizontal: 5, borderRadius: 8, alignItems: 'center' },
+  cancelButton: { backgroundColor: '#ddd' },
+  confirmButtonText: { color: '#fff', fontWeight: 'bold' },
 });

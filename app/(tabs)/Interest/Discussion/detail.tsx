@@ -1,68 +1,65 @@
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from "react";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useDiscussion } from "./_layout";
 
-export default function PostDetail() {
+export default function DiscussionDetail() {
+  const { id } = useLocalSearchParams() as { id?: string };
   const router = useRouter();
+  const { getPost, getCommentsForPost, addComment } = useDiscussion();
+  const post = id ? getPost(String(id)) : undefined;
+  const comments = id ? getCommentsForPost(String(id)) : [];
+  const [text, setText] = useState("");
+
+  if (!post) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <Text>Post not found</Text>
+      </View>
+    );
+  }
+
+  const handleAddComment = () => {
+    if (!text.trim()) {
+      return;
+    }
+    addComment({ postId: post.id, author: "You", text });
+    setText("");
+    // optional: scroll or toast
+  };
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 80 }}>
-        {/* Post header */}
-        <View style={styles.post}>
-          <View style={styles.avatar} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.author}>Sophia Bennett</Text>
-            <Text style={styles.time}>2d</Text>
-          </View>
-        </View>
-        <Text style={styles.postText}>
-          I'm looking for recommendations for a good hiking trail near the city. Any suggestions?
-        </Text>
+    <View style={{ flex: 1, backgroundColor: "#DDE7FF" }}>
+      <ScrollView style={{ padding: 16 }}>
+        <Text style={styles.title}>{post.title}</Text>
+        <Text style={styles.meta}>{post.author} • {new Date(post.createdAt).toLocaleString()}</Text>
+        <Text style={styles.content}>{post.content}</Text>
 
-        {/* Reactions row */}
-        <View style={styles.reactions}>
-          <Ionicons name="heart-outline" size={20} color="#333" />
-          <Text style={styles.reactionText}>23</Text>
-          <Ionicons name="chatbubble-outline" size={20} color="#333" style={{ marginLeft: 16 }} />
-          <Text style={styles.reactionText}>12</Text>
-          <Ionicons name="arrow-redo-outline" size={20} color="#333" style={{ marginLeft: 16 }} />
-          <Text style={styles.reactionText}>5</Text>
-        </View>
-
-        {/* Comments */}
-        <Text style={styles.commentTitle}>Comments</Text>
-
-        <View style={styles.comment}>
-          <View style={styles.avatarSmall} />
-          <View style={styles.commentBody}>
-            <Text style={styles.commentAuthor}>Ethan Carter <Text style={styles.commentTime}>1d</Text></Text>
-            <Text style={styles.commentText}>
-              Try the Redwood Trail, it's a moderate hike with beautiful views.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.comment}>
-          <View style={styles.avatarSmall} />
-          <View style={styles.commentBody}>
-            <Text style={styles.commentAuthor}>Olivia Harper <Text style={styles.commentTime}>2d</Text></Text>
-            <Text style={styles.commentText}>
-              I second the Redwood Trail! Also, make sure to bring plenty of water.
-            </Text>
-          </View>
+        <View style={{ marginTop: 18 }}>
+          <Text style={{ fontWeight: "700" }}>Comments</Text>
+          {comments.map(c => (
+            <View key={c.id} style={styles.comment}>
+              <View style={styles.avatar} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "700" }}>{c.author} <Text style={{ fontWeight: "400", color: "#666" }}>{new Date(c.createdAt).toLocaleString()}</Text></Text>
+                <Text style={{ marginTop: 6 }}>{c.text}</Text>
+              </View>
+            </View>
+          ))}
+          {comments.length === 0 && <Text style={{ color: "#666", marginTop: 8 }}>No comments yet</Text>}
         </View>
       </ScrollView>
 
-      {/* Add comment input */}
+      {/* add comment bar */}
       <View style={styles.inputBar}>
-        <View style={styles.avatarSmall} />
         <TextInput
           placeholder="Add a comment..."
+          value={text}
+          onChangeText={setText}
           style={styles.input}
         />
-        <TouchableOpacity>
-          <Ionicons name="send" size={24} color="#4A66C2" />
+        <TouchableOpacity onPress={handleAddComment} style={styles.sendBtn}>
+          <Text style={{ color: "#fff" }}>Send</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -70,24 +67,12 @@ export default function PostDetail() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#DDE7FF' },
-  post: { flexDirection: 'row', alignItems: 'center', padding: 16 },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#bbb', marginRight: 10 },
-  author: { fontWeight: '700', fontSize: 16, color: '#333' },
-  time: { fontSize: 12, color: '#666' },
-  postText: { paddingHorizontal: 16, fontSize: 15, color: '#333', marginBottom: 10 },
-  reactions: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 10 },
-  reactionText: { marginLeft: 4, fontSize: 13, color: '#333' },
-  commentTitle: { fontWeight: '700', fontSize: 16, paddingHorizontal: 16, marginBottom: 10 },
-  comment: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, marginBottom: 14 },
-  avatarSmall: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#bbb', marginRight: 10 },
-  commentBody: { flex: 1 },
-  commentAuthor: { fontWeight: '600', fontSize: 14, color: '#333' },
-  commentTime: { fontWeight: '400', fontSize: 12, color: '#666' },
-  commentText: { fontSize: 13, color: '#333', marginTop: 4 },
-  inputBar: {
-    flexDirection: 'row', alignItems: 'center', padding: 10,
-    borderTopWidth: 1, borderColor: '#ccc', backgroundColor: '#fff'
-  },
-  input: { flex: 1, marginHorizontal: 8, padding: 8 }
+  title: { fontSize: 20, fontWeight: "800", marginBottom: 6 },
+  meta: { color: "#6F7EA6", marginBottom: 10, fontSize: 12 },
+  content: { fontSize: 15, color: "#333", lineHeight: 22 },
+  comment: { flexDirection: "row", paddingVertical: 12, borderBottomWidth: 1, borderColor: "#eee" },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#bbb", marginRight: 10 },
+  inputBar: { flexDirection: "row", alignItems: "center", padding: 10, backgroundColor: "#fff" },
+  input: { flex: 1, backgroundColor: "#f2f2f2", padding: 8, borderRadius: 8 },
+  sendBtn: { marginLeft: 8, backgroundColor: "#4A66C2", padding: 10, borderRadius: 6 },
 });
