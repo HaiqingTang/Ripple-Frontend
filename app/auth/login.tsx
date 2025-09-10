@@ -46,7 +46,7 @@ export default function LoginPage() {
 		  switch (error.code) {
 			  case "auth/invalid-email":
 			  case "auth/wrong-password":
-			  case"auth/invalid-credential":
+			  case "auth/invalid-credential":
 				  message = "Invalid email or password";
 				  break;
 			  case "auth/user-disabled":
@@ -127,7 +127,7 @@ export default function LoginPage() {
               style={styles.eyeButton}
             >
               <Ionicons
-                name={showPassword ? "eye-off" : "eye"}
+                name={showPassword ? "eye" : "eye-off"}
                 size={20}
                 color="#9BA1A6"
               />
