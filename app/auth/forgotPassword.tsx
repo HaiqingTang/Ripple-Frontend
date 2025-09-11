@@ -32,11 +32,6 @@ export default function ForgotPasswordPage() {
 			await sendPasswordResetEmail(auth, email);
 			setSuccessMessage('A password reset link has been sent to your email address. Please check your inbox.');
 
-			// Navigate back to login page after a delay
-			setTimeout(() => {
-				router.back();
-			}, 3000);
-
 		} catch (error: any) {
 			let message = 'Failed to send reset email. Please try again.';
 
@@ -78,6 +73,16 @@ export default function ForgotPasswordPage() {
 						{/* Forgot Password Title */}
 						<Text style={styles.title}>Forgot Password</Text>
 
+						{/* Instruction Text */}
+							<Text style={{
+								color: '#2C3E50', 
+								marginBottom: 40, 
+								textAlign: 'center',
+								fontSize: 15
+							}}>
+								We'll email you a link to reset your password
+							</Text>
+
 						{/* Error Message */}
 						{errorMessage ? (
 							<Text style={{color: 'red', marginBottom: 10}}>{errorMessage}</Text>
@@ -85,33 +90,40 @@ export default function ForgotPasswordPage() {
 
 						{/* Success Message */}
 						{successMessage ? (
-							<Text style={{color: '#4CAF50', marginBottom: 10}}>{successMessage}</Text>
+							<Text style={{color: '#4CAF50', marginBottom: 10, textAlign: 'center'}}>{successMessage}</Text>
 						) : null}
 
-						{/* Email Input */}
-						<View style={styles.inputContainer}>
-							<Text style={styles.label}>E-mail</Text>
-							<TextInput
-								style={styles.input}
-								placeholder="Enter your email"
-								placeholderTextColor="#9BA1A6"
-								value={email}
-								onChangeText={setEmail}
-								keyboardType="email-address"
-								autoCapitalize="none"
-								autoCorrect={false}
-							/>
-						</View>
+						{/* Only show email input and reset button if there's no success message */}
+						{!successMessage ? (
+                        <>
 
-						{/* Reset Password Button */}
-						<CustomButton
-							title={loading ? "Sending..." : "Email reset password link"}
-							onPress={handleResetPassword}
-							variant="primary"
-							size="large"
-							style={styles.resetButton}
-							disabled={loading}
-						/>
+                            {/* Email Input */}
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.label}>E-mail</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Enter your email"
+                                    placeholderTextColor="#9BA1A6"
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    keyboardType="email-address"
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+                            </View>
+
+                            {/* Reset Password Button */}
+                            <CustomButton
+                                title={loading ? "Sending..." : "Email Link"}
+                                onPress={handleResetPassword}
+                                variant="primary"
+                                size="large"
+                                style={styles.resetButton}
+                                disabled={loading}
+                            />
+                        </>
+                    ) : null}
+						
 					</View>
 				</View>
 			</TouchableWithoutFeedback>
@@ -150,7 +162,7 @@ const styles = StyleSheet.create({
 		fontWeight: 'bold',
 		color: '#2C3E50',
 		textAlign: 'center',
-		marginBottom: 40,
+		marginBottom: 15,
 	},
 	inputContainer: {
 		marginBottom: 24,
