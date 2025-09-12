@@ -9,10 +9,8 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  Modal,
-  Alert
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -24,12 +22,14 @@ const BLUE = '#4A90E2';
 
 export default function PersonalLog() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ journal?: string; tags?: string }>();
   const [dayRating, setDayRating] = useState(5);
   const [moodRating, setMoodRating] = useState(6);
   const [selectedEmoji, setSelectedEmoji] = useState(2);
   const [sleepDuration, setSleepDuration] = useState(7);
   const [sleepQuality, setSleepQuality] = useState(8);
-  const [isJournalModalVisible, setIsJournalModalVisible] = useState(false);
+  const [journalText, setJournalText] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [userName, setUserName] = useState('User'); // Default fallback name
 
   const emojis = ['😢', '😕', '😐', '😊', '😄'];
@@ -51,12 +51,27 @@ export default function PersonalLog() {
     return () => unsubscribe();
   }, []);
 
+  // Pull incoming journal and tags from journal screen
+  useEffect(() => {
+    if (params.journal) {
+      setJournalText(String(params.journal));
+    }
+    if (params.tags) {
+      try {
+        const parsed = JSON.parse(String(params.tags));
+        if (Array.isArray(parsed)) setSelectedTags(parsed as string[]);
+      } catch {}
+    }
+  }, [params.journal, params.tags]);
+
   const handleSave = () => {
     const logData = {
       date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
       dayRating,
       moodRating,
       selectedEmoji: selectedEmoji + 1, // Save as 1-5 integer instead of emoji character
+      journalText,
+      tags: selectedTags,
       sleepDuration,
       sleepQuality,
       timestamp: new Date().toISOString()
@@ -65,8 +80,8 @@ export default function PersonalLog() {
     // TODO:replace this with actual backend call
     console.log('Saving log data:', logData);
     
-    // For now, we'll just show an alert
-    alert('Log saved successfully!');
+    // Redirect to success page
+    router.push('/journal/success');
     
     // Optional: Reset form after saving
     // setDayRating(5);
@@ -83,13 +98,15 @@ export default function PersonalLog() {
   };
 
   const openJournal = () => {
-    router.push('/journal');
-  }
-
-  const closeJournalModal = () => {
-    setIsJournalModalVisible(false);
+    router.push({
+      pathname: '/journal',
+      params: {
+        journal: journalText,
+        tags: JSON.stringify(selectedTags),
+      },
+    });
   };
-  
+
   const getCurrentDate = () => {
     const today = new Date();
     const day = today.toLocaleDateString('en-US', { weekday: 'long' });
@@ -255,7 +272,7 @@ export default function PersonalLog() {
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={{ fontSize: 15, fontWeight: '600', color: '#333' }}>
-              How would you overall rate your day?
+              How would you rate your day overall?
             </Text>
             <View style={{
               width: 50,
@@ -318,9 +335,7 @@ export default function PersonalLog() {
 
         {/* Journaling Section */}
         <Card>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: '#333' }}>
-            Want to journal?
-          </Text>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: '#333' }}>Want to journal?</Text>
           <Text style={{ fontSize: 14, color: '#666', marginTop: 8 }}>
             How was your day? What are you grateful for? Any challenges you faced?
           </Text>
@@ -336,10 +351,29 @@ export default function PersonalLog() {
             }}
             onPress={openJournal}
           >
-              <Text style={{ fontSize: 16, color: '#999' }}>
-                Write your thoughts here...
-              </Text>
+              {journalText ? (
+                <Text style={{ fontSize: 16, color: '#333', lineHeight: 22 }}>{journalText}</Text>
+              ) : (
+                <Text style={{ fontSize: 16, color: '#999' }}>Write your thoughts here...</Text>
+              )}
           </TouchableOpacity>
+
+          {selectedTags.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
+              {selectedTags.map((tag, idx) => (
+                <View key={`${tag}-${idx}`} style={{
+                  backgroundColor: '#EAF2FF',
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 14,
+                  marginRight: 8,
+                  marginTop: 6,
+                }}>
+                  <Text style={{ color: '#1E63E9', fontWeight: '600' }}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </Card>
 
         {/* Sleep Section */}
@@ -435,64 +469,6 @@ export default function PersonalLog() {
         </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* Journal Modal */}
-      <Modal
-        visible={isJournalModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={closeJournalModal}
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: WHITE }}>
-          <View style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingHorizontal: 20,
-            paddingVertical: 16,
-            borderBottomWidth: 1,
-            borderBottomColor: '#E0E0E0'
-          }}>
-            <TouchableOpacity onPress={closeJournalModal}>
-              <Text style={{ fontSize: 16, color: BLUE, fontWeight: '500' }}>
-                Cancel
-              </Text>
-            </TouchableOpacity>
-            <Text style={{ fontSize: 18, fontWeight: '600', color: '#333' }}>
-              Journal Entry
-            </Text>
-            <TouchableOpacity onPress={closeJournalModal}>
-              <Text style={{ fontSize: 16, color: BLUE, fontWeight: '600' }}>
-                Done
-              </Text>
-            </TouchableOpacity>
-          </View>
-          
-          <KeyboardAvoidingView 
-            style={{ flex: 1 }} 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          >
-            <TextInput
-              style={{
-                flex: 1,
-                padding: 20,
-                fontSize: 16,
-                color: '#333',
-                textAlignVertical: 'top',
-                lineHeight: 24
-              }}
-              placeholder="How was your day? What are you grateful for? Any challenges you faced?"
-              placeholderTextColor="#999"
-              multiline
-              autoFocus={true}
-              autoCorrect={true}
-              autoCapitalize="sentences"
-              returnKeyType="default"
-              blurOnSubmit={false}
-            />
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }

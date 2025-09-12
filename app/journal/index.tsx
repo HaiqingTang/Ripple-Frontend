@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState,useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -11,9 +11,8 @@ import {
   Platform,
   Modal
 } from 'react-native';
-import { Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 const BLUE_BG = '#DDE7FF';
@@ -21,10 +20,20 @@ const WHITE = '#FFFFFF';
 
 export default function JournalPage() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ journal?: string; tags?: string }>();
   const [journalText, setJournalText] = useState('');
   const [selectedTags, setSelectedTags] = useState(['Hiking', 'Meditation', 'Nutrition']);
   const [isTagModalVisible, setIsTagModalVisible] = useState(false);
 
+  useEffect(() => {
+    if (params.journal) setJournalText(String(params.journal));
+    if (params.tags) {
+      try {
+        const parsed = JSON.parse(String(params.tags));
+        if (Array.isArray(parsed)) setSelectedTags(parsed as string[]);
+      } catch {}
+    }
+  }, [params.journal, params.tags]);
   // TODO: Replace this with actual backend call
   const availableTags = [
     'Hiking', 'Meditation', 'Nutrition', 'Work', 'Family', 'Friends', 
@@ -32,16 +41,14 @@ export default function JournalPage() {
     'Learning', 'Health', 'Mindfulness', 'Gratitude', 'Goals', 'Challenges'
   ];
 
-  const handleSaveJournal = () => {
-    // TODO: Implement save functionality
-    console.log('Saving journal:', {
-      text: journalText,
-      tags: selectedTags,
-      timestamp: new Date().toISOString()
+  const handleAddToLog = () => {
+    router.push({
+      pathname: '/(tabs)/personalLog',
+      params: {
+        journal: journalText,
+        tags: JSON.stringify(selectedTags),
+      },
     });
-    
-    // Navigate to success screen
-    router.push('/journal/success');
   };
   
 
@@ -57,27 +64,19 @@ export default function JournalPage() {
   };
 
   const getTagColor = (tag: string) => {
-    const colors = {
-      'Hiking': { bg: '#FFF3CD', text: '#856404' },
-      'Meditation': { bg: '#E2E3F0', text: '#4A4A6A' },
-      'Nutrition': { bg: '#D4EDDA', text: '#155724' },
-      'Work': { bg: '#F8D7DA', text: '#721C24' },
-      'Family': { bg: '#D1ECF1', text: '#0C5460' },
-      'Friends': { bg: '#FCE4EC', text: '#880E4F' },
-      'Exercise': { bg: '#FFF8E1', text: '#F57F17' },
-      'Reading': { bg: '#E8F5E8', text: '#2E7D32' },
-      'Music': { bg: '#F3E5F5', text: '#7B1FA2' },
-      'Art': { bg: '#FFEBEE', text: '#C62828' },
-      'Travel': { bg: '#E0F2F1', text: '#00695C' },
-      'Cooking': { bg: '#FFF3E0', text: '#E65100' },
-      'Learning': { bg: '#E3F2FD', text: '#1565C0' },
-      'Health': { bg: '#E8F5E8', text: '#388E3C' },
-      'Mindfulness': { bg: '#F1F8E9', text: '#689F38' },
-      'Gratitude': { bg: '#FFFDE7', text: '#F9A825' },
-      'Goals': { bg: '#FCE4EC', text: '#AD1457' },
-      'Challenges': { bg: '#FFEBEE', text: '#D32F2F' }
-    };
-    return colors[tag] || { bg: '#F5F5F5', text: '#666' };
+    // Round-robin pick from 6 preset color pairs, stable by tag
+    const palette = [
+      { bg: '#FFF3CD', text: '#8A6D3B' }, // warm yellow
+      { bg: '#E2E3F0', text: '#4A4A6A' }, // soft indigo
+      { bg: '#D4EDDA', text: '#2E7D32' }, // green
+      { bg: '#D1ECF1', text: '#0C5460' }, // teal
+      { bg: '#FCE4EC', text: '#AD1457' }, // pink
+      { bg: '#E3F2FD', text: '#1565C0' }, // blue
+    ];
+    let sum = 0;
+    for (let i = 0; i < tag.length; i++) sum += tag.charCodeAt(i);
+    const idx = sum % palette.length;
+    return palette[idx];
   };
 
   return (
@@ -258,7 +257,7 @@ export default function JournalPage() {
             </View>
           </View>
 
-          {/* Save Button */}
+          {/* Add to Log Button */}
           <TouchableOpacity 
             style={{
               backgroundColor: '#4A90E2',
@@ -270,14 +269,14 @@ export default function JournalPage() {
               alignItems: 'center',
               justifyContent: 'center'
             }}
-            onPress={handleSaveJournal}
+            onPress={handleAddToLog}
           >
             <Text style={{ 
               color: WHITE, 
               fontSize: 18, 
               fontWeight: '600' 
             }}>
-              Save Journal Entry
+              Add to Personal Log
             </Text>
           </TouchableOpacity>
         </ScrollView>

@@ -1,4 +1,9 @@
 import { Slot } from 'expo-router';
+import { AppProvider } from '@/context/AppContext';
 export default function Root() {
-  return <Slot />;
+  return (
+    <AppProvider>
+      <Slot />
+    </AppProvider>
+  );
 }

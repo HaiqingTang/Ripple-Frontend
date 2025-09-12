@@ -1,13 +1,17 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useAppContext } from '@/context/AppContext';
+import LogButton from '@/components/LogButton';
 
 const BLUE_BG = '#DDE7FF';
 const WHITE = '#FFFFFF';
 
 export default function JournalSuccess() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ journal?: string; tags?: string }>();
+  const { userName, dayOfWeek, formattedDate } = useAppContext();
 
   const handleContinue = () => {
     // TODO: which screen to go to?
@@ -18,6 +22,8 @@ export default function JournalSuccess() {
     // TODO: replace with a dedicated entries history screen when available
     console.log('Viewing previous entries...');
   };
+
+  // day and date are provided by context
 
   return (
     <SafeAreaView style={styles.container}>
@@ -30,8 +36,8 @@ export default function JournalSuccess() {
       <View style={styles.headerCard}>
         <View style={styles.headerContent}>
           <View style={styles.headerText}>
-            <Text style={styles.date}>It's Thursday!</Text>
-            <Text style={styles.date}>08/21/2025</Text>
+            <Text style={styles.date}>{`It's ${dayOfWeek}!`}</Text>
+            <Text style={styles.date}>{formattedDate}</Text>
             <Text style={styles.encouragement}>You've been doing an awesome job with logging! Awesome work!</Text>
           </View>
           <View style={styles.progressIcon}>
@@ -51,6 +57,35 @@ export default function JournalSuccess() {
           <View style={styles.successText}>
             <Text style={styles.successTitle}>Good job!</Text>
             <Text style={styles.successMessage}>You've submitted your journal entry for today</Text>
+            {!!params.journal && (
+              <Text style={[styles.successMessage, { marginTop: 8, color: '#2C3E50' }]} numberOfLines={3}>
+                {String(params.journal)}
+              </Text>
+            )}
+            {!!params.tags && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+                {(() => {
+                  try {
+                    const tags = JSON.parse(String(params.tags));
+                    if (Array.isArray(tags)) {
+                      return tags.map((t: string, i: number) => (
+                        <View key={`${t}-${i}`} style={{
+                          backgroundColor: '#EAF2FF',
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 14,
+                          marginRight: 8,
+                          marginTop: 6,
+                        }}>
+                          <Text style={{ color: '#1E63E9', fontWeight: '600' }}>{t}</Text>
+                        </View>
+                      ));
+                    }
+                  } catch {}
+                  return null;
+                })()}
+              </View>
+            )}
           </View>
           <View style={styles.successIcon}>
             <Text style={styles.emoji}>😊</Text>
@@ -58,10 +93,7 @@ export default function JournalSuccess() {
         </View>
       </View>
 
-      {/* Continue Button */}
-      <TouchableOpacity style={styles.continueButton} onPress={handleContinue}>
-        <Text style={styles.continueButtonText}>Continue</Text>
-      </TouchableOpacity>
+      <LogButton label="Continue" onPress={handleContinue} />
     </SafeAreaView>
   );
 }
