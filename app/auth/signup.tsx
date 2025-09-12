@@ -96,7 +96,7 @@ export default function SignUpPage() {
       console.log('Account created for:', userCredential.user.uid);
 
       // Navigate to main app after successful signup
-      router.push('/(tabs)/quickNote');
+      router.push('/(tabs)/personalLog');
     } catch (error: any) {
       let message = 'Account creation failed. Please try again later';
 
