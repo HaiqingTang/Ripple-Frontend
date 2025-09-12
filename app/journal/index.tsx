@@ -24,16 +24,21 @@ export default function JournalPage() {
   const [journalText, setJournalText] = useState('');
   const [selectedTags, setSelectedTags] = useState(['Hiking', 'Meditation', 'Nutrition']);
   const [isTagModalVisible, setIsTagModalVisible] = useState(false);
+	const [hasInitialized, setHasInitialized] = useState(false);
 
   useEffect(() => {
-    if (params.journal) setJournalText(String(params.journal));
-    if (params.tags) {
-      try {
-        const parsed = JSON.parse(String(params.tags));
-        if (Array.isArray(parsed)) setSelectedTags(parsed as string[]);
-      } catch {}
-    }
-  }, [params.journal, params.tags]);
+		if (!hasInitialized) {
+			if (params.journal) setJournalText(String(params.journal));
+			if (params.tags) {
+				try {
+					const parsed = JSON.parse(String(params.tags));
+					if (Array.isArray(parsed)) setSelectedTags(parsed as string[]);
+				} catch {
+				}
+			}
+			setHasInitialized(true);
+		}
+  }, [hasInitialized, params.journal, params.tags]);
   // TODO: Replace this with actual backend call
   const availableTags = [
     'Hiking', 'Meditation', 'Nutrition', 'Work', 'Family', 'Friends', 
