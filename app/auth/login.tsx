@@ -39,7 +39,7 @@ export default function LoginPage() {
 		  const userCredential = await signInWithEmailAndPassword(auth, email, password);
 		  console.log('Logged in user:', userCredential.user.uid);
 		  // Navigate to quicknote tab after successful login
-		  router.push('/(tabs)/quickNote');
+		  router.push('/(tabs)/personalLog');
 	  } catch (error: any) {
 		  let message = "Login failed. Please try again later";
 
