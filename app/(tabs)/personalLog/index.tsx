@@ -12,8 +12,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { useAppContext } from '@/context/AppContext';
 
 const { width } = Dimensions.get('window');
 const BLUE_BG = '#DDE7FF';
@@ -30,26 +29,11 @@ export default function PersonalLog() {
   const [sleepQuality, setSleepQuality] = useState(8);
   const [journalText, setJournalText] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [userName, setUserName] = useState('User'); // Default fallback name
+  const { userName, dayOfWeek, formattedDate } = useAppContext();
 
   const emojis = ['😢', '😕', '😐', '😊', '😄'];
 
-  // Get user name from Firebase Auth
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        // Try to get displayName first, then email, then fallback to 'User'
-        const name = user.displayName || 
-                    user.email?.split('@')[0] || 
-                    'User';
-        setUserName(name);
-      } else {
-        setUserName('User');
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
+  // userName now comes from AppContext
 
   // Pull incoming journal and tags from journal screen
   useEffect(() => {
@@ -106,15 +90,6 @@ export default function PersonalLog() {
       },
     });
   };
-
-  const getCurrentDate = () => {
-    const today = new Date();
-    const day = today.toLocaleDateString('en-US', { weekday: 'long' });
-    const date = today.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-    return { day, date };
-  };
-
-  const { day, date } = getCurrentDate();
 
   const Card = ({ children, style = {} }: { children: React.ReactNode; style?: any }) => (
     <View style={{
@@ -228,10 +203,10 @@ export default function PersonalLog() {
                 Good Morning {userName}!
               </Text>
               <Text style={{ fontSize: 16, color: '#666', marginTop: 4 }}>
-                It's {day}!
+                It's {dayOfWeek}!
               </Text>
               <Text style={{ fontSize: 14, color: '#666' }}>
-                {date}
+                {formattedDate}
               </Text>
               <Text style={{ fontSize: 14, color: '#666', marginTop: 8 }}>
                 You&apos;ve been doing an awesome job with logging! Awesome work!
