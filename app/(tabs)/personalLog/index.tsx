@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -13,6 +13,8 @@ import {
   Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 
 const { width } = Dimensions.get('window');
 const BLUE_BG = '#DDE7FF';
@@ -27,8 +29,26 @@ export default function PersonalLog() {
   const [sleepDuration, setSleepDuration] = useState(7);
   const [sleepQuality, setSleepQuality] = useState(8);
   const [isJournalModalVisible, setIsJournalModalVisible] = useState(false);
+  const [userName, setUserName] = useState('User'); // Default fallback name
 
   const emojis = ['😢', '😕', '😐', '😊', '😄'];
+
+  // Get user name from Firebase Auth
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // Try to get displayName first, then email, then fallback to 'User'
+        const name = user.displayName || 
+                    user.email?.split('@')[0] || 
+                    'User';
+        setUserName(name);
+      } else {
+        setUserName('User');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleSave = () => {
     const logData = {
@@ -188,7 +208,7 @@ export default function PersonalLog() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 28, fontWeight: '700', color: '#333' }}>
-                Good Morning Ellie!
+                Good Morning {userName}!
               </Text>
               <Text style={{ fontSize: 16, color: '#666', marginTop: 4 }}>
                 It's {day}!
