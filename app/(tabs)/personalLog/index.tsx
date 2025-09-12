@@ -12,6 +12,7 @@ import {
   Modal,
   Alert
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -22,10 +23,10 @@ const WHITE = '#FFFFFF';
 const BLUE = '#4A90E2';
 
 export default function PersonalLog() {
+  const router = useRouter();
   const [dayRating, setDayRating] = useState(5);
   const [moodRating, setMoodRating] = useState(6);
   const [selectedEmoji, setSelectedEmoji] = useState(2);
-  const [journalText, setJournalText] = useState('');
   const [sleepDuration, setSleepDuration] = useState(7);
   const [sleepQuality, setSleepQuality] = useState(8);
   const [isJournalModalVisible, setIsJournalModalVisible] = useState(false);
@@ -56,7 +57,6 @@ export default function PersonalLog() {
       dayRating,
       moodRating,
       selectedEmoji: selectedEmoji + 1, // Save as 1-5 integer instead of emoji character
-      journalText,
       sleepDuration,
       sleepQuality,
       timestamp: new Date().toISOString()
@@ -82,9 +82,9 @@ export default function PersonalLog() {
     console.log('Viewing previous entries...');
   };
 
-  const openJournalModal = () => {
-    setIsJournalModalVisible(true);
-  };
+  const openJournal = () => {
+    router.push('/journal');
+  }
 
   const closeJournalModal = () => {
     setIsJournalModalVisible(false);
@@ -334,17 +334,11 @@ export default function PersonalLog() {
               justifyContent: 'flex-start',
               alignItems: 'flex-start'
             }}
-            onPress={openJournalModal}
+            onPress={openJournal}
           >
-            {journalText ? (
-              <Text style={{ fontSize: 16, color: '#333', lineHeight: 22 }}>
-                {journalText}
-              </Text>
-            ) : (
               <Text style={{ fontSize: 16, color: '#999' }}>
                 Write your thoughts here...
               </Text>
-            )}
           </TouchableOpacity>
         </Card>
 
@@ -490,8 +484,6 @@ export default function PersonalLog() {
               placeholder="How was your day? What are you grateful for? Any challenges you faced?"
               placeholderTextColor="#999"
               multiline
-              value={journalText}
-              onChangeText={setJournalText}
               autoFocus={true}
               autoCorrect={true}
               autoCapitalize="sentences"
