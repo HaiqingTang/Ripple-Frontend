@@ -39,12 +39,19 @@ export default function MeetupMainPage() {
     };
   const onExplore = () => router.push("/Interest/allMeetups");
   const onBottomNav = (key: string) => console.log("Bottom nav ->", key);
-  const onOpenMeetup = (m: Meetup) => console.log("Open meetup", m);
+  const onOpenMeetup = (m: Meetup) => {
+    if (m.id === "1") {
+      router.push("/Interest/meetupDetail1");
+    } else {
+      // 先不跳
+    }
+  };
+
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
-        contentContainerStyle={{ paddingTop: 32, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingTop: 0, paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
@@ -167,8 +174,8 @@ export default function MeetupMainPage() {
   );
 }
 
-const BG = "#dbe7ff"; // 页面淡蓝背景
-const CARD_BG = "#e9f0ff";
+const BG = "#D6E6FD"; // 页面淡蓝背景
+const CARD_BG = "#C6DBFA";
 const BLUE_TEXT = "#345BCE";
 
 const styles = StyleSheet.create({

@@ -82,7 +82,7 @@ export default function AllMeetupsPage() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
-        contentContainerStyle={{ paddingTop: 32, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingTop: 0, paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
@@ -146,7 +146,7 @@ export default function AllMeetupsPage() {
   );
 }
 
-const BG = "#dbe7ff";
+const BG = "#D6E6FD";
 const CARD_BG = "#ffffff";
 const CHIP_BG = "#e5e7eb";
 const CHIP_ACTIVE_BG = "#111827";

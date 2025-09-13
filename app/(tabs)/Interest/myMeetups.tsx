@@ -41,7 +41,7 @@ export default function MyMeetupsPage() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
-        contentContainerStyle={{ paddingTop: 32, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingTop: 0, paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
@@ -98,7 +98,7 @@ export default function MyMeetupsPage() {
   );
 }
 
-const BG = "#dbe7ff";
+const BG = "#D6E6FD";
 const CARD_BG = "#ffffff";
 
 const styles = StyleSheet.create({
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     height: 44,
     borderRadius: 12,
-    backgroundColor: "#e9f0ff",
+    backgroundColor: "#C6DBFA",
     alignItems: "center",
     justifyContent: "center",
   },
