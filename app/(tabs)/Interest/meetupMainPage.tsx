@@ -1,5 +1,4 @@
-// app/Interest/meetupMainPage.tsx
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -7,39 +6,57 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
-  FlatList,
-  ImageBackground,
-  Platform,
   ScrollView,
+  ImageBackground,
 } from "react-native";
-import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import {
-  Ionicons,
-  MaterialIcons,
-  Feather,
-  FontAwesome5,
-  AntDesign,
-} from "@expo/vector-icons";
 
-type Meetup = { id: string; title: string; date: string };
+// 🔁 Firestore
+import { collection, onSnapshot, orderBy, query, limit } from "firebase/firestore";
+import { db } from "../../../firebase";
 
-const MY_MEETUPS: Meetup[] = [
-  { id: "1", title: "Morning Yoga", date: "17/9/25" },
-  { id: "2", title: "Morning Yoga2", date: "18/9/25" },
-  { id: "3", title: "Morning Yoga3", date: "19/9/25" },
-];
+type Meetup = {
+  id: string;
+  title: string;
+  date: string;
+  location?: string;
+  description?: string;
+  category?: string;
+};
 
 export default function MeetupMainPage() {
   const router = useRouter();
-  const onBack = () => console.log("Back pressed");
+  const [queryText, setQueryText] = useState("");
+  const [top, setTop] = useState<Meetup | null>(null);
+
+  // 🔁 拉取最新一条 meetup
+  useEffect(() => {
+    const q = query(collection(db, "meetups"), orderBy("date", "desc"), limit(1));
+    const unsub = onSnapshot(q, (snap) => {
+      const d = snap.docs[0];
+      if (!d) {
+        setTop(null);
+        return;
+      }
+      const data = d.data() as any;
+      const dateStr =
+        typeof data.date?.toDate === "function"
+          ? toDisplayDate(data.date.toDate())
+          : String(data.date ?? "");
+      setTop({
+        id: d.id,
+        title: data.title ?? "",
+        date: dateStr,
+        location: data.location,
+        description: data.description,
+        category: data.category,
+      });
+    });
+    return () => unsub();
+  }, []);
+
   const onAdd = () => console.log("Add meetup");
-  const onAllMeetups = () => {
-      router.push("/Interest/myMeetups");
-    };
-  const onExplore = () => router.push("/Interest/allMeetups");
-  const onBottomNav = (key: string) => console.log("Bottom nav ->", key);
-  const onOpenMeetup = (m: Meetup) => console.log("Open meetup", m);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -49,22 +66,21 @@ export default function MeetupMainPage() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Pressable style={styles.iconBtn} onPress={onBack}>
+          <Pressable
+            hitSlop={8}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/(tabs)/Interest"); // 没有历史时兜底
+              }
+            }}
+          >
             <Ionicons name="chevron-back" size={22} color="#2c3e50" />
           </Pressable>
-
-          <View style={styles.titleWrap}>
-            <Text style={styles.title}>Meetups</Text>
-            <Ionicons
-              name="globe-outline"
-              size={16}
-              color="#2c3e50"
-              style={{ marginLeft: 6, marginTop: 2 }}
-            />
-          </View>
-
-          <Pressable style={styles.roundBtnOutline}>
-            <Ionicons name="add" size={20} color="#3b82f6" />
+          <Text style={styles.title}>Meetups 🌐</Text>
+          <Pressable hitSlop={8} onPress={onAdd}>
+            <Ionicons name="add" size={22} color="#3b82f6" />
           </Pressable>
         </View>
 
@@ -75,295 +91,98 @@ export default function MeetupMainPage() {
             placeholder="Search meetups..."
             placeholderTextColor="#9aa3b2"
             style={styles.searchInput}
-            onChangeText={(t) => console.log("search:", t)}
-            returnKeyType="search"
+            value={queryText}
+            onChangeText={setQueryText}
           />
         </View>
 
-        {/* Featured card */}
-        <ImageBackground
-          source={{
-            uri:
-              "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=1600&auto=format&fit=crop",
-          }}
-          style={styles.featured}
-          imageStyle={styles.featuredImg}
+        {/* 顶部大卡片 */}
+        <View style={{ paddingHorizontal: 16 }}>
+          <ImageBackground
+            source={{
+              uri:
+                "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1400&q=60",
+            }}
+            style={styles.hero}
+            imageStyle={{ borderRadius: 16 }}
+          >
+            <View style={styles.heroBadge}>
+              <Text style={{ fontWeight: "800", color: "#FF5A3E" }}>🔥 HOT</Text>
+            </View>
+            <View style={styles.heroOverlay} />
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroDate}>{top ? top.date : "—"}</Text>
+              <Text style={styles.heroTitle}>{top ? top.title : "No Meetup"}</Text>
+            </View>
+          </ImageBackground>
+        </View>
+
+        <View style={{ height: 16 }} />
+        <Pressable
+          style={styles.moreBtn}
+          onPress={() => router.push("/(tabs)/Interest/allMeetups")}
         >
-          <View style={styles.hotBadge}>
-            <Text style={styles.hotText}>🔥 HOT</Text>
-          </View>
-
-          <View style={styles.featuredTextWrap}>
-            <Text style={styles.featuredDate}>Sep 17</Text>
-            <Text style={styles.featuredTitle}>Morning Yoga</Text>
-          </View>
-        </ImageBackground>
-
-        {/* My Meetups card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>My Meetups</Text>
-            <Pressable style={styles.allBtn} onPress={onAllMeetups}>
-              <Text style={styles.allText}>All Meetups</Text>
-              <Feather name="chevron-right" size={16} color="#6b7280" />
-            </Pressable>
-          </View>
-
-          <FlatList
-            data={MY_MEETUPS}
-            keyExtractor={(i) => i.id}
-            scrollEnabled={false}
-            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => onOpenMeetup(item)}
-                style={styles.meetupRow}
-              >
-                <Text style={styles.meetupName}>{item.title}</Text>
-                <Text style={styles.meetupDate}>{item.date}</Text>
-              </Pressable>
-            )}
-            contentContainerStyle={{ paddingTop: 6, paddingBottom: 6 }}
-          />
-        </View>
-
-        {/* Explore button */}
-        <Pressable style={styles.exploreBtn} onPress={onExplore}>
-          <Text style={styles.exploreText}>Explore more meetups</Text>
+          <Text style={styles.moreText}>Explore more meetups</Text>
         </Pressable>
       </ScrollView>
-
-      {/* Bottom toolbar */}
-      <View style={styles.bottomBar}>
-        <Pressable style={styles.bottomItem} onPress={() => onBottomNav("mood")}>
-          <Ionicons name="happy-outline" size={22} color="#111827" />
-        </Pressable>
-        <Pressable
-          style={styles.bottomItem}
-          onPress={() => onBottomNav("notes")}
-        >
-          <Ionicons name="clipboard-outline" size={22} color="#111827" />
-        </Pressable>
-        <Pressable
-          style={styles.bottomItem}
-          onPress={() => onBottomNav("chat")}
-        >
-          <Ionicons name="chatbubble-ellipses-outline" size={22} color="#111827" />
-        </Pressable>
-        <Pressable
-          style={styles.bottomItem}
-          onPress={() => onBottomNav("clock")}
-        >
-          <Ionicons name="time-outline" size={22} color="#111827" />
-        </Pressable>
-        <Pressable
-          style={styles.bottomItem}
-          onPress={() => onBottomNav("profile")}
-        >
-          <Ionicons name="person-outline" size={22} color="#111827" />
-        </Pressable>
-      </View>
     </SafeAreaView>
   );
 }
 
-const BG = "#dbe7ff"; // 页面淡蓝背景
-const CARD_BG = "#e9f0ff";
-const BLUE_TEXT = "#345BCE";
+function toDisplayDate(d: Date) {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(2);
+  return `${dd}/${mm}/${yy}`;
+}
 
+const BG = "#dbe7ff";
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: BG,
-  },
+  safe: { flex: 1, backgroundColor: BG },
   header: {
     paddingHorizontal: 16,
-    paddingTop: Platform.select({ ios: 0, android: 10 }),
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  titleWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#2c3e50",
-    letterSpacing: 0.3,
-  },
-
+  title: { fontSize: 20, fontWeight: "800", color: "#1f2937" },
   searchBox: {
-    marginTop: 12,
     marginHorizontal: 16,
     paddingHorizontal: 12,
-    height: 40,
+    height: 44,
     borderRadius: 12,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#fff",
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    marginBottom: 12,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: "#111827",
-  },
-
-  featured: {
-    marginTop: 16,
-    marginHorizontal: 16,
-    height: 170,
-    borderRadius: 16,
-    overflow: "hidden",
-    justifyContent: "flex-end",
-  },
-  featuredImg: {
-    borderRadius: 16,
-  },
-  hotBadge: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    backgroundColor: "rgba(255,255,255,0.95)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-  },
-  hotText: {
-    fontWeight: "800",
-    color: "#ff4d00",
-    letterSpacing: 0.5,
-  },
-  featuredTextWrap: {
-    padding: 12,
+  searchInput: { flex: 1, fontSize: 15, color: "#111827" },
+  hero: { height: 220, borderRadius: 16, overflow: "hidden" },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.25)",
   },
-  featuredDate: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "800",
-    marginBottom: 2,
-    textShadowColor: "rgba(0,0,0,0.4)",
-    textShadowRadius: 4,
-  },
-  featuredTitle: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "900",
-    textShadowColor: "rgba(0,0,0,0.4)",
-    textShadowRadius: 4,
-  },
-
-  card: {
-    marginTop: 16,
-    marginHorizontal: 16,
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: CARD_BG,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 1,
-  },
-  cardHeader: {
-    paddingHorizontal: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: BLUE_TEXT,
-  },
-  allBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  allText: {
-    color: "#6b7280",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-
-  meetupRow: {
-    marginTop: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  meetupName: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  meetupDate: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#6b7280",
-  },
-
-  exploreBtn: {
-    marginTop: 14,
-    marginHorizontal: 16,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: CARD_BG,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  exploreText: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: BLUE_TEXT,
-  },
-
-  bottomBar: {
+  heroTextWrap: { position: "absolute", bottom: 16, left: 16, right: 16 },
+  heroDate: { color: "#fff", fontWeight: "800", fontSize: 18, marginBottom: 4 },
+  heroTitle: { color: "#fff", fontWeight: "900", fontSize: 28 },
+  heroBadge: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 64,
-    backgroundColor: BG,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-around",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(0,0,0,0.08)",
+    right: 12,
+    top: 12,
+    backgroundColor: "#fff",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  bottomItem: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  moreBtn: {
+    marginHorizontal: 16,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#e9f0ff",
     alignItems: "center",
     justifyContent: "center",
   },
-  roundBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: "#3b82f6",
-    backgroundColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  moreText: { fontSize: 16, fontWeight: "800", color: "#345BCE" },
 });

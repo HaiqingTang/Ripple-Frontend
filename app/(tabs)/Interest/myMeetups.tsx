@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -10,25 +10,66 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 
-type Meetup = { id: string; title: string; date: string };
+// 🔁 数据部分：导入 Firestore & Auth
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { db, auth } from "../../../firebase";
 
-const MY_MEETUPS: Meetup[] = [
-  { id: "1", title: "Morning Yoga", date: "17/9/25" },
-  { id: "2", title: "Morning Yoga2", date: "18/9/25" },
-  { id: "3", title: "Morning Yoga3", date: "19/9/25" },
-  { id: "4", title: "Morning Yoga4", date: "20/9/25" },
-  { id: "5", title: "Morning Yoga5", date: "21/9/25" },
-];
+type Meetup = {
+  id: string;
+  title: string;
+  date: string;
+  location?: string;
+  description?: string;
+  creatorId?: string;
+  participants?: string[];
+  category?: string;
+};
 
 export default function MyMeetupsPage() {
-  const [query, setQuery] = useState("");
+  const router = useRouter();
+  const [queryText, setQueryText] = useState("");
+  const [items, setItems] = useState<Meetup[]>([]);
+
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const q = query(
+      collection(db, "meetups"),
+      where("participants", "array-contains", uid),
+      orderBy("date", "desc")
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      const next: Meetup[] = snap.docs.map((d) => {
+        const data = d.data() as any;
+        const dateStr =
+          typeof data.date?.toDate === "function"
+            ? toDisplayDate(data.date.toDate())
+            : String(data.date ?? "");
+        return {
+          id: d.id,
+          title: data.title ?? "",
+          date: dateStr,
+          location: data.location,
+          description: data.description,
+          creatorId: data.creatorId,
+          participants: data.participants ?? [],
+          category: data.category,
+        };
+      });
+      setItems(next);
+    });
+    return () => unsub();
+  }, []);
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return MY_MEETUPS;
-    const q = query.toLowerCase();
-    return MY_MEETUPS.filter((m) => m.title.toLowerCase().includes(q));
-  }, [query]);
+    const q = queryText.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((m) => m.title.toLowerCase().includes(q));
+  }, [queryText, items]);
 
   const onWithdraw = (m: Meetup) => {
     Alert.alert("Withdraw", `You withdrew from ${m.title}`);
@@ -46,7 +87,7 @@ export default function MyMeetupsPage() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Pressable hitSlop={8} onPress={() => console.log("Back")}>
+          <Pressable hitSlop={8} onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={22} color="#2c3e50" />
           </Pressable>
           <Text style={styles.title}>My Meetups</Text>
@@ -62,12 +103,12 @@ export default function MyMeetupsPage() {
             placeholder="Search meetups..."
             placeholderTextColor="#9aa3b2"
             style={styles.searchInput}
-            value={query}
-            onChangeText={setQuery}
+            value={queryText}
+            onChangeText={setQueryText}
           />
         </View>
 
-        {/* Meetups list */}
+        {/* 列表 */}
         <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
           {filtered.map((item) => (
             <View key={item.id} style={styles.meetupRow}>
@@ -98,6 +139,13 @@ export default function MyMeetupsPage() {
   );
 }
 
+function toDisplayDate(d: Date) {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(2);
+  return `${dd}/${mm}/${yy}`;
+}
+
 const BG = "#dbe7ff";
 const CARD_BG = "#ffffff";
 
@@ -110,11 +158,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#2c3e50",
-  },
+  title: { fontSize: 18, fontWeight: "700", color: "#2c3e50" },
   searchBox: {
     marginHorizontal: 16,
     paddingHorizontal: 12,
@@ -126,11 +170,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: "#111827",
-  },
+  searchInput: { flex: 1, fontSize: 14, color: "#111827" },
   meetupRow: {
     backgroundColor: CARD_BG,
     borderRadius: 12,
@@ -141,32 +181,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  meetupName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  rowRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  meetupDate: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
+  meetupName: { fontSize: 15, fontWeight: "700", color: "#111827" },
+  rowRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  meetupDate: { fontSize: 12, fontWeight: "600", color: "#6b7280" },
   withdrawBtn: {
     backgroundColor: "#e9f0ff",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
   },
-  withdrawText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#345BCE",
-  },
+  withdrawText: { fontSize: 12, fontWeight: "700", color: "#345BCE" },
   manageBtn: {
     marginHorizontal: 16,
     marginTop: 8,
@@ -176,14 +200,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  manageText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#345BCE",
-  },
-  empty: {
-    textAlign: "center",
-    marginTop: 20,
-    color: "#6b7280",
-  },
+  manageText: { fontSize: 15, fontWeight: "700", color: "#345BCE" },
+  empty: { textAlign: "center", marginTop: 20, color: "#6b7280" },
 });

@@ -15,7 +15,7 @@ import {
   ScrollView,
   Alert,
 } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 /** ========= 类型 ========= */
@@ -212,31 +212,19 @@ export default function ClubMainPage() {
     title,
     actionText,
     onAction,
-    href,
   }: {
     title: string;
     actionText?: string;
-    onAction?: () => void;
-    href?: string;         // 新增：跳转目标
+    onAction?: () => void;       // 新增：跳转目标
   }) => (
     <View style={styles.sectionHeaderRow /* 或 sectionHeader */}>
       <Text style={styles.sectionTitle}>{title}</Text>
 
       {!!actionText && (
-        href ? (
-          // 用 Link 包住，最稳
-          <Link href={href} asChild>
-            <Pressable hitSlop={10} style={styles.actionBtn} onPress={onAction}>
-              <Text style={styles.actionText}>{actionText}</Text>
-              <Ionicons name="chevron-forward" size={16} color="#8EA0FF" />
-            </Pressable>
-          </Link>
-        ) : (
-          <Pressable hitSlop={10} style={styles.actionBtn} onPress={onAction}>
-            <Text style={styles.actionText}>{actionText}</Text>
-            <Ionicons name="chevron-forward" size={16} color="#8EA0FF" />
-          </Pressable>
-        )
+        <Pressable hitSlop={10} style={styles.actionBtn} onPress={onAction}>
+          <Text style={styles.actionText}>{actionText}</Text>
+          <Ionicons name="chevron-forward" size={16} color="#8EA0FF" />
+        </Pressable>
       )}
     </View>
   );

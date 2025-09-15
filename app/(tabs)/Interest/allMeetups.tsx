@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+// app/(tabs)/Interest/allMeetups.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -10,13 +11,13 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 
-type Meetup = {
-  id: string;
-  title: string;
-  date: string;
-  category: Category;
-};
+// 🔁 Firestore
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { db } from "../../../firebase";
+
+/** ================= Types ================= */
 type Category =
   | "All"
   | "Arts"
@@ -27,6 +28,18 @@ type Category =
   | "Study"
   | "Travel";
 
+type Meetup = {
+  id: string;
+  title: string;
+  date: string; // display-only (formatted)
+  category?: Category; // from Firestore; unknown值会当作 "All" 集合参与
+  location?: string;
+  description?: string;
+  creatorId?: string;
+  participants?: string[];
+};
+
+/** 固定的分类标签（保持你原有 UI） */
 const CATEGORIES: Category[] = [
   "All",
   "Arts",
@@ -38,44 +51,74 @@ const CATEGORIES: Category[] = [
   "Travel",
 ];
 
-const ALL_MEETUPS: Meetup[] = [
-  { id: "1", title: "Morning Yoga", date: "17/9/25", category: "Lifestyle" },
-  { id: "2", title: "Morning Yoga2", date: "18/9/25", category: "Lifestyle" },
-  { id: "3", title: "Morning Yoga3", date: "19/9/25", category: "Lifestyle" },
-  { id: "4", title: "Art Sketch Jam", date: "20/9/25", category: "Arts" },
-  { id: "5", title: "Café Tasting", date: "21/9/25", category: "Food" },
-  { id: "6", title: "Indie Music Night", date: "17/9/25", category: "Music" },
-  { id: "7", title: "Social Football", date: "18/9/25", category: "Sports" },
-  { id: "8", title: "Study Group: React", date: "19/9/25", category: "Study" },
-  { id: "9", title: "Weekend Hike", date: "20/9/25", category: "Travel" },
-  { id: "10", title: "Morning Yoga4", date: "20/9/25", category: "Lifestyle" },
-  { id: "11", title: "Morning Yoga5", date: "21/9/25", category: "Lifestyle" },
-  { id: "12", title: "Morning Yoga6", date: "17/9/25", category: "Lifestyle" },
-  { id: "13", title: "Morning Yoga7", date: "18/9/25", category: "Lifestyle" },
-  { id: "14", title: "Morning Yoga8", date: "19/9/25", category: "Lifestyle" },
-  { id: "15", title: "Morning Yoga9", date: "20/9/25", category: "Lifestyle" },
-  { id: "16", title: "Morning Yoga10", date: "21/9/25", category: "Lifestyle" },
-];
+/** 将 Firestore 字段转成显示用字符串日期 dd/MM/yy */
+function toDisplayDate(d: Date) {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(2);
+  return `${dd}/${mm}/${yy}`;
+}
 
 export default function AllMeetupsPage() {
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState<Category>("All");
+  const router = useRouter();
 
+  const [queryText, setQueryText] = useState("");
+  const [active, setActive] = useState<Category>("All");
+  const [items, setItems] = useState<Meetup[]>([]); // ← Firestore 数据装到这里
+
+  // 🔁 实时读取 Firestore：按 date 倒序
+  useEffect(() => {
+    const q = query(collection(db, "meetups"), orderBy("date", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      const next: Meetup[] = snap.docs.map((d) => {
+        const data = d.data() as any;
+        const dateStr =
+          typeof data.date?.toDate === "function"
+            ? toDisplayDate(data.date.toDate())
+            : String(data.date ?? "");
+        // 把后端 category（字符串）兜底到我们已知的枚举里
+        const rawCat = String(data.category ?? "").trim();
+        const cat = (CATEGORIES.includes(rawCat as Category)
+          ? rawCat
+          : undefined) as Category | undefined;
+
+        return {
+          id: d.id,
+          title: data.title ?? "",
+          date: dateStr,
+          category: cat,
+          location: data.location,
+          description: data.description,
+          creatorId: data.creatorId,
+          participants: Array.isArray(data.participants) ? data.participants : [],
+        };
+      });
+      setItems(next);
+    });
+    return () => unsub();
+  }, []);
+
+  /** === 先按分类，再按搜索词过滤（完全保留你原来的交互） === */
   const filtered = useMemo(() => {
+    // 分类
     let arr =
       active === "All"
-        ? ALL_MEETUPS
-        : ALL_MEETUPS.filter((m) => m.category === active);
-    if (!query.trim()) return arr;
-    const q = query.trim().toLowerCase();
+        ? items
+        : items.filter((m) => (m.category || "All") === active);
+
+    // 搜索
+    const q = queryText.trim().toLowerCase();
+    if (!q) return arr;
     return arr.filter((m) => m.title.toLowerCase().includes(q));
-  }, [active, query]);
+  }, [active, queryText, items]);
 
   const onView = (m: Meetup) => {
+    // 这里还是占位逻辑；等详情页就换成 router.push('/path/[id]')
     Alert.alert("View", `Open details: ${m.title}`);
   };
 
   const onCreate = () => {
+    // 这里保持原占位；等“新建 Meetup”页面完成后替换为路由跳转
     Alert.alert("Create", "Go to create meetup (placeholder)");
   };
 
@@ -85,8 +128,15 @@ export default function AllMeetupsPage() {
         contentContainerStyle={{ paddingTop: 32, paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Header */}
         <View style={styles.header}>
-          <Pressable hitSlop={8} onPress={() => console.log("Back")}>
+          <Pressable
+            hitSlop={8}
+            onPress={() => {
+              if (router.canGoBack()) router.back();
+              else router.replace("/(tabs)/Interest");
+            }}
+          >
             <Ionicons name="chevron-back" size={22} color="#2c3e50" />
           </Pressable>
           <Text style={styles.title}>All Meetups</Text>
@@ -95,17 +145,19 @@ export default function AllMeetupsPage() {
           </Pressable>
         </View>
 
+        {/* Search */}
         <View style={styles.searchBox}>
           <Ionicons name="search" size={18} color="#6b7280" />
           <TextInput
             placeholder="Search meetups..."
             placeholderTextColor="#9aa3b2"
             style={styles.searchInput}
-            value={query}
-            onChangeText={setQuery}
+            value={queryText}
+            onChangeText={setQueryText}
           />
         </View>
 
+        {/* Category Chips（完全按你原有样式保留） */}
         <View style={styles.chipsWrap}>
           {CATEGORIES.map((c) => {
             const isActive = c === active;
@@ -115,7 +167,9 @@ export default function AllMeetupsPage() {
                 onPress={() => setActive(c)}
                 style={[styles.chip, isActive && styles.chipActive]}
               >
-                <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                <Text
+                  style={[styles.chipText, isActive && styles.chipTextActive]}
+                >
                   {c}
                 </Text>
               </Pressable>
@@ -123,6 +177,7 @@ export default function AllMeetupsPage() {
           })}
         </View>
 
+        {/* 列表（来自 Firestore 的 filtered 数据） */}
         <View style={{ paddingHorizontal: 16, marginTop: 6 }}>
           {filtered.map((item) => (
             <View key={item.id} style={styles.meetupRow}>
@@ -146,6 +201,7 @@ export default function AllMeetupsPage() {
   );
 }
 
+/** ================= Styles（保持你原样式） ================= */
 const BG = "#dbe7ff";
 const CARD_BG = "#ffffff";
 const CHIP_BG = "#e5e7eb";
