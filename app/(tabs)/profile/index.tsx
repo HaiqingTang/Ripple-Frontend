@@ -57,15 +57,19 @@ export default function ProfilePage() {
 			{/* Header */}
 			<View style={styles.header}>
 				<Text style={styles.headerTitle}>Profile</Text>
+				{/*Todo: maybe remove settings icon?*/}
 				<Ionicons name="settings-outline" size={22} color="#333" />
 			</View>
 
 			{/* Profile Picture */}
 			<View style={styles.profileSection}>
-				<Image
-					source={{ uri: "https://placehold.co/150x150/FFDAB9/000" }} // profile avatar (do we need?)
-					style={styles.avatar}
-				/>
+				{/* TODO: placeholder for profile pic (do we need profile pic?)*/}
+				<Ionicons name="person-circle-outline" size={150} color="#333" />
+				{/*TODO: add this back when BE is implemented*/}
+				{/*<Image*/}
+				{/*	source={{ uri: "https://placehold.co/150x150/FFDAB9/000" }} // profile avatar (do we need this?)*/}
+				{/*	style={styles.avatar}*/}
+				{/*/>*/}
 				<Text style={styles.name}>{fullName}</Text>
 				<Text style={styles.handle}>{userName}</Text>
 
