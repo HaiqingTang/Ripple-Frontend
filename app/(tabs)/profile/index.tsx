@@ -13,12 +13,6 @@ import {useAppContext} from "@/context/AppContext";
 import pic1 from '@/assets/images/profile-post-1.png';
 import pic2 from '@/assets/images/profile-post-2.png';
 import pic3 from '@/assets/images/profile-post-3.png';
-import pic4 from '@/assets/images/profile-post-1.png';
-import pic5 from '@/assets/images/profile-post-2.png';
-import pic6 from '@/assets/images/profile-post-3.png';
-import pic7 from '@/assets/images/profile-post-1.png';
-import pic8 from '@/assets/images/profile-post-2.png';
-import pic9 from '@/assets/images/profile-post-3.png';
 
 const { width } = Dimensions.get("window");
 
@@ -33,12 +27,12 @@ export default function ProfilePage() {
 		{ id: "1", image: pic1 },
 		{ id: "2", image: pic2 },
 		{ id: "3", image: pic3 },
-		{ id: "4", image: pic4 },
-		{ id: "5", image: pic5 },
-		{ id: "6", image: pic6 },
-		{ id: "7", image: pic7 },
-		{ id: "8", image: pic8 },
-		{ id: "9", image: pic9 },
+		{ id: "4", image: pic1 },
+		{ id: "5", image: pic2 },
+		{ id: "6", image: pic3 },
+		{ id: "7", image: pic1 },
+		{ id: "8", image: pic2 },
+		{ id: "9", image: pic3 },
 	]);
 	const [likedposts] = useState([
 		// TODO: fetch liked posts from backend
