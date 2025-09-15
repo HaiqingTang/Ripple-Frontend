@@ -3,7 +3,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 
 type AppContextValue = {
-  userName: string;
+  fullName: string;
+	userName: string;
   dayOfWeek: string;
   formattedDate: string;
 };
@@ -11,16 +12,20 @@ type AppContextValue = {
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children: React.ReactNode }) => {
-  const [userName, setUserName] = useState<string>('User');
+	const [fullName, setFullName] = useState<string>('User');
+  const [userName, setUserName] = useState<string>('user');
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
-        const name = user.displayName || user.email?.split('@')[0] || 'User';
+        const name = user.email?.split('@')[0] || 'user';
         setUserName(name);
+				const fullName = user.displayName || 'User';
+				setFullName(fullName);
       } else {
         setUserName('User');
       }
+
     });
     return () => unsub();
   }, []);
@@ -40,8 +45,8 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   );
 
   const value = useMemo(
-    () => ({ userName, dayOfWeek, formattedDate }),
-    [userName, dayOfWeek, formattedDate]
+    () => ({ userName, fullName, dayOfWeek, formattedDate }),
+    [userName, fullName, dayOfWeek, formattedDate]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

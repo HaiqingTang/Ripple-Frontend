@@ -29,11 +29,11 @@ export default function PersonalLog() {
   const [sleepQuality, setSleepQuality] = useState(8);
   const [journalText, setJournalText] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const { userName, dayOfWeek, formattedDate } = useAppContext();
+  const { fullName, dayOfWeek, formattedDate } = useAppContext();
 
   const emojis = ['😢', '😕', '😐', '😊', '😄'];
 
-  // userName now comes from AppContext
+  // fullName now comes from AppContext
 
   // Pull incoming journal and tags from journal screen
   useEffect(() => {
@@ -200,7 +200,7 @@ export default function PersonalLog() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 28, fontWeight: '700', color: '#333' }}>
-                Good Morning {userName}!
+                Good Morning {fullName}!
               </Text>
               <Text style={{ fontSize: 16, color: '#666', marginTop: 4 }}>
                 It's {dayOfWeek}!

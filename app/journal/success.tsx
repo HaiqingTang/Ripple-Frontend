@@ -11,7 +11,7 @@ const WHITE = '#FFFFFF';
 export default function JournalSuccess() {
   const router = useRouter();
   const params = useLocalSearchParams<{ journal?: string; tags?: string }>();
-  const { userName, dayOfWeek, formattedDate } = useAppContext();
+  const { fullName, dayOfWeek, formattedDate } = useAppContext();
 
   const handleContinue = () => {
     // TODO: which screen to go to?
