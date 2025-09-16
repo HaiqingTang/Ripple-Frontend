@@ -7,6 +7,7 @@ type AppContextValue = {
 	userName: string;
   dayOfWeek: string;
   formattedDate: string;
+  refreshUserData: () => void;
 };
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
@@ -14,6 +15,16 @@ const AppContext = createContext<AppContextValue | undefined>(undefined);
 export const AppProvider = ({ children }: { children: React.ReactNode }) => {
 	const [fullName, setFullName] = useState<string>('User');
   const [userName, setUserName] = useState<string>('user');
+
+  const refreshUserData = () => {
+    const user = auth.currentUser;
+    if (user) {
+      const name = user.email?.split('@')[0] || 'user';
+      setUserName(name);
+      const fullName = user.displayName || 'User';
+      setFullName(fullName);
+    }
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -24,6 +35,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
 				setFullName(fullName);
       } else {
         setUserName('User');
+        setFullName('User');
       }
 
     });
@@ -45,7 +57,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   );
 
   const value = useMemo(
-    () => ({ userName, fullName, dayOfWeek, formattedDate }),
+    () => ({ userName, fullName, dayOfWeek, formattedDate, refreshUserData }),
     [userName, fullName, dayOfWeek, formattedDate]
   );
 

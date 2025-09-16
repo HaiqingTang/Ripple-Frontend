@@ -232,7 +232,7 @@ export default function SignUpPage() {
                   />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.helperText}>must contain 8 char.</Text>
+              <Text style={styles.helperText}>must contain 8 characters</Text>
             </View>
 
             {/* Confirm Password Input */}
