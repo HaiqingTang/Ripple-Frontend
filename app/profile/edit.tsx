@@ -20,10 +20,10 @@ import CustomButton from '@/components/CustomButton';
 import { useAppContext } from '@/context/AppContext';
 import {
   updateProfile,
-  updateEmail,
   updatePassword,
   EmailAuthProvider,
-  reauthenticateWithCredential
+  reauthenticateWithCredential,
+  verifyBeforeUpdateEmail
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 
@@ -84,9 +84,9 @@ export default function EditProfilePage() {
       setErrorMessage('New password must contain at least 8 characters');
       return false;
     }
-    // Require current password if changing email or password
-    if ((newEmail || newPassword) && !currentPassword) {
-      setErrorMessage('Current password is required to change email or password');
+    // Require current password only for password changes
+    if (newPassword && !currentPassword) {
+      setErrorMessage('Current password is required to change password');
       return false;
     }
     return true;
@@ -107,15 +107,15 @@ export default function EditProfilePage() {
         return;
       }
 
-      // Check if we need to reauthenticate (email or password change)
-      const needsReauth = newEmail || newPassword;
+      // Check if we need to reauthenticate (only for password changes)
+      const needsReauth = newPassword;
 
       if (needsReauth && !currentPassword) {
-        setErrorMessage('Current password is required for email or password changes');
+        setErrorMessage('Current password is required for password changes');
         return;
       }
 
-      // Reauthenticate if needed - ALWAYS use current email for authentication
+      // Reauthenticate if needed for password changes
       if (needsReauth) {
         const credential = EmailAuthProvider.credential(user.email!, currentPassword);
         await reauthenticateWithCredential(user, credential);
@@ -127,9 +127,11 @@ export default function EditProfilePage() {
         await updateProfile(user, { displayName: newDisplayName });
       }
 
-      // Update email if new email is provided
+      // Send email verification if new email is provided
+      let emailVerificationSent = false;
       if (newEmail && newEmail !== user.email) {
-        await updateEmail(user, newEmail);
+        await verifyBeforeUpdateEmail(user, newEmail);
+        emailVerificationSent = true;
       }
 
       // Update password if provided
@@ -140,9 +142,15 @@ export default function EditProfilePage() {
       // Refresh user data in AppContext to update UI immediately
       refreshUserData();
 
+      // Show different success message based on whether email verification was sent
+      const successTitle = 'Profile Updated';
+      const successMessage = emailVerificationSent
+        ? `Profile updated successfully!\n\nA verification email has been sent to ${newEmail}. Please check your email and click the verification link to complete the email change.`
+        : 'Profile updated successfully!';
+
       Alert.alert(
-        'Success',
-        'Profile updated successfully!',
+        successTitle,
+        successMessage,
         [
           {
             text: 'OK',
@@ -155,22 +163,24 @@ export default function EditProfilePage() {
 
       switch (error.code) {
         case 'auth/wrong-password':
+        case 'auth/invalid-credential':
           message = 'Current password is incorrect';
           break;
         case 'auth/email-already-in-use':
           message = 'This email is already registered to another account';
           break;
         case 'auth/invalid-email':
-          message = 'Invalid email address';
+          message = 'Invalid email address format';
           break;
         case 'auth/weak-password':
           message = 'New password is too weak';
           break;
-        case 'auth/requires-recent-login':
-          message = 'Please log out and log back in to make these changes';
+        case 'auth/user-not-found':
+          message = 'User account not found';
           break;
         default:
           console.log('Profile update error:', error.code, error.message);
+          message = `Update failed: ${error.message}`;
       }
 
       setErrorMessage(message);
@@ -298,7 +308,7 @@ export default function EditProfilePage() {
                     />
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.helperText}>Required when changing email or password</Text>
+                <Text style={styles.helperText}>Only required when changing password</Text>
               </View>
 
               {/* New Password */}
