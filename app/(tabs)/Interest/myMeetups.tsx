@@ -10,6 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 
 type Meetup = { id: string; title: string; date: string };
 
@@ -22,6 +23,7 @@ const MY_MEETUPS: Meetup[] = [
 ];
 
 export default function MyMeetupsPage() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -34,8 +36,9 @@ export default function MyMeetupsPage() {
     Alert.alert("Withdraw", `You withdrew from ${m.title}`);
   };
 
+  // 改这里：点 “Manage My Created Meetups” 跳到 meetupManageMyMeetup
   const onManageCreated = () => {
-    Alert.alert("Manage", "Go to manage my created meetups");
+    router.push("/Interest/meetupManageMyMeetup");
   };
 
   return (

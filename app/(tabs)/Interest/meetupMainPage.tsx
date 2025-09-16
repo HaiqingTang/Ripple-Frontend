@@ -12,15 +12,8 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import {
-  Ionicons,
-  MaterialIcons,
-  Feather,
-  FontAwesome5,
-  AntDesign,
-} from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 
 type Meetup = { id: string; title: string; date: string };
 
@@ -32,11 +25,15 @@ const MY_MEETUPS: Meetup[] = [
 
 export default function MeetupMainPage() {
   const router = useRouter();
+
   const onBack = () => console.log("Back pressed");
-  const onAdd = () => console.log("Add meetup");
+
+  // 改这里：点击 + 进入 newMeetup
+  const onAdd = () => router.push("/Interest/newMeetup");
+
   const onAllMeetups = () => {
-      router.push("/Interest/myMeetups");
-    };
+    router.push("/Interest/myMeetups");
+  };
   const onExplore = () => router.push("/Interest/allMeetups");
   const onBottomNav = (key: string) => console.log("Bottom nav ->", key);
   const onOpenMeetup = (m: Meetup) => {
@@ -46,7 +43,6 @@ export default function MeetupMainPage() {
       // 先不跳
     }
   };
-
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -70,7 +66,8 @@ export default function MeetupMainPage() {
             />
           </View>
 
-          <Pressable style={styles.roundBtnOutline}>
+          {/* 右上角 + 号 */}
+          <Pressable style={styles.roundBtnOutline} onPress={onAdd} hitSlop={8}>
             <Ionicons name="add" size={20} color="#3b82f6" />
           </Pressable>
         </View>
@@ -112,7 +109,7 @@ export default function MeetupMainPage() {
             <Text style={styles.cardTitle}>My Meetups</Text>
             <Pressable style={styles.allBtn} onPress={onAllMeetups}>
               <Text style={styles.allText}>All Meetups</Text>
-              <Feather name="chevron-right" size={16} color="#6b7280" />
+              <Ionicons name="chevron-forward" size={16} color="#6b7280" />
             </Pressable>
           </View>
 
@@ -363,6 +360,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
+  // 新增：右上角 + 按钮的描边样式
+  roundBtnOutline: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: "#3b82f6",
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // 之前留着也可用（备用）
   roundBtn: {
     width: 36,
     height: 36,
