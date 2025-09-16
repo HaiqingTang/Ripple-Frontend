@@ -1,9 +1,8 @@
-// app/(tabs)/_layout.tsx
-import { Tabs } from 'expo-router';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { Platform } from 'react-native';
+import { Tabs } from "expo-router";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { Platform } from "react-native";
 
-const BLUE_BG = '#DDE7FF';
+const BLUE_BG = "#DDE7FF";
 
 export default function TabsLayout() {
   return (
@@ -11,8 +10,8 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-        tabBarActiveTintColor: '#111',
-        tabBarInactiveTintColor: '#111',
+        tabBarActiveTintColor: "#111",
+        tabBarInactiveTintColor: "#111",
         tabBarItemStyle: { flex: 1 },
         tabBarStyle: {
           height: 64,
@@ -21,36 +20,31 @@ export default function TabsLayout() {
           elevation: 0,
           shadowOpacity: 0,
           paddingTop: 8,
-          paddingBottom: Platform.OS === 'ios' ? 14 : 10,
-          position: 'absolute', left: 0, right: 0, bottom: 0,
+          paddingBottom: Platform.OS === "ios" ? 14 : 10,
+          position: "absolute", left: 0, right: 0, bottom: 0,
           borderTopLeftRadius: 24, borderTopRightRadius: 24,
         },
       }}
     >
       <Tabs.Screen
-        name="quickNote/index"
-        options={{ tabBarIcon: ({ color }) =>
-          <Ionicons name="flash-outline" size={28} color={color} /> }}
-      />
-      <Tabs.Screen
         name="moodCheckIn/index"
-        options={{ tabBarIcon: ({ color }) =>
-          <Ionicons name="happy-outline" size={28} color={color} /> }}
+        options={{ tabBarIcon: ({ color }) => <Ionicons name="happy-outline" size={28} color={color} /> }}
       />
       <Tabs.Screen
-        name="Interest"
-        options={{ tabBarIcon: ({ color }) =>
-          <Ionicons name="chatbubble-ellipses-outline" size={28} color={color} /> }}
+        name="quickNote/index"
+        options={{ tabBarIcon: ({ color }) => <Ionicons name="clipboard-outline" size={28} color={color} /> }}
+      />
+      <Tabs.Screen
+        name="Interest"  // 这里用 “Interest”
+        options={{ tabBarIcon: ({ color }) => <Ionicons name="chatbubble-ellipses-outline" size={28} color={color} /> }}
       />
       <Tabs.Screen
         name="Challenge/index"
-        options={{ tabBarIcon: ({ color }) =>
-          <Ionicons name="trophy-outline" size={28} color={color} /> }}
+        options={{ tabBarIcon: ({ color }) => <Ionicons name="trophy-outline" size={28} color={color} /> }}
       />
       <Tabs.Screen
         name="profile/index"
-        options={{ tabBarIcon: ({ color }) =>
-          <Ionicons name="person-outline" size={28} color={color} /> }}
+        options={{ tabBarIcon: ({ color }) => <Ionicons name="person-outline" size={28} color={color} /> }}
       />
     </Tabs>
   );
