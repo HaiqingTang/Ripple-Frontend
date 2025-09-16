@@ -11,8 +11,6 @@ import {
   Dimensions,
   Platform,
   RefreshControl,
-  Alert,
-  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,18 +22,6 @@ type Club = {
   coverImageUrl: string;
   categories: string[]; // 用于筛选的标签
 };
-
-/** ============ 后端占位 ============ */
-// 将来接后端时启用这段，并把 BASE_URL 改成你的服务地址
-// const API_BASE_URL = "https://api.example.com";
-// async function fetchAllClubsFromAPI(q: string, tag?: string): Promise<Club[]> {
-//   const qs = new URLSearchParams();
-//   if (q) qs.set("q", q);
-//   if (tag && tag !== "All") qs.set("category", tag);
-//   const res = await fetch(`${API_BASE_URL}/clubs?${qs.toString()}`);
-//   if (!res.ok) throw new Error(await res.text());
-//   return res.json();
-// }
 
 /** ============ 本地 Mock 数据（演示 UI） ============ */
 const MOCK_CLUBS: Club[] = [
@@ -129,7 +115,6 @@ export default function AllClubs() {
   }, [query, tag, data]);
 
   const load = useCallback(async () => {
-    // 将来接后端时切换为：const list = await fetchAllClubsFromAPI(query, tag);
     const list = await mockFetch(MOCK_CLUBS);
     setData(list);
   }, []);
@@ -143,11 +128,6 @@ export default function AllClubs() {
     await load();
     setRefreshing(false);
   }, [load]);
-
-  const openClub = (club: Club) => {
-    // 将来接路由：router.push(`/clubs/${club.id}`)
-    Alert.alert("Open Club (Mock)", club.name);
-  };
 
   /** Header */
   const Header = () => (
@@ -178,7 +158,7 @@ export default function AllClubs() {
     </View>
   );
 
-  /** 标签 Chips（两行自动换行） */
+  /** 标签 Chips：点击后直接跳到 clubTopic，并带上 name（和简易 id） */
   const TagChips = () => (
     <View style={styles.tagsWrap}>
       {TAGS.map((t) => {
@@ -186,7 +166,14 @@ export default function AllClubs() {
         return (
           <Pressable
             key={t}
-            onPress={() => setTag(t)}
+            onPress={() => {
+              setTag(t);
+              // 跳转到 clubTopic，带上 name；id 用小写做个简单占位
+              router.push({
+                pathname: "/Interest/clubTopic",
+                params: { id: t.toLowerCase(), name: t },
+              });
+            }}
             style={[styles.tagChip, selected ? styles.tagChipActive : styles.tagChipIdle]}
           >
             <Text style={[styles.tagText, selected ? styles.tagTextActive : styles.tagTextIdle]}>
@@ -198,9 +185,17 @@ export default function AllClubs() {
     </View>
   );
 
-  /** 单个卡片 */
+  /** 单个 Club 卡片：点击跳到 clubTopic（id+name） */
   const renderItem = ({ item }: { item: Club }) => (
-    <Pressable style={styles.card} onPress={() => openClub(item)}>
+    <Pressable
+      style={styles.card}
+      onPress={() =>
+        router.push({
+          pathname: "/Interest/clubTopic",
+          params: { id: item.id, name: item.name },
+        })
+      }
+    >
       <Image source={{ uri: item.coverImageUrl }} style={styles.cardImage} />
       <Text style={styles.cardLabel} numberOfLines={1}>
         {item.name}

@@ -11,7 +11,6 @@ import {
   Dimensions,
   Platform,
   RefreshControl,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,7 +23,6 @@ type Club = {
 };
 
 /** ============ 后端占位 & 本地 Mock ============ */
-// TODO: 将来接后端时启用，并把 BASE_URL 改成你的服务地址
 // const API_BASE_URL = "https://api.example.com";
 // async function fetchMyClubsFromAPI(q: string): Promise<Club[]> {
 //   const qs = q ? `?q=${encodeURIComponent(q)}` : "";
@@ -33,7 +31,6 @@ type Club = {
 //   return res.json();
 // }
 
-// 先用本地假数据预览 UI（与图上五个示例一致）
 const MOCK_CLUBS: Club[] = [
   {
     id: "travel",
@@ -74,11 +71,10 @@ function mockFetch<T>(data: T, delay = 300): Promise<T> {
 
 /** ============ 尺寸 ============ */
 const { width: SCREEN_W } = Dimensions.get("window");
-// 按设计 3 列：左右各 24 内边距，中间 2 个间距（24）
 const H_PADDING = 24;
 const GAP = 24;
 const CARD_W = Math.floor((SCREEN_W - H_PADDING * 2 - GAP * 2) / 3);
-const IMAGE_H = 92; // 稍微偏高的圆角矩形
+const IMAGE_H = 92;
 
 export default function MyClubs() {
   const router = useRouter();
@@ -107,11 +103,6 @@ export default function MyClubs() {
     await load();
     setRefreshing(false);
   }, [load]);
-
-  const openClub = (club: Club) => {
-    // 将来接路由：router.push(`/clubs/${club.id}`)
-    Alert.alert("Open Club (Mock)", club.name);
-  };
 
   /** 头部（返回 + 标题） */
   const Header = () => (
@@ -142,9 +133,17 @@ export default function MyClubs() {
     </View>
   );
 
-  /** 单个俱乐部卡片 */
+  /** 单个俱乐部卡片：点击跳到 /Interest/clubTopic?id=...&name=... */
   const renderItem = ({ item }: { item: Club }) => (
-    <Pressable style={styles.card} onPress={() => openClub(item)}>
+    <Pressable
+      style={styles.card}
+      onPress={() =>
+        router.push({
+          pathname: "/Interest/clubTopic",
+          params: { id: item.id, name: item.name },
+        })
+      }
+    >
       <Image source={{ uri: item.coverImageUrl }} style={styles.cardImage} />
       <Text style={styles.cardLabel} numberOfLines={1}>
         {item.name}
