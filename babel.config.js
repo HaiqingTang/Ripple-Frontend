@@ -4,8 +4,8 @@ module.exports = function (api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      // 其他插件如果有，写在这里
-      'react-native-reanimated/plugin', // 必须在最后
+      require.resolve('expo-router/babel'), 
+      'react-native-reanimated/plugin',     
     ],
   };
 };

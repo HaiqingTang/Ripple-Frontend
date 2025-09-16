@@ -1,7 +1,11 @@
-// firebase.ts
-import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, getApp } from "firebase/app"
+import {
+  initializeAuth,
+  getReactNativePersistence,
+  signInAnonymously,
+} from "firebase/auth"
+import { getFirestore } from "firebase/firestore"
+import AsyncStorage from "@react-native-async-storage/async-storage"
 
 const firebaseConfig = {
   apiKey: "AIzaSyAINeU8cF1MGlfS_nnJY4bv7q8WvN_1DJA",
@@ -9,22 +13,24 @@ const firebaseConfig = {
   projectId: "rp-wombat-ef8e6",
   storageBucket: "rp-wombat-ef8e6.firebasestorage.app",
   messagingSenderId: "514390289930",
-  appId: "1:514390289930:web:3d19b86edf0db93ae0f9f3",
-};
+  appId: "1:514390289930:web:3d19b86edf0db93ae0f9f3"
+}
 
-// 初始化 App
-const app = initializeApp(firebaseConfig);
+// Avoid repeated application initialization
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
 
-// 🔑 直接用默认 getAuth（内存持久化）
-export const auth = getAuth(app);
+// Use initializeAuth and specify AsyncStorage persistence
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage),
+})
 
 // Firestore
-export const db = getFirestore(app);
+export const db = getFirestore(app)
 
-// 匿名登录
+// Anonymous login helper function
 export async function ensureSignedIn() {
   if (!auth.currentUser) {
-    await signInAnonymously(auth);
+    await signInAnonymously(auth)
   }
-  return auth.currentUser!;
+  return auth.currentUser!
 }

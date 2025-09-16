@@ -11,8 +11,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-
-// 🔁 Firestore
 import { collection, onSnapshot, orderBy, query, limit } from "firebase/firestore";
 import { db } from "../../../firebase";
 
@@ -23,6 +21,8 @@ type Meetup = {
   location?: string;
   description?: string;
   category?: string;
+  creatorId?: string;
+  participants: string[];
 };
 
 export default function MeetupMainPage() {
@@ -30,7 +30,6 @@ export default function MeetupMainPage() {
   const [queryText, setQueryText] = useState("");
   const [top, setTop] = useState<Meetup | null>(null);
 
-  // 🔁 拉取最新一条 meetup
   useEffect(() => {
     const q = query(collection(db, "meetups"), orderBy("date", "desc"), limit(1));
     const unsub = onSnapshot(q, (snap) => {
@@ -51,12 +50,22 @@ export default function MeetupMainPage() {
         location: data.location,
         description: data.description,
         category: data.category,
+        creatorId: data.creatorId,
+        participants: Array.isArray(data.participants) ? data.participants : [],
       });
     });
     return () => unsub();
   }, []);
 
   const onAdd = () => console.log("Add meetup");
+
+  const onOpenTop = () => {
+    if (!top) return;
+    router.push({
+      pathname: "/(tabs)/Interest/meetupDetail1",
+      params: { id: top.id },
+    });
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -72,7 +81,7 @@ export default function MeetupMainPage() {
               if (router.canGoBack()) {
                 router.back();
               } else {
-                router.replace("/(tabs)/Interest"); // 没有历史时兜底
+                router.replace("/(tabs)/Interest");
               }
             }}
           >
@@ -96,8 +105,8 @@ export default function MeetupMainPage() {
           />
         </View>
 
-        {/* 顶部大卡片 */}
-        <View style={{ paddingHorizontal: 16 }}>
+        {/* Hero card clickable */}
+        <Pressable onPress={onOpenTop} disabled={!top} style={{ paddingHorizontal: 16 }}>
           <ImageBackground
             source={{
               uri:
@@ -115,7 +124,7 @@ export default function MeetupMainPage() {
               <Text style={styles.heroTitle}>{top ? top.title : "No Meetup"}</Text>
             </View>
           </ImageBackground>
-        </View>
+        </Pressable>
 
         <View style={{ height: 16 }} />
         <Pressable

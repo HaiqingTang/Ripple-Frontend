@@ -8,16 +8,14 @@ import {
   Pressable,
   TextInput,
   ScrollView,
-  Alert,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
-// 🔁 Firestore
+// firestore
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
-import { db } from "../../../firebase";
+import { db, auth } from "../../../firebase";
 
-/** ================= Types ================= */
 type Category =
   | "All"
   | "Arts"
@@ -31,15 +29,14 @@ type Category =
 type Meetup = {
   id: string;
   title: string;
-  date: string; // display-only (formatted)
-  category?: Category; // from Firestore; unknown值会当作 "All" 集合参与
+  date: string;
+  category?: Category;
   location?: string;
   description?: string;
   creatorId?: string;
-  participants?: string[];
+  participants: string[];
 };
 
-/** 固定的分类标签（保持你原有 UI） */
 const CATEGORIES: Category[] = [
   "All",
   "Arts",
@@ -51,7 +48,6 @@ const CATEGORIES: Category[] = [
   "Travel",
 ];
 
-/** 将 Firestore 字段转成显示用字符串日期 dd/MM/yy */
 function toDisplayDate(d: Date) {
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -61,13 +57,12 @@ function toDisplayDate(d: Date) {
 
 export default function AllMeetupsPage() {
   const router = useRouter();
-
   const [queryText, setQueryText] = useState("");
   const [active, setActive] = useState<Category>("All");
-  const [items, setItems] = useState<Meetup[]>([]); // ← Firestore 数据装到这里
+  const [items, setItems] = useState<Meetup[]>([]);
 
-  // 🔁 实时读取 Firestore：按 date 倒序
   useEffect(() => {
+    // subscribe meetups and normalize fields
     const q = query(collection(db, "meetups"), orderBy("date", "desc"));
     const unsub = onSnapshot(q, (snap) => {
       const next: Meetup[] = snap.docs.map((d) => {
@@ -76,17 +71,14 @@ export default function AllMeetupsPage() {
           typeof data.date?.toDate === "function"
             ? toDisplayDate(data.date.toDate())
             : String(data.date ?? "");
-        // 把后端 category（字符串）兜底到我们已知的枚举里
-        const rawCat = String(data.category ?? "").trim();
-        const cat = (CATEGORIES.includes(rawCat as Category)
-          ? rawCat
-          : undefined) as Category | undefined;
-
+        const cat = String(data.category ?? "");
         return {
           id: d.id,
           title: data.title ?? "",
           date: dateStr,
-          category: cat,
+          category: (CATEGORIES.includes(cat as Category)
+            ? (cat as Category)
+            : undefined) as Category | undefined,
           location: data.location,
           description: data.description,
           creatorId: data.creatorId,
@@ -98,29 +90,25 @@ export default function AllMeetupsPage() {
     return () => unsub();
   }, []);
 
-  /** === 先按分类，再按搜索词过滤（完全保留你原来的交互） === */
   const filtered = useMemo(() => {
-    // 分类
     let arr =
       active === "All"
         ? items
         : items.filter((m) => (m.category || "All") === active);
-
-    // 搜索
     const q = queryText.trim().toLowerCase();
     if (!q) return arr;
     return arr.filter((m) => m.title.toLowerCase().includes(q));
   }, [active, queryText, items]);
 
+  // navigate to detail with id
   const onView = (m: Meetup) => {
-    // 这里还是占位逻辑；等详情页就换成 router.push('/path/[id]')
-    Alert.alert("View", `Open details: ${m.title}`);
+    router.push({
+      pathname: "/(tabs)/Interest/meetupDetail1",
+      params: { id: m.id },
+    });
   };
 
-  const onCreate = () => {
-    // 这里保持原占位；等“新建 Meetup”页面完成后替换为路由跳转
-    Alert.alert("Create", "Go to create meetup (placeholder)");
-  };
+  const onCreate = () => {};
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -128,7 +116,6 @@ export default function AllMeetupsPage() {
         contentContainerStyle={{ paddingTop: 32, paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
         <View style={styles.header}>
           <Pressable
             hitSlop={8}
@@ -145,7 +132,6 @@ export default function AllMeetupsPage() {
           </Pressable>
         </View>
 
-        {/* Search */}
         <View style={styles.searchBox}>
           <Ionicons name="search" size={18} color="#6b7280" />
           <TextInput
@@ -157,7 +143,6 @@ export default function AllMeetupsPage() {
           />
         </View>
 
-        {/* Category Chips（完全按你原有样式保留） */}
         <View style={styles.chipsWrap}>
           {CATEGORIES.map((c) => {
             const isActive = c === active;
@@ -177,7 +162,6 @@ export default function AllMeetupsPage() {
           })}
         </View>
 
-        {/* 列表（来自 Firestore 的 filtered 数据） */}
         <View style={{ paddingHorizontal: 16, marginTop: 6 }}>
           {filtered.map((item) => (
             <View key={item.id} style={styles.meetupRow}>
@@ -191,7 +175,6 @@ export default function AllMeetupsPage() {
               </View>
             </View>
           ))}
-
           {filtered.length === 0 && (
             <Text style={styles.empty}>No meetups found.</Text>
           )}
@@ -201,7 +184,6 @@ export default function AllMeetupsPage() {
   );
 }
 
-/** ================= Styles（保持你原样式） ================= */
 const BG = "#dbe7ff";
 const CARD_BG = "#ffffff";
 const CHIP_BG = "#e5e7eb";
@@ -210,7 +192,6 @@ const BLUE_TEXT = "#345BCE";
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
-
   header: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -218,12 +199,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#2c3e50",
-  },
-
+  title: { fontSize: 18, fontWeight: "700", color: "#2c3e50" },
   searchBox: {
     marginHorizontal: 16,
     paddingHorizontal: 12,
@@ -236,7 +212,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   searchInput: { flex: 1, fontSize: 14, color: "#111827" },
-
   chipsWrap: {
     marginHorizontal: 16,
     flexDirection: "row",
@@ -250,12 +225,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: CHIP_BG,
   },
-  chipActive: {
-    backgroundColor: CHIP_ACTIVE_BG,
-  },
+  chipActive: { backgroundColor: CHIP_ACTIVE_BG },
   chipText: { fontSize: 12, fontWeight: "700", color: "#111827" },
   chipTextActive: { color: "#fff" },
-
   meetupRow: {
     backgroundColor: CARD_BG,
     borderRadius: 12,
@@ -267,10 +239,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   meetupName: { fontSize: 15, fontWeight: "700", color: "#111827" },
-
   rightWrap: { flexDirection: "row", alignItems: "center", gap: 10 },
   meetupDate: { fontSize: 12, fontWeight: "700", color: "#6b7280" },
-
   viewBtn: {
     backgroundColor: "#e9f0ff",
     paddingHorizontal: 10,
@@ -281,6 +251,5 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   viewText: { fontSize: 12, fontWeight: "700", color: BLUE_TEXT },
-
   empty: { textAlign: "center", color: "#6b7280", marginTop: 16 },
 });

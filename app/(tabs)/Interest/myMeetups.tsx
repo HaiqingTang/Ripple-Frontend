@@ -11,8 +11,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-
-// 🔁 数据部分：导入 Firestore & Auth
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db, auth } from "../../../firebase";
 
@@ -23,7 +21,7 @@ type Meetup = {
   location?: string;
   description?: string;
   creatorId?: string;
-  participants?: string[];
+  participants: string[];
   category?: string;
 };
 
@@ -56,7 +54,7 @@ export default function MyMeetupsPage() {
           location: data.location,
           description: data.description,
           creatorId: data.creatorId,
-          participants: data.participants ?? [],
+          participants: Array.isArray(data.participants) ? data.participants : [],
           category: data.category,
         };
       });
@@ -85,9 +83,12 @@ export default function MyMeetupsPage() {
         contentContainerStyle={{ paddingTop: 32, paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
+        {/* header */}
         <View style={styles.header}>
-          <Pressable hitSlop={8} onPress={() => router.back()}>
+          <Pressable
+            hitSlop={8}
+            onPress={() => router.replace("/(tabs)/Interest/meetupMainPage")}
+          >
             <Ionicons name="chevron-back" size={22} color="#2c3e50" />
           </Pressable>
           <Text style={styles.title}>My Meetups</Text>
@@ -96,7 +97,7 @@ export default function MyMeetupsPage() {
           </Pressable>
         </View>
 
-        {/* Search */}
+        {/* search box */}
         <View style={styles.searchBox}>
           <Ionicons name="search" size={18} color="#6b7280" />
           <TextInput
@@ -108,7 +109,7 @@ export default function MyMeetupsPage() {
           />
         </View>
 
-        {/* 列表 */}
+        {/* meetup list */}
         <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
           {filtered.map((item) => (
             <View key={item.id} style={styles.meetupRow}>
@@ -130,7 +131,7 @@ export default function MyMeetupsPage() {
           )}
         </View>
 
-        {/* Manage created */}
+        {/* manage created button */}
         <Pressable style={styles.manageBtn} onPress={onManageCreated}>
           <Text style={styles.manageText}>Manage My Created Meetups</Text>
         </Pressable>
