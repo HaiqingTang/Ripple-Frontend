@@ -8,11 +8,19 @@ import {
   TextInput,
   ScrollView,
   ImageBackground,
+  FlatList,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { collection, onSnapshot, orderBy, query, limit } from "firebase/firestore";
-import { db } from "../../../firebase";
+import {
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  limit,
+  where,
+} from "firebase/firestore";
+import { db, auth } from "../../../firebase";
 
 type Meetup = {
   id: string;
@@ -29,10 +37,12 @@ export default function MeetupMainPage() {
   const router = useRouter();
   const [queryText, setQueryText] = useState("");
   const [top, setTop] = useState<Meetup | null>(null);
+  const [myMeetups, setMyMeetups] = useState<Meetup[]>([]);
 
+  // load latest meetup
   useEffect(() => {
-    const q = query(collection(db, "meetups"), orderBy("date", "desc"), limit(1));
-    const unsub = onSnapshot(q, (snap) => {
+    const q1 = query(collection(db, "meetups"), orderBy("date", "desc"), limit(1));
+    const unsub = onSnapshot(q1, (snap) => {
       const d = snap.docs[0];
       if (!d) {
         setTop(null);
@@ -57,6 +67,39 @@ export default function MeetupMainPage() {
     return () => unsub();
   }, []);
 
+  // load my meetups (preview limit = 4)
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    const q2 = query(
+      collection(db, "meetups"),
+      where("participants", "array-contains", auth.currentUser.uid),
+      orderBy("date", "desc"),
+      limit(4) // preview limit
+    );
+    const unsub = onSnapshot(q2, (snap) => {
+      const list: Meetup[] = [];
+      snap.forEach((d) => {
+        const data = d.data() as any;
+        const dateStr =
+          typeof data.date?.toDate === "function"
+            ? toDisplayDate(data.date.toDate())
+            : String(data.date ?? "");
+        list.push({
+          id: d.id,
+          title: data.title ?? "",
+          date: dateStr,
+          location: data.location,
+          description: data.description,
+          category: data.category,
+          creatorId: data.creatorId,
+          participants: Array.isArray(data.participants) ? data.participants : [],
+        });
+      });
+      setMyMeetups(list);
+    });
+    return () => unsub();
+  }, []);
+
   const onAdd = () => console.log("Add meetup");
 
   const onOpenTop = () => {
@@ -64,6 +107,13 @@ export default function MeetupMainPage() {
     router.push({
       pathname: "/(tabs)/Interest/meetupDetail1",
       params: { id: top.id },
+    });
+  };
+
+  const onOpenMeetup = (m: Meetup) => {
+    router.push({
+      pathname: "/(tabs)/Interest/meetupDetail1",
+      params: { id: m.id },
     });
   };
 
@@ -126,6 +176,33 @@ export default function MeetupMainPage() {
           </ImageBackground>
         </Pressable>
 
+        {/* My Meetups card */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>My Meetups</Text>
+            <Pressable
+              style={styles.allBtn}
+              onPress={() => router.push("/(tabs)/Interest/myMeetups")}
+            >
+              <Text style={styles.allText}>All Meetups</Text>
+              <Feather name="chevron-right" size={16} color="#6b7280" />
+            </Pressable>
+          </View>
+          <FlatList
+            data={myMeetups}
+            keyExtractor={(i) => i.id}
+            scrollEnabled={false}
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+            renderItem={({ item }) => (
+              <Pressable onPress={() => onOpenMeetup(item)} style={styles.meetupRow}>
+                <Text style={styles.meetupName}>{item.title}</Text>
+                <Text style={styles.meetupDate}>{item.date}</Text>
+              </Pressable>
+            )}
+            contentContainerStyle={{ paddingTop: 6, paddingBottom: 6 }}
+          />
+        </View>
+
         <View style={{ height: 16 }} />
         <Pressable
           style={styles.moreBtn}
@@ -146,6 +223,9 @@ function toDisplayDate(d: Date) {
 }
 
 const BG = "#dbe7ff";
+const CARD_BG = "#C6DBFA";
+const BLUE_TEXT = "#345BCE";
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   header: {
@@ -185,6 +265,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
+  card: {
+    marginTop: 16,
+    marginHorizontal: 16,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: CARD_BG,
+  },
+  cardHeader: {
+    paddingHorizontal: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: BLUE_TEXT,
+  },
+  allBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
+  allText: { color: "#6b7280", fontSize: 12, fontWeight: "600" },
+  meetupRow: {
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  meetupName: { fontSize: 14, fontWeight: "700", color: "#111827" },
+  meetupDate: { fontSize: 12, fontWeight: "700", color: "#6b7280" },
   moreBtn: {
     marginHorizontal: 16,
     height: 48,

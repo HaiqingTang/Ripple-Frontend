@@ -1,4 +1,3 @@
-// app/(tabs)/Interest/allMeetups.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   SafeAreaView,
