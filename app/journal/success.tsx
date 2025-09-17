@@ -21,6 +21,7 @@ export default function JournalSuccess() {
   const handleViewEntries = () => {
     // TODO: replace with a dedicated entries history screen when available
     console.log('Viewing previous entries...');
+    router.push('/journal/entries');
   };
 
   // day and date are provided by context
