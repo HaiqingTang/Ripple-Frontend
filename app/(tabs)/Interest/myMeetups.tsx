@@ -6,8 +6,8 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
-  ScrollView,
   Alert,
+  FlatList,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -77,65 +77,71 @@ export default function MyMeetupsPage() {
     Alert.alert("Manage", "Go to manage my created meetups");
   };
 
+  // header + search moved into FlatList header
+  const ListHeader = (
+    <View style={{ paddingTop: 32 }}>
+      {/* header */}
+      <View style={styles.header}>
+        <Pressable
+          hitSlop={8}
+          onPress={() => router.replace("/(tabs)/Interest/meetupMainPage")}
+        >
+          <Ionicons name="chevron-back" size={22} color="#2c3e50" />
+        </Pressable>
+        <Text style={styles.title}>My Meetups</Text>
+        <Pressable hitSlop={8} onPress={() => console.log("Add new meetup")}>
+          <Ionicons name="add" size={22} color="#3b82f6" />
+        </Pressable>
+      </View>
+
+      {/* search box */}
+      <View style={styles.searchBox}>
+        <Ionicons name="search" size={18} color="#6b7280" />
+        <TextInput
+          placeholder="Search meetups..."
+          placeholderTextColor="#9aa3b2"
+          style={styles.searchInput}
+          value={queryText}
+          onChangeText={setQueryText}
+        />
+      </View>
+    </View>
+  );
+
+  // footer button moved into FlatList footer
+  const ListFooter = (
+    <Pressable style={styles.manageBtn} onPress={onManageCreated}>
+      <Text style={styles.manageText}>Manage My Created Meetups</Text>
+    </Pressable>
+  );
+
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView
-        contentContainerStyle={{ paddingTop: 32, paddingBottom: 100 }}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* header */}
-        <View style={styles.header}>
-          <Pressable
-            hitSlop={8}
-            onPress={() => router.replace("/(tabs)/Interest/meetupMainPage")}
-          >
-            <Ionicons name="chevron-back" size={22} color="#2c3e50" />
-          </Pressable>
-          <Text style={styles.title}>My Meetups</Text>
-          <Pressable hitSlop={8} onPress={() => console.log("Add new meetup")}>
-            <Ionicons name="add" size={22} color="#3b82f6" />
-          </Pressable>
-        </View>
-
-        {/* search box */}
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color="#6b7280" />
-          <TextInput
-            placeholder="Search meetups..."
-            placeholderTextColor="#9aa3b2"
-            style={styles.searchInput}
-            value={queryText}
-            onChangeText={setQueryText}
-          />
-        </View>
-
-        {/* meetup list */}
-        <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
-          {filtered.map((item) => (
-            <View key={item.id} style={styles.meetupRow}>
-              <Text style={styles.meetupName}>{item.title}</Text>
-              <View style={styles.rowRight}>
-                <Text style={styles.meetupDate}>{item.date}</Text>
-                <Pressable
-                  style={styles.withdrawBtn}
-                  onPress={() => onWithdraw(item)}
-                >
-                  <Text style={styles.withdrawText}>Withdraw</Text>
-                </Pressable>
-              </View>
+      <FlatList
+        data={filtered}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <View style={[styles.meetupRow, { marginHorizontal: 16 }]}>
+            <Text style={styles.meetupName}>{item.title}</Text>
+            <View style={styles.rowRight}>
+              <Text style={styles.meetupDate}>{item.date}</Text>
+              <Pressable style={styles.withdrawBtn} onPress={() => onWithdraw(item)}>
+                <Text style={styles.withdrawText}>Withdraw</Text>
+              </Pressable>
             </View>
-          ))}
-
-          {filtered.length === 0 && (
-            <Text style={styles.empty}>No meetups found.</Text>
-          )}
-        </View>
-
-        {/* manage created button */}
-        <Pressable style={styles.manageBtn} onPress={onManageCreated}>
-          <Text style={styles.manageText}>Manage My Created Meetups</Text>
-        </Pressable>
-      </ScrollView>
+          </View>
+        )}
+        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        ListEmptyComponent={<Text style={styles.empty}>No meetups found.</Text>}
+        ListHeaderComponent={ListHeader}
+        ListFooterComponent={ListFooter}
+        contentContainerStyle={{ paddingBottom: 100, paddingTop: 0, gap: 0 }}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={12}
+        maxToRenderPerBatch={16}
+        windowSize={8}
+        removeClippedSubviews
+      />
     </SafeAreaView>
   );
 }
@@ -180,7 +186,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
   },
   meetupName: { fontSize: 15, fontWeight: "700", color: "#111827" },
   rowRight: { flexDirection: "row", alignItems: "center", gap: 10 },

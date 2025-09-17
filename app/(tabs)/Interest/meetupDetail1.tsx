@@ -75,7 +75,11 @@ export default function MeetupDetailPage() {
           participants: Array.isArray(data.participants) ? data.participants : [],
           sponsorName: data.sponsorName,
           tags: Array.isArray(data.tags) ? data.tags : [],
-          imageUrl: typeof data.imageUrl === "string" ? data.imageUrl : undefined,
+          // handle empty string fallback
+          imageUrl:
+            typeof data.imageUrl === "string" && data.imageUrl.trim() !== ""
+              ? data.imageUrl
+              : "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop",
         });
         setStatus("ready");
       } catch {
