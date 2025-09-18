@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import {
-  SafeAreaView,
   View,
   Text,
   StyleSheet,
@@ -21,6 +20,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db, auth } from "../../../firebase";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type Meetup = {
   id: string;
@@ -67,14 +67,14 @@ export default function MeetupMainPage() {
     return () => unsub();
   }, []);
 
-  // load my meetups (preview limit = 4)
+  // load my meetups preview
   useEffect(() => {
     if (!auth.currentUser) return;
     const q2 = query(
       collection(db, "meetups"),
       where("participants", "array-contains", auth.currentUser.uid),
       orderBy("date", "desc"),
-      limit(4) // preview limit
+      limit(4)
     );
     const unsub = onSnapshot(q2, (snap) => {
       const list: Meetup[] = [];
@@ -100,41 +100,26 @@ export default function MeetupMainPage() {
     return () => unsub();
   }, []);
 
-  const onAdd = () => console.log("Add meetup");
+  const onAdd = () => router.push("/(tabs)/Interest/newMeetup");
 
   const onOpenTop = () => {
     if (!top) return;
-    router.push({
-      pathname: "/(tabs)/Interest/meetupDetail1",
-      params: { id: top.id },
-    });
+    router.push({ pathname: "/(tabs)/Interest/meetupDetail1", params: { id: top.id } });
   };
 
   const onOpenMeetup = (m: Meetup) => {
-    router.push({
-      pathname: "/(tabs)/Interest/meetupDetail1",
-      params: { id: m.id },
-    });
+    router.push({ pathname: "/(tabs)/Interest/meetupDetail1", params: { id: m.id } });
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
-        contentContainerStyle={{ paddingTop: 32, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingTop: 0, paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
+        {/* Header restored to original arrangement and spacing */}
         <View style={styles.header}>
-          <Pressable
-            hitSlop={8}
-            onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace("/(tabs)/Interest");
-              }
-            }}
-          >
+          <Pressable hitSlop={8} onPress={() => router.replace("/(tabs)/Interest")}>
             <Ionicons name="chevron-back" size={22} color="#2c3e50" />
           </Pressable>
           <Text style={styles.title}>Meetups 🌐</Text>
@@ -230,7 +215,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   header: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 12, // back to original spacing
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

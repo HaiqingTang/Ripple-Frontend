@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
-import { Link } from 'expo-router';
+import { View, Text, ScrollView, StyleSheet, Pressable, Image } from 'react-native';
+import { useRouter } from 'expo-router';
 
 export default function Interest() {
+  const router = useRouter();
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
       <View style={styles.hero}>
@@ -12,25 +14,43 @@ export default function Interest() {
         </Text>
       </View>
 
-      <Link href="/Interest/clubMainPage" asChild>
-        <Pressable style={styles.card} accessibilityRole="button" hitSlop={8}>
-          <View style={styles.imagePlaceholder} />
-          <Text style={styles.cardTitle}>Clubs</Text>
-          <Text style={styles.cardDesc}>
-            Share your thoughts, ask questions, and interact with other members.
-          </Text>
-        </Pressable>
-      </Link>
+      <Pressable
+        style={styles.card}
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={() => router.push('/(tabs)/Interest/clubMainPage')}
+      >
+        <Image
+          style={styles.imagePlaceholder}
+          source={{
+            uri:
+              'https://images.unsplash.com/photo-1663162550974-aaf76bcdeedf?q=80&w=1740&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+          }}
+        />
+        <Text style={styles.cardTitle}>Clubs</Text>
+        <Text style={styles.cardDesc}>
+          Share your thoughts, ask questions, and interact with other members.
+        </Text>
+      </Pressable>
 
-      <Link href="/Interest/meetupMainPage" asChild>
-        <Pressable style={styles.card} accessibilityRole="button" hitSlop={8}>
-          <View style={styles.imagePlaceholder} />
-          <Text style={styles.cardTitle}>Meetups</Text>
-          <Text style={styles.cardDesc}>
-            Discover nearby meetups and join others for coffee, walks, or shared activities.
-          </Text>
-        </Pressable>
-      </Link>
+      <Pressable
+        style={styles.card}
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={() => router.push('/(tabs)/Interest/meetupMainPage')}
+      >
+        <Image
+          style={styles.imagePlaceholder}
+          source={{
+            uri:
+              'https://images.unsplash.com/photo-1692261929431-253094ad8497?q=80&w=1740&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+          }}
+        />
+        <Text style={styles.cardTitle}>Meetups</Text>
+        <Text style={styles.cardDesc}>
+          Discover nearby meetups and join others for coffee, walks, or shared activities.
+        </Text>
+      </Pressable>
     </ScrollView>
   );
 }

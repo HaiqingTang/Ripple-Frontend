@@ -88,7 +88,9 @@ export default function MeetupLocation1Page() {
     if (router.canGoBack()) router.back();
   };
 
-  const onCreate = () => {};
+  const onCreate = () => {
+    router.push("/(tabs)/Interest/newMeetup");
+  };
 
   if (status === "loading" || status === "idle") {
     return (
@@ -142,16 +144,16 @@ export default function MeetupLocation1Page() {
           <MapView
             style={styles.map}
             initialRegion={{
-              latitude: lat,
-              longitude: lng,
+              latitude: lat!,
+              longitude: lng!,
               latitudeDelta: 0.01,
               longitudeDelta: 0.01,
             }}
           >
             <Marker
-              coordinate={{ latitude: lat, longitude: lng }}
-              title={title}
-              description={desc}
+              coordinate={{ latitude: lat!, longitude: lng! }}
+              title={title!}
+              description={desc!}
             />
           </MapView>
         </View>

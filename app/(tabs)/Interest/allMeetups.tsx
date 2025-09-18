@@ -103,11 +103,13 @@ export default function AllMeetupsPage() {
     });
   };
 
-  const onCreate = () => {};
+  const onCreate = () => {
+    router.push("/(tabs)/Interest/newMeetup");
+  };
 
   // header (title + search + chips) moved into FlatList header
   const ListHeader = (
-    <View style={{ paddingTop: 32 }}>
+    <View style={{ paddingTop: 0 }}>
       <View style={styles.header}>
         <Pressable
           hitSlop={8}

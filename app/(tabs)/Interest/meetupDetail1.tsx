@@ -162,7 +162,13 @@ export default function MeetupDetailPage() {
             <Ionicons name="chevron-back" size={22} color="#2c3e50" />
           </Pressable>
           <Text style={styles.title}>Meetup Detail</Text>
-          <View style={styles.iconBtn} />
+          <Pressable
+            hitSlop={8}
+            onPress={() => router.push("/(tabs)/Interest/newMeetup")}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="add" size={22} color="#3b82f6" />
+          </Pressable>
         </View>
 
         {/* search */}

@@ -79,7 +79,7 @@ export default function MyMeetupsPage() {
 
   // header + search moved into FlatList header
   const ListHeader = (
-    <View style={{ paddingTop: 32 }}>
+    <View style={{ paddingTop: 0 }}>
       {/* header */}
       <View style={styles.header}>
         <Pressable
@@ -89,7 +89,7 @@ export default function MyMeetupsPage() {
           <Ionicons name="chevron-back" size={22} color="#2c3e50" />
         </Pressable>
         <Text style={styles.title}>My Meetups</Text>
-        <Pressable hitSlop={8} onPress={() => console.log("Add new meetup")}>
+        <Pressable hitSlop={8} onPress={() => router.push("/(tabs)/Interest/newMeetup")}>
           <Ionicons name="add" size={22} color="#3b82f6" />
         </Pressable>
       </View>
