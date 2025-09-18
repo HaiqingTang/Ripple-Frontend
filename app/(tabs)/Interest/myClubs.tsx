@@ -1,3 +1,4 @@
+// app/(tabs)/Interest/myClubs.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -21,11 +22,12 @@ import {
   query,
   where,
   getDocs,
+  Query,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "../../../firebase";
 
-/** ============ 类型 ============ */
+/** ============ Types ============ */
 type Club = {
   id: string;
   name: string;
@@ -33,7 +35,7 @@ type Club = {
   members?: string[];
 };
 
-/** ============ 常量 ============ */
+/** ============ Constants ============ */
 const { width: SCREEN_W } = Dimensions.get("window");
 const H_PADDING = 24;
 const GAP = 24;
@@ -47,69 +49,95 @@ export default function MyClubs() {
   const [queryText, setQueryText] = useState("");
   const [data, setData] = useState<Club[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [uid, setUid] = useState<string | null>(null);
 
-// Listen for login status -> Subscribe to my club
+  // Listen to auth state changes (set uid or clear when signed out)
   useEffect(() => {
     const stop = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        // Empty when not logged in; you can also jump to the login page here
-        setData([]);
-        return;
-      }
-      const qMine = query(
-        collection(db, "clubs"),
-        where("members", "array-contains", user.uid),
-        orderBy("name", "asc")
-      );
-      const unsub = onSnapshot(
-        qMine,
+      setUid(user?.uid ?? null);
+    });
+    return () => stop();
+  }, []);
+
+  // Subscribe to "my clubs". If the composite index is missing, fall back to an unordered query.
+  useEffect(() => {
+    if (!uid) {
+      setData([]);
+      return;
+    }
+
+    const base = query(
+      collection(db, "clubs"),
+      where("members", "array-contains", uid)
+    );
+    const qOrdered = query(base, orderBy("name", "asc"));
+    const qPlain = base;
+
+    let unsub: (() => void) | null = null;
+
+    function listen(q: Query, isFallback = false) {
+      if (unsub) unsub();
+      unsub = onSnapshot(
+        q,
         (snap) => {
+          // console.log(isFallback ? "myClubs (fallback) size:" : "myClubs size:", snap.size);
           const list: Club[] = snap.docs.map((d) => ({
             id: d.id,
             ...(d.data() as any),
           }));
           setData(list);
         },
-        (err) => console.log("myClubs onSnapshot error:", err.code, err.message)
+        (err) => {
+          // When a composite index is missing, Firestore throws "failed-precondition".
+          if (!isFallback && err.code === "failed-precondition") {
+            // Switch to the unordered query automatically so the page still works.
+            listen(qPlain, true);
+          } else {
+            console.log("myClubs onSnapshot error:", err.code, err.message);
+          }
+        }
       );
-      // 登录态变化或页面卸载时取消订阅
-      return () => unsub();
-    });
+    }
 
-    return () => stop();
-  }, []);
+    listen(qOrdered);
 
-  // Local search filtering
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [uid]);
+
+  // Local text filter
   const filtered = useMemo(() => {
     const q = queryText.trim().toLowerCase();
     if (!q) return data;
     return data.filter((c) => (c.name ?? "").toLowerCase().includes(q));
   }, [queryText, data]);
 
-  // Pull down to refresh (real-time subscriptions are automatically updated, this only triggers a read display refresh effect)
+  // Pull-to-refresh: subscription already keeps things live; this only triggers a read for the UI effect.
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const user = auth.currentUser;
-      if (user) {
+      if (uid) {
         await getDocs(
           query(
             collection(db, "clubs"),
-            where("members", "array-contains", user.uid),
+            where("members", "array-contains", uid),
             orderBy("name", "asc")
           )
-        );
+        ).catch(() => {
+          // If the index is missing here too, ignore; the live subscription will already have fallen back.
+        });
       }
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [uid]);
 
   const openClub = (club: Club) => {
     Alert.alert("Open Club", club.name);
   };
 
-  /** Header） */
+  /** Header */
   const Header = () => (
     <View style={styles.headerRow}>
       <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={10}>
@@ -138,7 +166,7 @@ export default function MyClubs() {
     </View>
   );
 
-/** Single club card */
+  /** Single card */
   const renderItem = ({ item }: { item: Club }) => (
     <Pressable style={styles.card} onPress={() => openClub(item)}>
       <Image
@@ -163,20 +191,18 @@ export default function MyClubs() {
         numColumns={3}
         columnWrapperStyle={{ justifyContent: "space-between", paddingHorizontal: H_PADDING }}
         contentContainerStyle={{ paddingTop: 10, paddingBottom: 20 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />}
         ListEmptyComponent={
           <View style={{ paddingHorizontal: H_PADDING, marginTop: 16 }}>
             <Text style={{ color: "#5C637C", textAlign: "center" }}>
-              You haven’t joined any clubs yet.
+              {uid ? "You haven’t joined any clubs yet." : "Please sign in to see your clubs."}
             </Text>
           </View>
         }
         ListFooterComponent={<View style={{ height: 24 }} />}
       />
 
-      {/* 底部图标（静态示意） */}
+      {/* Static bottom icons (visual only) */}
       <View style={styles.bottomBar}>
         <Ionicons name="happy-outline" size={26} color="#222" />
         <Ionicons name="document-text-outline" size={26} color="#222" />

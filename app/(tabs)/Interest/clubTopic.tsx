@@ -1,5 +1,5 @@
 // app/(tabs)/Interest/clubTopic.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -16,133 +16,61 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import {
+  arrayRemove,
+  arrayUnion,
+  collection,
+  doc,
+  DocumentData,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  QueryDocumentSnapshot,
+  startAfter,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import { db, auth } from "../../../firebase";
 
-/* =========================
- * 类型定义
- * ========================= */
+/* ========= Types ========= */
 type Club = {
   id: string;
   name: string;
-  coverImageUrl: string;
-  members: number;
-  description: string;
-  joined?: boolean;
+  coverImageUrl?: string;
+  description?: string;
+  members?: string[];
+  membersCount?: number;
 };
 
 type Post = {
   id: string;
-  author: string;
-  authorAvatar: string;
+  name: string; // posts 里用 club 的名字做关联键
+  authorName?: string;
+  authorAvatarUrl?: string;
   title?: string;
   text?: string;
   imageUrl?: string;
-  createdAt: string; // ISO
+  createdAt?: any; // Firestore Timestamp | ISO | Date
+  creatAt?: any;   // 兼容你截图里的字段名
   supportCount?: number;
 };
 
-/* =========================
- * 后端占位（将来替换）
- * ========================= */
-// const API_BASE_URL = "https://api.example.com";
-// async function fetchClub(id: string): Promise<Club> { ... }
-// async function fetchPosts(params: { clubId: string; page: number; pageSize: number; q?: string }): Promise<Post[]> { ... }
-
-/* =========================
- * 本地 Mock（演示 UI）
- * ========================= */
-const MOCK_CLUB: Club = {
-  id: "football",
-  name: "Football",
-  coverImageUrl:
-    "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?q=80&w=1200&auto=format&fit=crop",
-  members: 120,
-  description:
-    "A friendly club for football lovers to chat, share, and play casually.",
-  joined: false,
-};
-
-const AVATAR =
+/* ========= Helpers ========= */
+const AVATAR_FALLBACK =
   "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=400&auto=format&fit=crop";
-const LAMP =
-  "https://images.unsplash.com/photo-1482192596544-9eb780fc7f66?q=80&w=1200&auto=format&fit=crop";
 
-function buildMockPosts(): Post[] {
-  const base: Post[] = [
-    {
-      id: "p1",
-      author: "Broken Streetlight",
-      authorAvatar: AVATAR,
-      text: "Did anyone watch last night’s match? That last-minute goal was crazy!",
-      imageUrl: LAMP,
-      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2h ago
-      supportCount: 8,
-    },
-    {
-      id: "p2",
-      author: "Sophie",
-      authorAvatar:
-        "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=400&auto=format&fit=crop",
-      text: "Pickup game this Saturday 10am at Riverside? Comment if you’re in ⚽️",
-      createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-      supportCount: 12,
-    },
-    {
-      id: "p3",
-      author: "Marco",
-      authorAvatar:
-        "https://images.unsplash.com/photo-1547425260-76bcadfb4f2c?q=80&w=400&auto=format&fit=crop",
-      text: "Any recommendations for good turf shoes under $80?",
-      createdAt: new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString(),
-      supportCount: 5,
-    },
-    {
-      id: "p4",
-      author: "Anya",
-      authorAvatar:
-        "https://images.unsplash.com/photo-1527980965255-d3b416303d12?q=80&w=400&auto=format&fit=crop",
-      imageUrl:
-        "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?q=80&w=1200&auto=format&fit=crop",
-      text: "Training drills from today — pass & move! 🏃‍♂️",
-      createdAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
-      supportCount: 21,
-    },
-    {
-      id: "p5",
-      author: "Coach Dan",
-      authorAvatar:
-        "https://images.unsplash.com/photo-1546456073-92b9f0a8d413?q=80&w=400&auto=format&fit=crop",
-      text: "League schedule is out. Check pinned post for fixtures.",
-      createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-      supportCount: 15,
-    },
-  ];
-  // 复制多页
-  const pages: Post[] = [];
-  for (let i = 0; i < 4; i++) {
-    pages.push(
-      ...base.map((p, idx) => ({
-        ...p,
-        id: `${p.id}-pg${i}`,
-        createdAt: new Date(Date.now() - (i * 6 + idx) * 60 * 60 * 1000).toISOString(),
-      }))
-    );
+function toMillis(v: any): number {
+  if (v && typeof v === "object" && typeof v.seconds === "number") {
+    return v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
   }
-  return pages;
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === "string") return new Date(v).getTime();
+  return Date.now();
 }
-const ALL_MOCK_POSTS = buildMockPosts();
-
-function mockFetch<T>(data: T, delay = 300): Promise<T> {
-  return new Promise((res) => setTimeout(() => res(JSON.parse(JSON.stringify(data))), delay));
-}
-
-function timeAgo(iso: string) {
-  const diff = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  const map: [number, string][] = [
-    [60, "s"],
-    [3600, "m"],
-    [86400, "h"],
-    [604800, "d"],
-  ];
+function timeAgo(input: any) {
+  const diff = Math.max(1, Math.floor((Date.now() - toMillis(input)) / 1000));
   if (diff < 60) return `${diff}s`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
@@ -150,74 +78,175 @@ function timeAgo(iso: string) {
   return `${Math.floor(diff / 604800)}w`;
 }
 
-/* =========================
- * UI 尺寸
- * ========================= */
+/* ========= UI sizes ========= */
 const { width: SCREEN_W } = Dimensions.get("window");
 const H_PADDING = 16;
 const CARD_RADIUS = 16;
 
-/* =========================
- * 页面
- * ========================= */
+/* ========= Page ========= */
 export default function ClubTopic() {
   const router = useRouter();
-  const { id, name } = useLocalSearchParams<{ id?: string; name?: string }>();
+  const { name: routeName } = useLocalSearchParams<{ name?: string }>();
 
-  // 顶部搜索
   const [q, setQ] = useState("");
+  const [club, setClub] = useState<Club | null>(null);
 
-  // 俱乐部信息（将来可根据 id/name 请求）
-  const [club, setClub] = useState<Club>(MOCK_CLUB);
-
-  // 列表/分页
-  const PAGE_SIZE = 5;
-  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 6;
   const [posts, setPosts] = useState<Post[]>([]);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  /** 初始加载（可根据 id/name 替换为后端请求） */
-  const loadFirst = useCallback(async () => {
+  const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const orderFieldRef = useRef<"createdAt" | "creatAt" | null>("createdAt");
+  const fallbackNoOrderRef = useRef(false);
+
+  // 1) 订阅 club（按 name 等值）
+  useEffect(() => {
+    const name = (routeName || "").trim();
+    if (!name) {
+      Alert.alert("Missing params", "No club name provided.");
+      return;
+    }
+    const qClub = query(collection(db, "clubs"), where("name", "==", name), limit(1));
+    const unsub = onSnapshot(
+      qClub,
+      (snap) => {
+        const d = snap.docs[0];
+        if (!d) {
+          setClub(null);
+          return;
+        }
+        const raw = d.data() as any;
+        setClub({
+          id: d.id,
+          name: String(raw.name ?? ""),
+          coverImageUrl: raw.coverImageUrl,
+          description: raw.description,
+          members: Array.isArray(raw.members) ? raw.members.map(String) : [],
+          membersCount:
+            typeof raw.membersCount === "number"
+              ? raw.membersCount
+              : Array.isArray(raw.members)
+              ? raw.members.length
+              : 0,
+        });
+      },
+      (err) => console.log("club query error:", err.code, err.message)
+    );
+    return () => unsub();
+  }, [routeName]);
+
+  // 2) 首次加载 posts
+  const fetchFirstPage = useCallback(async () => {
+    if (!club?.name) return;
     setRefreshing(true);
-    // const c = await fetchClub(id!);
-    // const first = await fetchPosts({ clubId: id!, page: 1, pageSize: PAGE_SIZE, q });
-    const first = await mockFetch(ALL_MOCK_POSTS.slice(0, PAGE_SIZE));
-    setClub({ ...MOCK_CLUB, name: name || MOCK_CLUB.name });
-    setPosts(first);
-    setPage(1);
-    setHasMore(ALL_MOCK_POSTS.length > PAGE_SIZE);
+    fallbackNoOrderRef.current = false;
+    lastDocRef.current = null;
+
+    const base = query(collection(db, "posts"), where("name", "==", club.name));
+    const tryOrderFields: Array<"createdAt" | "creatAt" | null> = ["createdAt", "creatAt", null];
+
+    for (const field of tryOrderFields) {
+      try {
+        let qPosts;
+        if (field) {
+          orderFieldRef.current = field;
+          qPosts = query(base, orderBy(field, "desc"), limit(PAGE_SIZE));
+        } else {
+          orderFieldRef.current = null;
+          qPosts = query(base, limit(PAGE_SIZE));
+        }
+        const snap = await getDocs(qPosts);
+        const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as Post));
+        setPosts(list);
+
+        if (field) {
+          lastDocRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+          setHasMore(snap.size === PAGE_SIZE);
+        } else {
+          fallbackNoOrderRef.current = true; // 无排序不分页
+          setHasMore(false);
+        }
+        setRefreshing(false);
+        return;
+      } catch {
+        // 没索引/字段不存在则尝试下一个方案
+        continue;
+      }
+    }
+
     setRefreshing(false);
-  }, [name]);
+    Alert.alert("Error", "Failed to load posts.");
+  }, [club?.name]);
+
+  // 3) 下一页
+  const fetchNextPage = useCallback(async () => {
+    if (fallbackNoOrderRef.current) return;
+    if (!club?.name || loadingMore || !hasMore) return;
+
+    setLoadingMore(true);
+    try {
+      const base = query(collection(db, "posts"), where("name", "==", club.name));
+      const field = orderFieldRef.current || "createdAt";
+      const qNext = lastDocRef.current
+        ? query(base, orderBy(field, "desc"), startAfter(lastDocRef.current), limit(PAGE_SIZE))
+        : query(base, orderBy(field, "desc"), limit(PAGE_SIZE));
+      const snap = await getDocs(qNext);
+      const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as Post));
+      setPosts((prev) => prev.concat(list));
+      lastDocRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : lastDocRef.current;
+      setHasMore(snap.size === PAGE_SIZE);
+    } catch {
+      setHasMore(false);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [club?.name, loadingMore, hasMore]);
 
   useEffect(() => {
-    loadFirst();
-  }, [loadFirst]);
+    if (!club?.name) return;
+    fetchFirstPage();
+  }, [club?.name, fetchFirstPage]);
 
-  /** 下拉刷新 */
   const onRefresh = useCallback(async () => {
-    await loadFirst();
-  }, [loadFirst]);
+    await fetchFirstPage();
+  }, [fetchFirstPage]);
 
-  /** 触底加载更多 */
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    const nextPage = page + 1;
-    const slice = ALL_MOCK_POSTS.slice(0, nextPage * PAGE_SIZE);
-    // const more = await fetchPosts({ clubId: id!, page: nextPage, pageSize: PAGE_SIZE, q });
-    await mockFetch(null, 250);
-    setPosts(slice);
-    setPage(nextPage);
-    setHasMore(slice.length < ALL_MOCK_POSTS.length);
-    setLoadingMore(false);
-  }, [page, hasMore, loadingMore]);
+  // 加入/退出
+  const toggleJoin = useCallback(async () => {
+    if (!club) return;
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert("Sign in required", "Please sign in first.");
+      return;
+    }
+    try {
+      const ref = doc(db, "clubs", club.id);
+      const isJoined = !!club.members?.includes(user.uid);
+      await updateDoc(ref, {
+        members: isJoined ? arrayRemove(user.uid) : arrayUnion(user.uid),
+      });
+    } catch {
+      Alert.alert("Error", "Failed to update membership.");
+    }
+  }, [club]);
 
-  /** 固定在顶部的头部（搜索 + 蓝色俱乐部信息卡） */
+  // 本地搜索帖子
+  const filteredPosts = useMemo(() => {
+    const keyword = q.trim().toLowerCase();
+    if (!keyword) return posts;
+    return posts.filter((p) => {
+      return (
+        (p.title || "").toLowerCase().includes(keyword) ||
+        (p.text || "").toLowerCase().includes(keyword) ||
+        (p.authorName || "").toLowerCase().includes(keyword)
+      );
+    });
+  }, [q, posts]);
+
   const StickyTop = () => (
     <View style={styles.stickyWrap}>
-      {/* 返回 + 搜索 */}
       <View style={styles.searchRow}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
           <Ionicons name="chevron-back" size={22} color="#6B7AFF" />
@@ -236,30 +265,40 @@ export default function ClubTopic() {
         </View>
       </View>
 
-      {/* 俱乐部信息蓝卡 */}
       <View style={styles.clubCard}>
-        <Image source={{ uri: club.coverImageUrl }} style={styles.clubThumb} />
+        <Image source={{ uri: club?.coverImageUrl || AVATAR_FALLBACK }} style={styles.clubThumb} />
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.clubName}>{club.name}</Text>
-          <Text style={styles.clubMembers}>{club.members} members</Text>
-          <Text style={styles.clubDesc} numberOfLines={2}>{club.description}</Text>
+          <Text style={styles.clubName}>{club?.name ?? "Club"}</Text>
+          <Text style={styles.clubMembers}>
+            {(club?.membersCount ?? (Array.isArray(club?.members) ? club!.members!.length : 0)) || 0} members
+          </Text>
+          <Text style={styles.clubDesc} numberOfLines={2}>
+            {club?.description || "Welcome to the club!"}
+          </Text>
         </View>
         <Pressable
-          style={[styles.joinBtn, club.joined && styles.joinedBtn]}
-          onPress={() => setClub((c) => ({ ...c, joined: !c.joined }))}
+          style={[
+            styles.joinBtn,
+            club && auth.currentUser && club.members?.includes(auth.currentUser.uid) && styles.joinedBtn,
+          ]}
+          onPress={toggleJoin}
         >
-          <Text style={[styles.joinText, club.joined && styles.joinedText]}>
-            {club.joined ? "Joined" : "Join"}
+          <Text
+            style={[
+              styles.joinText,
+              club && auth.currentUser && club.members?.includes(auth.currentUser.uid) && styles.joinedText,
+            ]}
+          >
+            {club && auth.currentUser && club.members?.includes(auth.currentUser.uid) ? "Joined" : "Join"}
           </Text>
         </Pressable>
       </View>
     </View>
   );
 
-  /** 写帖提示卡（非固定） */
   const ComposerCard = () => (
     <View style={styles.composerCard}>
-      <Image source={{ uri: AVATAR }} style={styles.composerAvatar} />
+      <Image source={{ uri: AVATAR_FALLBACK }} style={styles.composerAvatar} />
       <Text style={styles.composerHint} numberOfLines={1}>
         Write your post now!
       </Text>
@@ -270,80 +309,64 @@ export default function ClubTopic() {
     </View>
   );
 
-  /** 单个帖子 */
-  const PostItem = ({ item }: { item: Post }) => (
-    <View style={styles.postCard}>
-      {/* 作者行 */}
-      <View style={styles.postHeader}>
-        <Image source={{ uri: item.authorAvatar }} style={styles.authorAvatar} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.authorName}>{item.author}</Text>
-          <Text style={styles.subMeta}>
-            {timeAgo(item.createdAt)} ago
-          </Text>
+  const PostItem = ({ item }: { item: Post }) => {
+    const created = item.createdAt ?? item.creatAt ?? Date.now();
+    return (
+      <View style={styles.postCard}>
+        <View style={styles.postHeader}>
+          <Image source={{ uri: item.authorAvatarUrl || AVATAR_FALLBACK }} style={styles.authorAvatar} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.authorName}>{item.authorName || "Anonymous"}</Text>
+            <Text style={styles.subMeta}>{timeAgo(created)} ago</Text>
+          </View>
+          <Pressable style={styles.roundIcon} onPress={() => Alert.alert("Share (Mock)")}>
+            <Ionicons name="paper-plane-outline" size={16} color="#23304E" />
+          </Pressable>
         </View>
-        <Pressable style={styles.roundIcon} onPress={() => Alert.alert("Share (Mock)")}>
-          <Ionicons name="paper-plane-outline" size={16} color="#23304E" />
-        </Pressable>
+
+        {item.imageUrl ? (
+          <View style={{ borderRadius: CARD_RADIUS, overflow: "hidden", marginTop: 6 }}>
+            <ImageBackground source={{ uri: item.imageUrl }} style={styles.postImage}>
+              {item.text ? (
+                <View style={styles.bubble}>
+                  <Text style={styles.bubbleText}>{item.text}</Text>
+                </View>
+              ) : null}
+            </ImageBackground>
+          </View>
+        ) : item.text ? (
+          <View style={styles.textOnly}>
+            <Text style={{ color: "#1A2036" }}>{item.text}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.postActions}>
+          <Pressable style={styles.lightPill} onPress={() => Alert.alert("Open Post (Mock)")}>
+            <Text style={styles.lightPillText}>View post</Text>
+          </Pressable>
+          <View style={{ flex: 1 }} />
+          <Ionicons name="heart-outline" size={16} color="#5D678A" />
+          <Text style={styles.supportText}>{item.supportCount ?? 0} Support</Text>
+        </View>
       </View>
-
-      {/* 图片/正文 */}
-      {item.imageUrl ? (
-        <View style={{ borderRadius: CARD_RADIUS, overflow: "hidden", marginTop: 6 }}>
-          <ImageBackground source={{ uri: item.imageUrl }} style={styles.postImage}>
-            {/* 对话气泡 */}
-            {item.text ? (
-              <View style={styles.bubble}>
-                <Text style={styles.bubbleText}>{item.text}</Text>
-              </View>
-            ) : null}
-          </ImageBackground>
-        </View>
-      ) : item.text ? (
-        <View style={styles.textOnly}>
-          <Text style={{ color: "#1A2036" }}>{item.text}</Text>
-        </View>
-      ) : null}
-
-      {/* 操作行 */}
-      <View style={styles.postActions}>
-        <Pressable style={styles.lightPill} onPress={() => Alert.alert("Open Post (Mock)")}>
-          <Text style={styles.lightPillText}>View post</Text>
-        </Pressable>
-        <View style={{ flex: 1 }} />
-        <Ionicons name="heart-outline" size={16} color="#5D678A" />
-        <Text style={styles.supportText}>{item.supportCount ?? 0} Support</Text>
-      </View>
-    </View>
-  );
-
-  /** 让 header 部分只固定蓝卡与搜索：我们把 header 拆成两段
-   *  - stickyHeaderIndices = [0] 让 StickyTop 固定
-   *  - “写帖提示卡” 作为列表第一个虚拟元素渲染（不会固定）
-   */
-  const dataForList = useMemo(() => {
-    // 在 posts 前面插入一个“composer”占位
-    return [{ id: "__composer__" } as any].concat(posts);
-  }, [posts]);
-
-  const renderItem = ({ item }: { item: any }) => {
-    if (item.id === "__composer__") return <ComposerCard />;
-    return <PostItem item={item as Post} />;
+    );
   };
+
+  const dataForList = useMemo(() => [{ id: "__composer__" } as any].concat(filteredPosts), [filteredPosts]);
+  const renderItem = ({ item }: { item: any }) =>
+    item.id === "__composer__" ? <ComposerCard /> : <PostItem item={item as Post} />;
 
   return (
     <View style={styles.container}>
       <FlatList
         data={dataForList}
-        keyExtractor={(it, idx) => (it.id ?? `k${idx}`)}
+        keyExtractor={(it, idx) => it.id ?? `k${idx}`}
         renderItem={renderItem}
         ListHeaderComponent={<StickyTop />}
-        stickyHeaderIndices={[0]}                 // 让顶部蓝色区域固定
+        stickyHeaderIndices={[0]}
         onEndReachedThreshold={0.2}
-        onEndReached={loadMore}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />
-        }
+        onEndReached={fetchNextPage}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />}
         ListFooterComponent={
           <View style={{ paddingVertical: 18, alignItems: "center" }}>
             {hasMore ? (
@@ -356,7 +379,6 @@ export default function ClubTopic() {
         contentContainerStyle={{ paddingBottom: 20 }}
       />
 
-      {/* 底部静态图标（示意） */}
       <View style={styles.bottomBar}>
         <Ionicons name="happy-outline" size={26} color="#222" />
         <Ionicons name="document-text-outline" size={26} color="#222" />
@@ -368,9 +390,7 @@ export default function ClubTopic() {
   );
 }
 
-/* =========================
- * 样式
- * ========================= */
+/* ========= Styles ========= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -378,7 +398,6 @@ const styles = StyleSheet.create({
     paddingTop: Platform.select({ ios: 10, android: 0 }),
   },
 
-  /* 顶部固定区 */
   stickyWrap: {
     backgroundColor: "#DDE7FF",
     paddingTop: 6,
@@ -411,12 +430,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  searchInput: {
-    flex: 1,
-    height: "100%",
-    fontSize: 16,
-    color: "#1F2A44",
-  },
+  searchInput: { flex: 1, height: "100%", fontSize: 16, color: "#1F2A44" },
 
   clubCard: {
     marginTop: 6,
@@ -427,17 +441,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  clubThumb: {
-    width: 84,
-    height: 84,
-    borderRadius: 12,
-    backgroundColor: "#EAF0FF",
-  },
-  clubName: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#1B243D",
-  },
+  clubThumb: { width: 84, height: 84, borderRadius: 12, backgroundColor: "#EAF0FF" },
+  clubName: { fontSize: 22, fontWeight: "800", color: "#1B243D" },
   clubMembers: { color: "#2B3B6E", marginTop: 2, fontWeight: "700" },
   clubDesc: { color: "#2B3B6E", marginTop: 4, lineHeight: 18 },
   joinBtn: {
@@ -448,14 +453,10 @@ const styles = StyleSheet.create({
     borderColor: "#8EA0FF",
     backgroundColor: "white",
   },
-  joinedBtn: {
-    backgroundColor: "#8EA0FF",
-    borderColor: "#8EA0FF",
-  },
+  joinedBtn: { backgroundColor: "#8EA0FF", borderColor: "#8EA0FF" },
   joinText: { color: "#5C6FD6", fontWeight: "800" },
   joinedText: { color: "#fff" },
 
-  /* 写帖提示卡 */
   composerCard: {
     marginTop: 10,
     marginHorizontal: H_PADDING,
@@ -484,16 +485,8 @@ const styles = StyleSheet.create({
   },
   writeBtnText: { color: "#fff", fontWeight: "800", marginRight: 4 },
 
-  /* 帖子卡片 */
-  postCard: {
-    marginTop: 14,
-    marginHorizontal: H_PADDING,
-  },
-  postHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
+  postCard: { marginTop: 14, marginHorizontal: H_PADDING },
+  postHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
   authorAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
   authorName: { fontWeight: "800", fontSize: 16, color: "#1A2036" },
   subMeta: { color: "#707AA0", marginTop: 2 },
@@ -518,27 +511,13 @@ const styles = StyleSheet.create({
   },
   bubbleText: { color: "#1A2036" },
 
-  textOnly: {
-    backgroundColor: "white",
-    padding: 12,
-    borderRadius: CARD_RADIUS,
-  },
+  textOnly: { backgroundColor: "white", padding: 12, borderRadius: CARD_RADIUS },
 
-  postActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  lightPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#6275FF",
-  },
+  postActions: { flexDirection: "row", alignItems: "center", marginTop: 8 },
+  lightPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: "#6275FF" },
   lightPillText: { color: "white", fontWeight: "800" },
   supportText: { color: "#5D678A", marginLeft: 6 },
 
-  /* 底部静态栏（示意） */
   bottomBar: {
     height: 64,
     flexDirection: "row",
