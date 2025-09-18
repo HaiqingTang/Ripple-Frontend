@@ -84,9 +84,9 @@ export default function EditProfilePage() {
       setErrorMessage('New password must contain at least 8 characters');
       return false;
     }
-    // Require current password only for password changes
-    if (newPassword && !currentPassword) {
-      setErrorMessage('Current password is required to change password');
+    // Require current password for password or email changes
+    if ((newPassword || (newEmail && newEmail !== currentEmail)) && !currentPassword) {
+      setErrorMessage('Current password is required to change password or email');
       return false;
     }
     return true;
@@ -107,11 +107,11 @@ export default function EditProfilePage() {
         return;
       }
 
-      // Check if we need to reauthenticate (only for password changes)
-      const needsReauth = newPassword;
+      // Check if we need to reauthenticate (for password or email changes)
+      const needsReauth = newPassword || (newEmail && newEmail !== user.email);
 
       if (needsReauth && !currentPassword) {
-        setErrorMessage('Current password is required for password changes');
+        setErrorMessage('Current password is required to change password or email');
         return;
       }
 
@@ -154,7 +154,7 @@ export default function EditProfilePage() {
         [
           {
             text: 'OK',
-            onPress: () => router.back()
+            onPress: () => router.push('/(tabs)/profile')
           }
         ]
       );
@@ -165,6 +165,9 @@ export default function EditProfilePage() {
         case 'auth/wrong-password':
         case 'auth/invalid-credential':
           message = 'Current password is incorrect';
+          break;
+        case 'auth/requires-recent-login':
+          message = 'For security reasons, please enter your current password to make this change';
           break;
         case 'auth/email-already-in-use':
           message = 'This email is already registered to another account';
@@ -206,7 +209,7 @@ export default function EditProfilePage() {
             <View style={styles.container}>
             {/* Header with back button */}
             <View style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/profile')} style={styles.backButton}>
                 <Ionicons name="arrow-back" size={24} color="#2C3E50" />
               </TouchableOpacity>
             </View>
@@ -308,7 +311,7 @@ export default function EditProfilePage() {
                     />
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.helperText}>Only required when changing password</Text>
+                <Text style={styles.helperText}>Required when changing password or email</Text>
               </View>
 
               {/* New Password */}
@@ -337,7 +340,7 @@ export default function EditProfilePage() {
                   </TouchableOpacity>
                 </View>
                 {newPassword ? (
-                  <Text style={styles.helperText}>must contain 8 characters</Text>
+                  <Text style={styles.helperText}>must contain at least 8 characters</Text>
                 ) : null}
               </View>
 
