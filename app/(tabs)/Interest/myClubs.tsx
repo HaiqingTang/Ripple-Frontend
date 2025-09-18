@@ -1,4 +1,3 @@
-// app/(tabs)/Interest/myClubs.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -15,105 +14,102 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { db, auth } from "../../../firebase";
 
 /** ============ 类型 ============ */
 type Club = {
   id: string;
   name: string;
-  coverImageUrl: string;
+  coverImageUrl?: string;
+  members?: string[];
 };
 
-/** ============ 后端占位 & 本地 Mock ============ */
-// TODO: 将来接后端时启用，并把 BASE_URL 改成你的服务地址
-// const API_BASE_URL = "https://api.example.com";
-// async function fetchMyClubsFromAPI(q: string): Promise<Club[]> {
-//   const qs = q ? `?q=${encodeURIComponent(q)}` : "";
-//   const res = await fetch(`${API_BASE_URL}/me/clubs${qs}`);
-//   if (!res.ok) throw new Error(await res.text());
-//   return res.json();
-// }
-
-// 先用本地假数据预览 UI（与图上五个示例一致）
-const MOCK_CLUBS: Club[] = [
-  {
-    id: "travel",
-    name: "Travel",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1542909168-82c3e7fdca5c?q=80&w=800&auto=format&fit=crop",
-  },
-  {
-    id: "music",
-    name: "Music",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop",
-  },
-  {
-    id: "swimming",
-    name: "Swimming",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1546519638-68e109498ffc?q=80&w=800&auto=format&fit=crop",
-  },
-  {
-    id: "yoga",
-    name: "Yoga",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1575052814086-f385e2e2ad1b?q=80&w=800&auto=format&fit=crop",
-  },
-  {
-    id: "football",
-    name: "Football",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1471295253337-3ceaaedca402?q=80&w=800&auto=format&fit=crop",
-  },
-];
-
-// 模拟网络延迟，仅用于刷新/搜索动效
-function mockFetch<T>(data: T, delay = 300): Promise<T> {
-  return new Promise((r) => setTimeout(() => r(JSON.parse(JSON.stringify(data))), delay));
-}
-
-/** ============ 尺寸 ============ */
+/** ============ 常量 ============ */
 const { width: SCREEN_W } = Dimensions.get("window");
-// 按设计 3 列：左右各 24 内边距，中间 2 个间距（24）
 const H_PADDING = 24;
 const GAP = 24;
 const CARD_W = Math.floor((SCREEN_W - H_PADDING * 2 - GAP * 2) / 3);
-const IMAGE_H = 92; // 稍微偏高的圆角矩形
+const IMAGE_H = 92;
+const PLACEHOLDER =
+  "https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=800&auto=format&fit=crop";
 
 export default function MyClubs() {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const [queryText, setQueryText] = useState("");
   const [data, setData] = useState<Club[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return data;
-    return data.filter((c) => c.name.toLowerCase().includes(q));
-  }, [query, data]);
+// Listen for login status -> Subscribe to my club
+  useEffect(() => {
+    const stop = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        // Empty when not logged in; you can also jump to the login page here
+        setData([]);
+        return;
+      }
+      const qMine = query(
+        collection(db, "clubs"),
+        where("members", "array-contains", user.uid),
+        orderBy("name", "asc")
+      );
+      const unsub = onSnapshot(
+        qMine,
+        (snap) => {
+          const list: Club[] = snap.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as any),
+          }));
+          setData(list);
+        },
+        (err) => console.log("myClubs onSnapshot error:", err.code, err.message)
+      );
+      // 登录态变化或页面卸载时取消订阅
+      return () => unsub();
+    });
 
-  const load = useCallback(async () => {
-    // 将来接后端时切换为 fetchMyClubsFromAPI(query)
-    const list = await mockFetch(MOCK_CLUBS);
-    setData(list);
+    return () => stop();
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Local search filtering
+  const filtered = useMemo(() => {
+    const q = queryText.trim().toLowerCase();
+    if (!q) return data;
+    return data.filter((c) => (c.name ?? "").toLowerCase().includes(q));
+  }, [queryText, data]);
 
+  // Pull down to refresh (real-time subscriptions are automatically updated, this only triggers a read display refresh effect)
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  }, [load]);
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        await getDocs(
+          query(
+            collection(db, "clubs"),
+            where("members", "array-contains", user.uid),
+            orderBy("name", "asc")
+          )
+        );
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   const openClub = (club: Club) => {
-    // 将来接路由：router.push(`/clubs/${club.id}`)
-    Alert.alert("Open Club (Mock)", club.name);
+    Alert.alert("Open Club", club.name);
   };
 
-  /** 头部（返回 + 标题） */
+  /** Header） */
   const Header = () => (
     <View style={styles.headerRow}>
       <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={10}>
@@ -124,28 +120,31 @@ export default function MyClubs() {
     </View>
   );
 
-  /** 搜索框 */
+  /** SearchBar */
   const SearchBar = () => (
     <View style={styles.searchWrap}>
       <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
       <TextInput
         placeholder="Search clubs..."
         placeholderTextColor="#99A2C0"
-        value={query}
-        onChangeText={setQuery}
+        value={queryText}
+        onChangeText={setQueryText}
         returnKeyType="search"
         style={styles.searchInput}
       />
-      <Pressable onPress={() => setQuery(query)} hitSlop={10} style={{ paddingHorizontal: 10 }}>
+      <Pressable onPress={() => setQueryText(queryText)} hitSlop={10} style={{ paddingHorizontal: 10 }}>
         <Ionicons name="search" size={18} color="#99A2C0" />
       </Pressable>
     </View>
   );
 
-  /** 单个俱乐部卡片 */
+/** Single club card */
   const renderItem = ({ item }: { item: Club }) => (
     <Pressable style={styles.card} onPress={() => openClub(item)}>
-      <Image source={{ uri: item.coverImageUrl }} style={styles.cardImage} />
+      <Image
+        source={{ uri: item.coverImageUrl || PLACEHOLDER }}
+        style={styles.cardImage}
+      />
       <Text style={styles.cardLabel} numberOfLines={1}>
         {item.name}
       </Text>
@@ -167,6 +166,13 @@ export default function MyClubs() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />
         }
+        ListEmptyComponent={
+          <View style={{ paddingHorizontal: H_PADDING, marginTop: 16 }}>
+            <Text style={{ color: "#5C637C", textAlign: "center" }}>
+              You haven’t joined any clubs yet.
+            </Text>
+          </View>
+        }
         ListFooterComponent={<View style={{ height: 24 }} />}
       />
 
@@ -182,7 +188,6 @@ export default function MyClubs() {
   );
 }
 
-/** ============ 样式 ============ */
 const styles = StyleSheet.create({
   container: {
     flex: 1,

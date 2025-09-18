@@ -1,31 +1,25 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  Image,
-  ImageBackground,
-  TextInput,
-  Pressable,
-  FlatList,
-  ActivityIndicator,
-  RefreshControl,
-  Dimensions,
-  Platform,
-  ScrollView,
-  Alert,
+  View, Text, StyleSheet, Image, ImageBackground, TextInput, Pressable,
+  FlatList, ActivityIndicator, RefreshControl, Dimensions, Platform,
+  ScrollView, Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  collection, getDocs, limit, onSnapshot, orderBy, query, where,
+  Query, Unsubscribe,
+} from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { db, auth } from "../../../firebase";
 
-/** ========= 类型 ========= */
 type Club = {
   id: string;
   name: string;
   coverImageUrl?: string;
-  avatarUrl?: string;
   category?: string;
   isMember?: boolean;
+  members?: string[];
 };
 
 type Post = {
@@ -34,80 +28,17 @@ type Post = {
   coverImageUrl?: string;
   clubId?: string;
   hot?: boolean;
+  createdAt?: any; // Timestamp
 };
 
-/** ========= Mock 数据（无后端也可预览 UI） ========= */
+const { width: SCREEN_W } = Dimensions.get("window");
+const PANEL_W = Math.min(640, SCREEN_W - 28);
+const HERO_H = Math.round((PANEL_W * 9) / 16);
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=1200&auto=format&fit=crop";
 const AVATAR_PH =
   "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=400&auto=format&fit=crop";
 
-const MOCK_HOT_POST: Post = {
-  id: "p_hot",
-  title: "Welcome to the Clubs!",
-  coverImageUrl:
-    "https://images.unsplash.com/photo-1542638267-23939a74b675?q=80&w=1200&auto=format&fit=crop",
-  hot: true,
-};
-
-const MOCK_MY_CLUBS: Club[] = [
-  {
-    id: "c1",
-    name: "Fitness",
-    avatarUrl:
-      "https://images.unsplash.com/photo-1554284126-aa88f22d8b74?q=80&w=800&auto=format&fit=crop",
-    isMember: true,
-  },
-  {
-    id: "c2",
-    name: "Art & Design",
-    avatarUrl:
-      "https://images.unsplash.com/photo-1526312426976-593c32eac4a0?q=80&w=800&auto=format&fit=crop",
-    isMember: true,
-  },
-  {
-    id: "c3",
-    name: "Mindfulness",
-    avatarUrl:
-      "https://images.unsplash.com/photo-1517346665566-17bf9154868e?q=80&w=800&auto=format&fit=crop",
-    isMember: true,
-  },
-];
-
-const MOCK_ALL_CLUBS: Club[] = [
-  {
-    id: "c4",
-    name: "Travel",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1000&auto=format&fit=crop",
-  },
-  {
-    id: "c5",
-    name: "Music",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=1000&auto=format&fit=crop",
-  },
-  {
-    id: "c6",
-    name: "Swimming",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1519311965067-36d3e5f7b564?q=80&w=1000&auto=format&fit=crop",
-  },
-];
-
-/** 模拟异步请求（只为展示 loading/下拉刷新效果） */
-function mockFetch<T>(data: T, delay = 400): Promise<T> {
-  return new Promise((resolve) =>
-    setTimeout(() => resolve(JSON.parse(JSON.stringify(data))), delay)
-  );
-}
-
-/** ========= UI 常量 ========= */
-const { width: SCREEN_W } = Dimensions.get("window");
-const PANEL_W = Math.min(640, SCREEN_W - 28);
-const HERO_H = Math.round((PANEL_W * 9) / 16);
-
-/** ========= 页面 ========= */
 export default function ClubMainPage() {
   const router = useRouter();
 
@@ -118,51 +49,135 @@ export default function ClubMainPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async (q = "") => {
-    setLoading(true);
-    const filtered =
-      q.trim().length === 0
-        ? MOCK_ALL_CLUBS
-        : MOCK_ALL_CLUBS.filter((c) =>
-            c.name.toLowerCase().includes(q.trim().toLowerCase())
-          );
-    const [hot, mine, all] = await Promise.all([
-      mockFetch(MOCK_HOT_POST),
-      mockFetch(MOCK_MY_CLUBS),
-      mockFetch(filtered),
-    ]);
-    setHotPost(hot);
-    setMyClubs(mine);
-    setAllClubs(all);
-    setLoading(false);
+  const hotUnsubRef = useRef<Unsubscribe | null>(null);
+
+  /** ===== 顶部海报：订阅 posts 中 hot==true 的最新一条（带索引，失败则降级） */
+  useEffect(() => {
+    // 先尝试：where(hot) + orderBy(createdAt) + limit(1)
+    const qWithOrder: Query = query(
+      collection(db, "posts"),
+      where("hot", "==", true),
+      orderBy("createdAt", "desc"),
+      limit(1)
+    );
+
+    // 降级方案：where(hot) + limit(1)
+    const qFallback: Query = query(
+      collection(db, "posts"),
+      where("hot", "==", true),
+      limit(1)
+    );
+
+    function listen(q: Query, isFallback = false) {
+      if (hotUnsubRef.current) hotUnsubRef.current();
+      hotUnsubRef.current = onSnapshot(
+        q,
+        (snap) => {
+          console.log(isFallback ? "hot (fallback) size:" : "hot size:", snap.size);
+          const d = snap.docs[0];
+          setHotPost(d ? ({ id: d.id, ...(d.data() as any) } as Post) : null);
+        },
+        (err) => {
+          console.log("qHot error:", err.code, err.message);
+          // 缺少复合索引：failed-precondition / requires an index
+          if (!isFallback && err.code === "failed-precondition") {
+            // Automatically switch to unsorted query
+            listen(qFallback, true);
+          }
+        }
+      );
+    }
+
+    listen(qWithOrder);
+
+    return () => {
+      if (hotUnsubRef.current) {
+        hotUnsubRef.current();
+        hotUnsubRef.current = null;
+      }
+    };
   }, []);
 
+/** ===== All clubs: real-time subscription (local search and filtering) */
   useEffect(() => {
-    load();
-  }, [load]);
+    const qAll = query(collection(db, "clubs"), orderBy("name", "asc"));
+    const unsub = onSnapshot(
+      qAll,
+      (snap) => {
+        console.log("all clubs size:", snap.size);
+        const list: Club[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        setAllClubs(list);
+        setLoading(false);
+      },
+      (err) => console.log("qAll error:", err.code, err.message)
+    );
+    return () => unsub();
+  }, []);
 
+  /** My clubs: wait for login before subscribing (members array contains uid) */
+  useEffect(() => {
+    const stopAuth = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        console.log("auth: not signed in");
+        setMyClubs([]);
+        return;
+      }
+      const qMine = query(collection(db, "clubs"), where("members", "array-contains", user.uid));
+      const unsub = onSnapshot(
+        qMine,
+        (snap) => {
+          console.log("my clubs size:", snap.size);
+          const list: Club[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+          setMyClubs(list);
+        },
+        (err) => console.log("qMine error:", err.code, err.message)
+      );      
+    // Unsubscribe when the login state changes or the page is unloaded
+      return () => unsub();
+    });
+    return () => stopAuth();
+  }, []);
+
+
+/** Pull down to refresh (real-time subscriptions are automatically updated; only one read is triggered here to present the loading animation) */
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load(search);
-    setRefreshing(false);
-  }, [load, search]);
+    try {
+      await Promise.all([
+        getDocs(
+          query(
+            collection(db, "posts"),
+            where("hot", "==", true),
+            orderBy("createdAt", "desc"),
+            limit(1)
+          )
+        ).catch(() => getDocs(query(collection(db, "posts"), where("hot", "==", true), limit(1)))), // 索引缺失时降级
+        getDocs(query(collection(db, "clubs"), orderBy("name", "asc"))),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
-  const onSearchSubmit = useCallback(() => {
-    load(search);
-  }, [load, search]);
+  /** Local search (only works on All Clubs; if you want to work on My Clubs, also filter myClubs) */
+  const filteredAll = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const arr = allClubs ?? [];
+    if (!q) return arr;
+    return arr.filter((c) => (c.name ?? "").toLowerCase().includes(q));
+  }, [search, allClubs]);
 
-  /** 标题栏 */
+  /** UI */
   const Header = () => (
     <View style={styles.headerRow}>
       <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
         <Ionicons name="chevron-back" size={22} color="#6B7AFF" />
       </Pressable>
       <Text style={styles.title}>Clubs ✨</Text>
-      <View style={{ width: 32, height: 32 }} />{/* 占位，保持标题居中 */}
+      <View style={{ width: 32, height: 32 }} />
     </View>
   );
 
-  /** 搜索栏 */
   const SearchBar = () => (
     <View style={styles.searchWrap}>
       <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
@@ -171,7 +186,6 @@ export default function ClubMainPage() {
         placeholderTextColor="#99A2C0"
         value={search}
         onChangeText={setSearch}
-        onSubmitEditing={onSearchSubmit}
         returnKeyType="search"
         style={styles.searchInput}
       />
@@ -183,10 +197,9 @@ export default function ClubMainPage() {
     </View>
   );
 
-  /** 顶部海报 */
   const Hero = () => (
     <Pressable
-      onPress={() => hotPost && Alert.alert("Open Post (Mock)", hotPost.title)}
+      onPress={() => hotPost && Alert.alert("Open Post", hotPost.title)}
       disabled={!hotPost}
       style={{ borderRadius: 18, overflow: "hidden" }}
     >
@@ -196,7 +209,9 @@ export default function ClubMainPage() {
       >
         <View style={styles.heroMask} />
         <View style={styles.heroBadgeRow}>
-          <Text style={styles.heroBadge}><Text>🔥</Text> HOT</Text>
+          <Text style={styles.heroBadge}>
+            <Text>🔥</Text> HOT
+          </Text>
         </View>
         <View style={{ padding: 16 }}>
           <Text numberOfLines={1} style={styles.heroTitle}>
@@ -207,19 +222,11 @@ export default function ClubMainPage() {
     </Pressable>
   );
 
-  /** 分区标题 */
   const SectionHeader = ({
-    title,
-    actionText,
-    onAction,
-  }: {
-    title: string;
-    actionText?: string;
-    onAction?: () => void;       // 新增：跳转目标
-  }) => (
-    <View style={styles.sectionHeaderRow /* 或 sectionHeader */}>
+    title, actionText, onAction,
+  }: { title: string; actionText?: string; onAction?: () => void }) => (
+    <View style={styles.sectionHeaderRow}>
       <Text style={styles.sectionTitle}>{title}</Text>
-
       {!!actionText && (
         <Pressable hitSlop={10} style={styles.actionBtn} onPress={onAction}>
           <Text style={styles.actionText}>{actionText}</Text>
@@ -229,28 +236,19 @@ export default function ClubMainPage() {
     </View>
   );
 
-  /** 我的俱乐部卡片 */
   const MyClubItem = ({ item }: { item: Club }) => (
-    <Pressable
-      onPress={() => Alert.alert("Open Club (Mock)", item.name)}
-      style={styles.myClubItem}
-    >
-      <Image source={{ uri: item.avatarUrl || AVATAR_PH }} style={styles.myClubAvatar} />
+    <Pressable onPress={() => Alert.alert("Open Club", item.name)} style={styles.myClubItem}>
+      <Image source={{ uri: item.coverImageUrl || AVATAR_PH }} style={styles.myClubAvatar} />
       <Text numberOfLines={1} style={styles.myClubName}>{item.name}</Text>
     </Pressable>
   );
 
-  /** 全部俱乐部缩略图 */
   const AllClubThumb = ({ item }: { item: Club }) => (
-    <Pressable
-      onPress={() => Alert.alert("Open Club (Mock)", item.name)}
-      style={styles.thumbItem}
-    >
+    <Pressable onPress={() => Alert.alert("Open Club", item.name)} style={styles.thumbItem}>
       <Image source={{ uri: item.coverImageUrl || PLACEHOLDER }} style={styles.thumbImage} />
     </Pressable>
   );
 
-  /** 主体：ScrollView（外层纵向），内部两个横向 FlatList */
   const Content = () => (
     <ScrollView
       showsVerticalScrollIndicator={false}
@@ -262,17 +260,14 @@ export default function ClubMainPage() {
       <Header />
       <SearchBar />
 
-      {/* Hero 卡片区 */}
       <View style={styles.cardSection}>
         <Hero />
       </View>
 
-      {/* My Clubs 区 */}
       <View style={styles.cardSection}>
         <SectionHeader
           title="My Clubs"
           actionText="All Clubs"
-
           onAction={() => router.push("/Interest/myClubs")}
         />
         {myClubs && myClubs.length > 0 ? (
@@ -285,11 +280,12 @@ export default function ClubMainPage() {
             renderItem={({ item }) => <MyClubItem item={item} />}
           />
         ) : (
-          <View style={styles.emptyBox}><Text style={styles.emptyText}>You haven’t joined any clubs yet.</Text></View>
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>You haven’t joined any clubs yet.</Text>
+          </View>
         )}
       </View>
 
-      {/* All Clubs 区 */}
       <View style={styles.cardSection}>
         <SectionHeader
           title="All Clubs"
@@ -297,7 +293,7 @@ export default function ClubMainPage() {
           onAction={() => router.push("/Interest/allClubs")}
         />
         <FlatList
-          data={allClubs ?? []}
+          data={filteredAll}
           keyExtractor={(c) => c.id}
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -340,7 +336,6 @@ export default function ClubMainPage() {
   );
 }
 
-/** ========= 样式 ========= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -348,19 +343,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: Platform.select({ ios: 52, android: 24 }),
   },
-
-  /** 顶部标题 */
   headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
   backBtn: {
     width: 32, height: 32, borderRadius: 16,
-    alignItems: "center", justifyContent: "center",
+    alignItems: "center", justifyContent: "center"
   },
   title: {
     flex: 1, textAlign: "center",
-    fontSize: 28, fontWeight: "800", color: "#6B7AFF", letterSpacing: 0.3,
+    fontSize: 28, fontWeight: "800", color: "#6B7AFF", letterSpacing: 0.3
   },
-
-  /** 搜索框 */
   searchWrap: {
     flexDirection: "row", alignItems: "center",
     height: 48, borderRadius: 16, backgroundColor: "white",
@@ -368,16 +359,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 }, elevation: 2, marginBottom: 14,
   },
   searchInput: { flex: 1, height: "100%", fontSize: 16, color: "#203160" },
-
-  /** 分区外框（还原设计稿的卡片块） */
   cardSection: {
-    backgroundColor: "#D7E2FF",
-    borderRadius: 18,
-    padding: 14,
-    marginTop: 14,
+    backgroundColor: "#D7E2FF", borderRadius: 18, padding: 14, marginTop: 14
   },
-
-  /** Hero */
   heroMask: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.25)" },
   heroBadgeRow: { position: "absolute", top: 10, right: 10, flexDirection: "row" },
   heroBadge: {
@@ -385,26 +369,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.85)", color: "#1F254B", fontWeight: "800",
   },
   heroTitle: { color: "white", fontSize: 28, fontWeight: "900" },
-
-  /** 标题行 */
   sectionHeaderRow: {
-    paddingHorizontal: 6, marginBottom: 8,
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 6, marginBottom: 8, flexDirection: "row",
+    alignItems: "center", justifyContent: "space-between"
   },
   sectionTitle: { fontSize: 22, fontWeight: "800", color: "#6B7AFF" },
   actionBtn: { paddingHorizontal: 6, paddingVertical: 4, flexDirection: "row", alignItems: "center" },
   actionText: { color: "#8EA0FF", fontWeight: "700" },
-
-  /** My Clubs 卡片尺寸（固定宽高，避免“飘”） */
   myClubItem: { width: 96, marginHorizontal: 6, alignItems: "center" },
   myClubAvatar: { width: 96, height: 76, borderRadius: 16, marginBottom: 8 },
   myClubName: { fontSize: 16, color: "#1D2A5B", fontWeight: "700" },
-
-  /** All Clubs 缩略图（固定尺寸） */
   thumbItem: { width: 98, height: 88, borderRadius: 16, overflow: "hidden", marginHorizontal: 6 },
   thumbImage: { width: "100%", height: "100%" },
-
-  /** 空态/加载/底部栏 */
   emptyBox: { marginHorizontal: 8, marginVertical: 8, padding: 14, backgroundColor: "white", borderRadius: 14 },
   emptyText: { color: "#6E7CA8" },
   loadingBox: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },

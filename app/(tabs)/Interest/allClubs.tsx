@@ -1,4 +1,3 @@
-// app/(tabs)/Interest/allClubs.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -12,99 +11,26 @@ import {
   Platform,
   RefreshControl,
   Alert,
-  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { collection, onSnapshot, orderBy, query, getDocs } from "firebase/firestore";
+import { db } from "../../../firebase";
 
-/** ============ 类型 ============ */
 type Club = {
   id: string;
   name: string;
   coverImageUrl: string;
-  categories: string[]; // 用于筛选的标签
+  categories: string[];
 };
 
-/** ============ 后端占位 ============ */
-// 将来接后端时启用这段，并把 BASE_URL 改成你的服务地址
-// const API_BASE_URL = "https://api.example.com";
-// async function fetchAllClubsFromAPI(q: string, tag?: string): Promise<Club[]> {
-//   const qs = new URLSearchParams();
-//   if (q) qs.set("q", q);
-//   if (tag && tag !== "All") qs.set("category", tag);
-//   const res = await fetch(`${API_BASE_URL}/clubs?${qs.toString()}`);
-//   if (!res.ok) throw new Error(await res.text());
-//   return res.json();
-// }
+type Placeholder = { id: string; __placeholder: true };
+type GridItem = Club | Placeholder;
 
-/** ============ 本地 Mock 数据（演示 UI） ============ */
-const MOCK_CLUBS: Club[] = [
-  {
-    id: "travel",
-    name: "Travel",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1542909168-82c3e7fdca5c?q=80&w=800&auto=format&fit=crop",
-    categories: ["Travel", "Lifestyle"],
-  },
-  {
-    id: "music",
-    name: "Music",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800&auto=format&fit=crop",
-    categories: ["Music", "Arts"],
-  },
-  {
-    id: "swimming",
-    name: "Swimming",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1546519638-68e109498ffc?q=80&w=800&auto=format&fit=crop",
-    categories: ["Sports"],
-  },
-  {
-    id: "book",
-    name: "Book",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1513475382585-d06e58bcb0ea?q=80&w=800&auto=format&fit=crop",
-    categories: ["Study", "Lifestyle"],
-  },
-  {
-    id: "guitar",
-    name: "Guitar",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1511379938547-c1f69419868d?q=80&w=800&auto=format&fit=crop",
-    categories: ["Music", "Arts"],
-  },
-  {
-    id: "baking",
-    name: "Baking",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1499636136210-6f4ee915583e?q=80&w=800&auto=format&fit=crop",
-    categories: ["Food", "Lifestyle"],
-  },
-  {
-    id: "yoga",
-    name: "Yoga",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1575052814086-f385e2e2ad1b?q=80&w=800&auto=format&fit=crop",
-    categories: ["Lifestyle", "Sports"],
-  },
-  {
-    id: "football",
-    name: "Football",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1471295253337-3ceaaedca402?q=80&w=800&auto=format&fit=crop",
-    categories: ["Sports"],
-  },
-];
+/** ============ 筛选标签（静态） ============ */
+const TAGS = ["All", "Arts", "Food", "Lifestyle", "Music", "Sports", "Study", "Travel"] as const;
+type Tag = (typeof TAGS)[number];
 
-function mockFetch<T>(data: T, delay = 300): Promise<T> {
-  return new Promise((r) => setTimeout(() => r(JSON.parse(JSON.stringify(data))), delay));
-}
-
-/** ============ 筛选标签 ============ */
-const TAGS = ["All", "Arts", "Food", "Lifestyle", "Music", "Sports", "Study", "Travel"];
-
-/** ============ 尺寸 ============ */
 const { width: SCREEN_W } = Dimensions.get("window");
 const H_PADDING = 24;
 const GAP = 24;
@@ -114,39 +40,76 @@ const IMAGE_H = 92;
 export default function AllClubs() {
   const router = useRouter();
 
-  const [query, setQuery] = useState("");
-  const [tag, setTag] = useState<string>("All");
+  const [queryText, setQueryText] = useState("");
+  const [tag, setTag] = useState<Tag>("All");
   const [data, setData] = useState<Club[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return data.filter((c) => {
-      const matchText = q ? c.name.toLowerCase().includes(q) : true;
-      const matchTag = tag === "All" ? true : c.categories.includes(tag);
-      return matchText && matchTag;
+  // Real-time subscription to clubs
+  useEffect(() => {
+    const q = query(collection(db, "clubs"), orderBy("name", "asc"));
+    const unsub = onSnapshot(q, (snap) => {
+      const list: Club[] = snap.docs.map((d) => {
+        const raw = d.data() as any;
+        return {
+          id: d.id,
+          name: String(raw.name ?? ""),
+          coverImageUrl: String(raw.coverImageUrl ?? ""),
+          categories: Array.isArray(raw.categories) ? raw.categories.map(String) : [],
+        };
+      });
+      setData(list);
     });
-  }, [query, tag, data]);
-
-  const load = useCallback(async () => {
-    // 将来接后端时切换为：const list = await fetchAllClubsFromAPI(query, tag);
-    const list = await mockFetch(MOCK_CLUBS);
-    setData(list);
+    return () => unsub();
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // local filtering
+  const filtered: Club[] = useMemo(() => {
+    const q = queryText.trim().toLowerCase();
+    return data.filter((c) => {
+      const matchText = q ? c.name.toLowerCase().includes(q) : true;
+      const matchTag = tag === "All" ? true : c.categories?.includes(tag);
+      return matchText && matchTag;
+    });
+  }, [queryText, tag, data]);
 
+  
+  // Fill in the placeholder elements so that each row has 3 //
+  const filled: GridItem[] = useMemo(() => {
+    const arr: GridItem[] = [...filtered];
+    const mod = arr.length % 3;
+    if (mod !== 0) {
+      const add = 3 - mod;
+      for (let i = 0; i < add; i++) {
+        arr.push({ id: `__ph_${i}`, __placeholder: true });
+      }
+    }
+    return arr;
+  }, [filtered]);
+
+  // Manual refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  }, [load]);
+    try {
+      const q = query(collection(db, "clubs"), orderBy("name", "asc"));
+      const snap = await getDocs(q);
+      const list: Club[] = snap.docs.map((d) => {
+        const raw = d.data() as any;
+        return {
+          id: d.id,
+          name: String(raw.name ?? ""),
+          coverImageUrl: String(raw.coverImageUrl ?? ""),
+          categories: Array.isArray(raw.categories) ? raw.categories.map(String) : [],
+        };
+      });
+      setData(list);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   const openClub = (club: Club) => {
-    // 将来接路由：router.push(`/clubs/${club.id}`)
-    Alert.alert("Open Club (Mock)", club.name);
+    Alert.alert("Open Club", club.name);
   };
 
   /** Header */
@@ -167,18 +130,18 @@ export default function AllClubs() {
       <TextInput
         placeholder="Search clubs..."
         placeholderTextColor="#99A2C0"
-        value={query}
-        onChangeText={setQuery}
+        value={queryText}
+        onChangeText={setQueryText}
         returnKeyType="search"
         style={styles.searchInput}
       />
-      <Pressable onPress={() => setQuery(query)} hitSlop={10} style={{ paddingHorizontal: 10 }}>
+      <Pressable onPress={() => setQueryText(queryText)} hitSlop={10} style={{ paddingHorizontal: 10 }}>
         <Ionicons name="search" size={18} color="#99A2C0" />
       </Pressable>
     </View>
   );
 
-  /** 标签 Chips（两行自动换行） */
+  /** 标签 Chips */
   const TagChips = () => (
     <View style={styles.tagsWrap}>
       {TAGS.map((t) => {
@@ -198,15 +161,23 @@ export default function AllClubs() {
     </View>
   );
 
-  /** 单个卡片 */
-  const renderItem = ({ item }: { item: Club }) => (
-    <Pressable style={styles.card} onPress={() => openClub(item)}>
-      <Image source={{ uri: item.coverImageUrl }} style={styles.cardImage} />
-      <Text style={styles.cardLabel} numberOfLines={1}>
-        {item.name}
-      </Text>
-    </Pressable>
-  );
+  /** Single grid (including placeholder) */
+  const renderItem = ({ item }: { item: GridItem }) => {
+    const isPh = (item as Placeholder).__placeholder === true;
+    if (isPh) {
+      // Transparent placeholder, ensuring there are exactly 3 per row
+      return <View style={[styles.card, styles.placeholder]} pointerEvents="none" />;
+    }
+    const club = item as Club;
+    return (
+      <Pressable style={styles.card} onPress={() => openClub(club)}>
+        <Image source={{ uri: club.coverImageUrl }} style={styles.cardImage} />
+        <Text style={styles.cardLabel} numberOfLines={1}>
+          {club.name}
+        </Text>
+      </Pressable>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -215,19 +186,19 @@ export default function AllClubs() {
       <TagChips />
 
       <FlatList
-        data={filtered}
+        data={filled}
         keyExtractor={(it) => it.id}
         renderItem={renderItem}
         numColumns={3}
+        // Use space-between + placeholder, the last line will no longer have a "gap in the middle"
         columnWrapperStyle={{ justifyContent: "space-between", paddingHorizontal: H_PADDING }}
         contentContainerStyle={{ paddingTop: 10, paddingBottom: 20 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />}
+        ListEmptyComponent={<Text style={{ textAlign: "center", color: "#6b7280", marginTop: 16 }}>No clubs</Text>}
         ListFooterComponent={<View style={{ height: 24 }} />}
+        showsVerticalScrollIndicator={false}
       />
 
-      {/* 底部图标（静态示意） */}
       <View style={styles.bottomBar}>
         <Ionicons name="happy-outline" size={26} color="#222" />
         <Ionicons name="document-text-outline" size={26} color="#222" />
@@ -239,7 +210,6 @@ export default function AllClubs() {
   );
 }
 
-/** ============ 样式 ============ */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -338,6 +308,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: "#111826",
+  },
+
+  // Transparent placeholder
+  placeholder: {
+    opacity: 0,
   },
 
   /* Bottom bar */
