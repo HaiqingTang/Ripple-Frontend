@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Dimensions,
-  KeyboardAvoidingView,
-  Platform,
+	View,
+	Text,
+	ScrollView,
+	TouchableOpacity,
+	TextInput,
+	Dimensions,
+	KeyboardAvoidingView,
+	Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -69,8 +69,9 @@ export default function PersonalLog() {
 			  ...logData,
 		  })
 	  } catch (error) {
-			console.error(error);
-			// TODO: Handle error
+			console.error(error); // TODO: debug purposes, remove from prod
+		  Alert.alert('Error', 'Failed to save your log. Please try again.');
+		  return;
 	  }
     
     // Redirect to success page
