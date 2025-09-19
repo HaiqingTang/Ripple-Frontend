@@ -6,7 +6,6 @@ import {
   TextInput,
   Pressable,
   Image,
-  ImageBackground,
   FlatList,
   Dimensions,
   Platform,
@@ -44,15 +43,14 @@ type Club = {
 };
 
 type Post = {
-  id: string;
-  name: string; // posts 里用 club 的名字做关联键
+  name: string; // post is linked to club by club name in your schema
   authorName?: string;
   authorAvatarUrl?: string;
   title?: string;
   text?: string;
   imageUrl?: string;
   createdAt?: any; // Firestore Timestamp | ISO | Date
-  creatAt?: any;   // 兼容你截图里的字段名
+  creatAt?: any; // some of your docs use this field name
   supportCount?: number;
 };
 
@@ -87,9 +85,13 @@ export default function ClubTopic() {
   const router = useRouter();
   const { name: routeName } = useLocalSearchParams<{ name?: string }>();
 
+  // search keyword (local filter on loaded posts)
   const [q, setQ] = useState("");
+
+  // club doc
   const [club, setClub] = useState<Club | null>(null);
 
+  // posts + pagination state
   const PAGE_SIZE = 6;
   const [posts, setPosts] = useState<Post[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,9 +100,9 @@ export default function ClubTopic() {
 
   const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
   const orderFieldRef = useRef<"createdAt" | "creatAt" | null>("createdAt");
-  const fallbackNoOrderRef = useRef(false);
+  const fallbackNoOrderRef = useRef(false); // if we can't order, we don't paginate
 
-  // 1) 订阅 club（按 name 等值）
+  /** 1) Subscribe to club by exact name */
   useEffect(() => {
     const name = (routeName || "").trim();
     if (!name) {
@@ -136,7 +138,7 @@ export default function ClubTopic() {
     return () => unsub();
   }, [routeName]);
 
-  // 2) 首次加载 posts
+  /** 2) Load first page of posts for this club */
   const fetchFirstPage = useCallback(async () => {
     if (!club?.name) return;
     setRefreshing(true);
@@ -164,13 +166,14 @@ export default function ClubTopic() {
           lastDocRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
           setHasMore(snap.size === PAGE_SIZE);
         } else {
-          fallbackNoOrderRef.current = true; // 无排序不分页
+          // no ordering -> no pagination
+          fallbackNoOrderRef.current = true;
           setHasMore(false);
         }
         setRefreshing(false);
         return;
       } catch {
-        // 没索引/字段不存在则尝试下一个方案
+        // try next ordering strategy
         continue;
       }
     }
@@ -179,7 +182,7 @@ export default function ClubTopic() {
     Alert.alert("Error", "Failed to load posts.");
   }, [club?.name]);
 
-  // 3) 下一页
+  /** 3) Load next page if available */
   const fetchNextPage = useCallback(async () => {
     if (fallbackNoOrderRef.current) return;
     if (!club?.name || loadingMore || !hasMore) return;
@@ -203,16 +206,18 @@ export default function ClubTopic() {
     }
   }, [club?.name, loadingMore, hasMore]);
 
+  // initial load + when club changes
   useEffect(() => {
     if (!club?.name) return;
     fetchFirstPage();
   }, [club?.name, fetchFirstPage]);
 
+  // pull-to-refresh
   const onRefresh = useCallback(async () => {
     await fetchFirstPage();
   }, [fetchFirstPage]);
 
-  // 加入/退出
+  /** Join / Unjoin the club */
   const toggleJoin = useCallback(async () => {
     if (!club) return;
     const user = auth.currentUser;
@@ -231,7 +236,7 @@ export default function ClubTopic() {
     }
   }, [club]);
 
-  // 本地搜索帖子
+  /** Local filter for posts */
   const filteredPosts = useMemo(() => {
     const keyword = q.trim().toLowerCase();
     if (!keyword) return posts;
@@ -244,8 +249,10 @@ export default function ClubTopic() {
     });
   }, [q, posts]);
 
+  /** Sticky header: back + search + club card */
   const StickyTop = () => (
     <View style={styles.stickyWrap}>
+      {/* Back + search bar */}
       <View style={styles.searchRow}>
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
           <Ionicons name="chevron-back" size={22} color="#6B7AFF" />
@@ -264,6 +271,7 @@ export default function ClubTopic() {
         </View>
       </View>
 
+      {/* Club summary card */}
       <View style={styles.clubCard}>
         <Image source={{ uri: club?.coverImageUrl || AVATAR_FALLBACK }} style={styles.clubThumb} />
         <View style={{ flex: 1, marginLeft: 12 }}>
@@ -295,6 +303,7 @@ export default function ClubTopic() {
     </View>
   );
 
+  /** Composer (placeholder UI) */
   const ComposerCard = () => (
     <View style={styles.composerCard}>
       <Image source={{ uri: AVATAR_FALLBACK }} style={styles.composerAvatar} />
@@ -308,10 +317,12 @@ export default function ClubTopic() {
     </View>
   );
 
+  /** Post item (image above, caption below) */
   const PostItem = ({ item }: { item: Post }) => {
     const created = item.createdAt ?? item.creatAt ?? Date.now();
     return (
       <View style={styles.postCard}>
+        {/* Author row */}
         <View style={styles.postHeader}>
           <Image source={{ uri: item.authorAvatarUrl || AVATAR_FALLBACK }} style={styles.authorAvatar} />
           <View style={{ flex: 1 }}>
@@ -323,22 +334,25 @@ export default function ClubTopic() {
           </Pressable>
         </View>
 
+        {/* Media + text */}
         {item.imageUrl ? (
-          <View style={{ borderRadius: CARD_RADIUS, overflow: "hidden", marginTop: 6 }}>
-            <ImageBackground source={{ uri: item.imageUrl }} style={styles.postImage}>
-              {item.text ? (
-                <View style={styles.bubble}>
-                  <Text style={styles.bubbleText}>{item.text}</Text>
-                </View>
-              ) : null}
-            </ImageBackground>
-          </View>
+          <>
+            <View style={styles.postImageWrap}>
+              <Image source={{ uri: item.imageUrl }} style={styles.postImage} />
+            </View>
+            {item.text ? (
+              <View style={styles.captionBox}>
+                <Text style={styles.captionText}>{item.text}</Text>
+              </View>
+            ) : null}
+          </>
         ) : item.text ? (
           <View style={styles.textOnly}>
             <Text style={{ color: "#1A2036" }}>{item.text}</Text>
           </View>
         ) : null}
 
+        {/* Actions */}
         <View style={styles.postActions}>
           <Pressable style={styles.lightPill} onPress={() => Alert.alert("Open Post (Mock)")}>
             <Text style={styles.lightPillText}>View post</Text>
@@ -359,7 +373,7 @@ export default function ClubTopic() {
     <View style={styles.container}>
       <FlatList
         data={dataForList}
-        keyExtractor={(it, idx) => it.id ?? `k${idx}`}
+        keyExtractor={(it, idx) => it.id ?? `k${idx}` }
         renderItem={renderItem}
         ListHeaderComponent={<StickyTop />}
         stickyHeaderIndices={[0]}
@@ -378,6 +392,7 @@ export default function ClubTopic() {
         contentContainerStyle={{ paddingBottom: 20 }}
       />
 
+      {/* Static bottom icons (visual only) */}
       <View style={styles.bottomBar}>
         <Ionicons name="happy-outline" size={26} color="#222" />
         <Ionicons name="document-text-outline" size={26} color="#222" />
@@ -498,17 +513,24 @@ const styles = StyleSheet.create({
     backgroundColor: "#E7ECFF",
   },
 
-  postImage: { width: "100%", height: SCREEN_W * 0.6, justifyContent: "flex-end" },
-  bubble: {
-    alignSelf: "flex-start",
-    margin: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "rgba(255,255,255,0.85)",
-    borderRadius: 14,
-    maxWidth: "90%",
+  // NEW: image wrap (to get rounded corners) + image style
+  postImageWrap: {
+    borderRadius: CARD_RADIUS,
+    overflow: "hidden",
   },
-  bubbleText: { color: "#1A2036" },
+  postImage: {
+    width: "100%",
+    height: SCREEN_W * 0.6,
+  },
+
+  // NEW: caption below the image
+  captionBox: {
+    marginTop: 8,
+    backgroundColor: "white",
+    padding: 12,
+    borderRadius: CARD_RADIUS,
+  },
+  captionText: { color: "#1A2036" },
 
   textOnly: { backgroundColor: "white", padding: 12, borderRadius: CARD_RADIUS },
 
