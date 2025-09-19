@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {useAppContext} from "@/context/AppContext";
+import { useRouter } from 'expo-router';
 import pic1 from '@/assets/images/profile-post-1.png';
 import pic2 from '@/assets/images/profile-post-2.png';
 import pic3 from '@/assets/images/profile-post-3.png';
@@ -17,6 +18,7 @@ import pic3 from '@/assets/images/profile-post-3.png';
 const { width } = Dimensions.get("window");
 
 export default function ProfilePage() {
+	const router = useRouter();
 	// Get username details from global context
 	const {userName, fullName} = useAppContext();
 	// TODO: get post count from db
@@ -67,8 +69,10 @@ export default function ProfilePage() {
 				<Text style={styles.name}>{fullName}</Text>
 				<Text style={styles.handle}>{userName}</Text>
 
-				<TouchableOpacity style={styles.editButton}>
-					{/*TODO: add listener to navigate to edit page*/}
+				<TouchableOpacity
+					style={styles.editButton}
+					onPress={() => router.push('/profile/edit')}
+				>
 					<Text style={styles.editButtonText}>Edit Profile</Text>
 				</TouchableOpacity>
 

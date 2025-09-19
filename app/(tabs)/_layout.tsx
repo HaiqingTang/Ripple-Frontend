@@ -1,7 +1,8 @@
 // app/(tabs)/_layout.tsx
 import { Tabs } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Platform, SafeAreaView } from 'react-native';
+import { Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const BLUE_BG = '#DDE7FF';
 
