@@ -1,4 +1,3 @@
-// app/(tabs)/Interest/clubTopic.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -400,7 +399,7 @@ const styles = StyleSheet.create({
 
   stickyWrap: {
     backgroundColor: "#DDE7FF",
-    paddingTop: 6,
+    paddingTop: 60,
     paddingBottom: 10,
   },
   searchRow: {

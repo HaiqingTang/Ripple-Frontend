@@ -1,4 +1,3 @@
-// app/(tabs)/Interest/newMeetup.tsx
 import React, { useState } from "react";
 import {
   View,
