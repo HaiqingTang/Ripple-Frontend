@@ -11,7 +11,16 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import {
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+  doc,
+  updateDoc,
+  arrayRemove,
+} from "firebase/firestore";
 import { db, auth } from "../../../firebase";
 
 type Meetup = {
@@ -31,6 +40,7 @@ export default function MyMeetupsPage() {
   const [items, setItems] = useState<Meetup[]>([]);
 
   useEffect(() => {
+    // Subscribe to meetups that the current user joined, newest first
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
@@ -64,17 +74,54 @@ export default function MyMeetupsPage() {
   }, []);
 
   const filtered = useMemo(() => {
+    // Simple title filter
     const q = queryText.trim().toLowerCase();
     if (!q) return items;
     return items.filter((m) => m.title.toLowerCase().includes(q));
   }, [queryText, items]);
 
-  const onWithdraw = (m: Meetup) => {
-    Alert.alert("Withdraw", `You withdrew from ${m.title}`);
+  // Navigate to meetup detail with id in params
+  const onOpenDetail = (m: Meetup) => {
+    router.push({
+      pathname: "/(tabs)/Interest/meetupDetail1",
+      params: { id: m.id },
+    });
   };
 
+  // Confirm and leave the meetup by removing current user from participants
+  const onWithdraw = (m: Meetup) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      Alert.alert("Not signed in", "Please sign in first.");
+      return;
+    }
+    Alert.alert(
+      "Withdraw",
+      `Leave this meetup: "${m.title}"?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await updateDoc(doc(db, "meetups", m.id), {
+                participants: arrayRemove(uid),
+              });
+              // Realtime list is auto-updated by onSnapshot subscription
+            } catch (e: any) {
+              Alert.alert("Withdraw failed", e?.message ?? "Unknown error");
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // Navigate to manage page for created meetups
   const onManageCreated = () => {
-    Alert.alert("Manage", "Go to manage my created meetups");
+    router.push("/(tabs)/Interest/meetupManageMyMeetup");
   };
 
   // header + search moved into FlatList header
@@ -121,15 +168,22 @@ export default function MyMeetupsPage() {
         data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View style={[styles.meetupRow, { marginHorizontal: 16 }]}>
+          // Whole row is pressable to open detail
+          <Pressable
+            onPress={() => onOpenDetail(item)}
+            style={[styles.meetupRow, { marginHorizontal: 16 }]}
+          >
             <Text style={styles.meetupName}>{item.title}</Text>
             <View style={styles.rowRight}>
               <Text style={styles.meetupDate}>{item.date}</Text>
-              <Pressable style={styles.withdrawBtn} onPress={() => onWithdraw(item)}>
+              <Pressable
+                style={styles.withdrawBtn}
+                onPress={() => onWithdraw(item)}
+              >
                 <Text style={styles.withdrawText}>Withdraw</Text>
               </Pressable>
             </View>
-          </View>
+          </Pressable>
         )}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListEmptyComponent={<Text style={styles.empty}>No meetups found.</Text>}

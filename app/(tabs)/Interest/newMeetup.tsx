@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { useRouter, useNavigation } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as Location from "expo-location"; // static import is safer
 
 // Firestore and Auth
 import {
@@ -69,25 +70,30 @@ export default function NewMeetup() {
     );
   };
 
-  // geocode by dynamic import to avoid native module crash if not built in
+  // geocode using expo-location
   const handleGeocodeSubmit = async () => {
     const q = locationName.trim();
     if (!q) return;
+
     try {
       setIsGeocoding(true);
-      const Location = await import("expo-location");
+
+      // Requesting foreground permission for safety
+      await Location.requestForegroundPermissionsAsync().catch(() => {});
+
       const results = await Location.geocodeAsync(q);
-      if (results && results.length > 0) {
-        const { latitude, longitude } = results[0];
-        setRegion((r) => ({ ...r, latitude, longitude }));
-      } else {
-        Alert.alert("Not found", "No coordinates found for this location.");
+      if (!results?.length) {
+        Alert.alert("Not found", "Try another keyword or check your network.");
+        return;
       }
-    } catch (err: any) {
-      Alert.alert(
-        "Geocoding unavailable",
-        "expo-location is not available in this client. You can still drag the map to pick a point."
-      );
+      const { latitude, longitude } = results[0];
+      setRegion((r) => ({ ...r, latitude, longitude }));
+    } catch (e: any) {
+      const msg =
+        typeof e?.message === "string"
+          ? e.message
+          : "Geocoding failed, please check your network or try later.";
+      Alert.alert("Geocoding error", msg);
     } finally {
       setIsGeocoding(false);
     }
@@ -134,7 +140,6 @@ export default function NewMeetup() {
       },
       imageUrl: DEFAULT_IMAGE_URL,
       sponsorName: DEFAULT_SPONSOR_NAME,
-      // createdAt removed per your request
     };
 
     try {
@@ -292,10 +297,10 @@ function LinedRow({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#dfeaff" }, // new: safe area wrapper
+  safe: { flex: 1, backgroundColor: "#dfeaff" },
   screen: { flex: 1, backgroundColor: "#dfeaff" },
   header: {
-    paddingTop: 24, // moved further down
+    paddingTop: 24,
     paddingHorizontal: 16,
     paddingBottom: 10,
     flexDirection: "row",
