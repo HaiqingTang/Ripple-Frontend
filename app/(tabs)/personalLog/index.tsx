@@ -13,6 +13,8 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppContext } from '@/context/AppContext';
+import {addDoc, collection} from "@firebase/firestore";
+import {db} from "@/lib/firebase";
 
 const { width } = Dimensions.get('window');
 const BLUE_BG = '#DDE7FF';
@@ -29,7 +31,7 @@ export default function PersonalLog() {
   const [sleepQuality, setSleepQuality] = useState(8);
   const [journalText, setJournalText] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const { fullName, dayOfWeek, formattedDate } = useAppContext();
+  const {userId, fullName, dayOfWeek, formattedDate } = useAppContext();
 
   const emojis = ['😢', '😕', '😐', '😊', '😄'];
 
@@ -48,21 +50,28 @@ export default function PersonalLog() {
     }
   }, [params.journal, params.tags]);
 
-  const handleSave = () => {
-    const logData = {
-      date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
-      dayRating,
-      moodRating,
-      selectedEmoji: selectedEmoji + 1, // Save as 1-5 integer instead of emoji character
-      journalText,
-      tags: selectedTags,
-      sleepDuration,
-      sleepQuality,
-      timestamp: new Date().toISOString()
-    };
+  const handleSave = async () => {
+	  const logData = {
+		  date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
+		  dayRating,
+		  moodRating,
+		  selectedEmoji: selectedEmoji + 1, // Save as 1-5 integer instead of emoji character
+		  journalText,
+		  tags: selectedTags,
+		  sleepDuration,
+		  sleepQuality,
+		  timestamp: new Date().toISOString()
+	  };
 
-    // TODO:replace this with actual backend call
-    console.log('Saving log data:', logData);
+	  try {
+		  const docRef = await addDoc(collection(db, 'personalLogs'), {
+			  userId,
+			  ...logData,
+		  })
+	  } catch (error) {
+			console.error(error);
+			// TODO: Handle error
+	  }
     
     // Redirect to success page
     router.push('/journal/success');
