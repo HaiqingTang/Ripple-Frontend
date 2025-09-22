@@ -1,5 +1,7 @@
-name: Code review
-on: [pull_request]
+name: code-review
+on:
+  pull_request:
+
 jobs:
   code-review:
     runs-on: ubuntu-latest
@@ -7,6 +9,20 @@ jobs:
       contents: read
       pull-requests: write
     steps:
+      # Checkout the repo
+      - uses: actions/checkout@v3
+
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      # Install the old OpenAI version required by fxchen/code-review
+      - name: Install dependencies
+        run: pip install openai==0.28
+
+      # Run the code review
       - uses: fxchen/code-review@latest
         with:
           model: 'gpt-3.5-turbo-16k'
