@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  TextInput,
   ScrollView,
   Image,
   Alert,
@@ -27,6 +26,7 @@ type Meetup = {
   sponsorName?: string;
   tags?: string[];
   imageUrl?: string;
+  maxCapacity?: number | null;
 };
 
 export default function MeetupDetailPage() {
@@ -39,7 +39,6 @@ export default function MeetupDetailPage() {
       ? params.id[0]
       : undefined;
 
-  const [query, setQuery] = useState("");
   const [meetup, setMeetup] = useState<Meetup | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">(
     "idle"
@@ -75,11 +74,12 @@ export default function MeetupDetailPage() {
           participants: Array.isArray(data.participants) ? data.participants : [],
           sponsorName: data.sponsorName,
           tags: Array.isArray(data.tags) ? data.tags : [],
-          // handle empty string fallback
           imageUrl:
             typeof data.imageUrl === "string" && data.imageUrl.trim() !== ""
               ? data.imageUrl
               : "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop",
+          maxCapacity:
+            typeof data.maxCapacity === "number" ? data.maxCapacity : null,
         });
         setStatus("ready");
       } catch {
@@ -98,7 +98,6 @@ export default function MeetupDetailPage() {
     try {
       if (!id) return;
       const ref = doc(db, "meetups", String(id));
-      // Non-empty assertion to avoid TS errors; runtime verification has been done above
       await updateDoc(ref, { participants: arrayUnion(auth.currentUser!.uid) });
       Alert.alert("Joined", "You have joined this meetup");
       setMeetup((prev) =>
@@ -133,14 +132,7 @@ export default function MeetupDetailPage() {
             onPress={() => {
               if (router.canGoBack()) router.back();
             }}
-            style={{
-              height: 40,
-              width: 160,
-              borderRadius: 10,
-              backgroundColor: "#e9f0ff",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
+            style={styles.backBtnBig}
           >
             <Text style={{ color: "#345BCE", fontWeight: "800" }}>Go back</Text>
           </Pressable>
@@ -156,7 +148,7 @@ export default function MeetupDetailPage() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* header */}
+        {/* Header */}
         <View style={styles.header}>
           <Pressable hitSlop={8} onPress={() => router.back()} style={styles.iconBtn}>
             <Ionicons name="chevron-back" size={22} color="#2c3e50" />
@@ -171,58 +163,58 @@ export default function MeetupDetailPage() {
           </Pressable>
         </View>
 
-        {/* search */}
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color="#6b7280" />
-          <TextInput
-            placeholder="Search meetups..."
-            placeholderTextColor="#9aa3b2"
-            style={styles.searchInput}
-            value={query}
-            onChangeText={setQuery}
-            returnKeyType="search"
-          />
-        </View>
-
-        {/* top card */}
+        {/* Top card */}
         <View style={styles.card}>
           <View style={styles.topRow}>
-            <Image
-              source={{
-                uri:
-                  meetup.imageUrl ??
-                  "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop",
-              }}
-              style={styles.thumb}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.meetupTitle} numberOfLines={1}>
-                {meetup.title}
+          <Image
+            source={{
+              uri:
+                meetup.imageUrl ??
+                "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop",
+            }}
+            style={styles.thumb}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.meetupTitle} numberOfLines={1}>
+              {meetup.title}
+            </Text>
+
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={styles.meta} numberOfLines={1}>
+                Location: {meetup.location ?? "Unknown"}
               </Text>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <Text style={styles.meta} numberOfLines={1}>
-                  Location: {meetup.location ?? "Unknown"}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(tabs)/Interest/meetupLocation1",
-                      params: { id: meetup.id },
-                    })
-                  }
-                >
-                  <Ionicons name="chevron-forward" size={16} color="#345BCE" />
-                </Pressable>
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/Interest/meetupLocation1",
+                    params: { id: meetup.id },
+                  })
+                }
+              >
+                <Ionicons name="chevron-forward" size={16} color="#345BCE" />
+              </Pressable>
+            </View>
+
+            <Text style={styles.meta} numberOfLines={1}>
+              Meetup Time: {meetup.date}
+            </Text>
+            <Text style={styles.meta} numberOfLines={1}>
+              Sponsor: {meetup.sponsorName ?? meetup.creatorId ?? "Unknown"}
+            </Text>
+
+            {/* Category */}
+            <View style={{ marginTop: 6 }}>
+              <View style={styles.catRow}>
+                <View style={styles.singleTag}>
+                  <Ionicons name="bookmark" size={12} color="white" style={{ marginRight: 6 }} />
+                  <Text style={{ color: "white", fontWeight: "700" }}>
+                    {meetup.category && meetup.category.trim() !== "" ? meetup.category : "None"}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.meta} numberOfLines={1}>
-                Meetup Time: {meetup.date}
-              </Text>
-              <Text style={styles.meta} numberOfLines={1}>
-                Sponsor: {meetup.sponsorName ?? meetup.creatorId ?? "Unknown"}
-              </Text>
             </View>
           </View>
-
+        </View> 
           <View style={styles.tagRow}>
             {(meetup.tags ?? []).map((t) => (
               <View key={t} style={styles.tagChip}>
@@ -232,7 +224,7 @@ export default function MeetupDetailPage() {
           </View>
         </View>
 
-        {/* introduction */}
+        {/* Detail section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Introduction</Text>
           <View style={styles.introCard}>
@@ -241,8 +233,10 @@ export default function MeetupDetailPage() {
             </Text>
           </View>
 
+          {/* Participants and capacity */}
           <Text style={styles.participants}>
             Participants: {meetup.participants.length}
+            {typeof meetup.maxCapacity === "number" ? ` / ${meetup.maxCapacity}` : ""}
           </Text>
 
           <Pressable style={styles.joinBtn} onPress={onJoin}>
@@ -271,7 +265,8 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   header: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 16,
+    paddingBottom: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -283,65 +278,58 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  backBtnBig: {
+    height: 40,
+    width: 160,
+    borderRadius: 10,
+    backgroundColor: "#e9f0ff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   title: {
     fontSize: 20,
     fontWeight: "700",
     color: "#2c3e50",
     letterSpacing: 0.3,
   },
-  searchBox: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    paddingHorizontal: 12,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: WHITE,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  searchInput: { flex: 1, fontSize: 14, color: "#111827" },
   card: {
-    marginTop: 16,
+    marginTop: 12,
     marginHorizontal: 16,
     backgroundColor: CARD_BG,
     borderRadius: 16,
     padding: 12,
   },
+
   topRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   thumb: { width: 72, height: 72, borderRadius: 10, backgroundColor: WHITE },
   meetupTitle: { fontSize: 16, fontWeight: "800", color: "#111827", marginBottom: 4 },
-  meta: { fontSize: 12, color: GREY, marginTop: 2 },
-  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
-  tagChip: {
-    paddingHorizontal: 12,
+  meta: { color: GREY, fontSize: 12, marginTop: 2 },
+  tagRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 10 },
+  tagChip: { backgroundColor: "#111827", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+    catRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 6 },
+  singleTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#111827",
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: WHITE,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#d6e1ff",
+    borderRadius: 999,
   },
-  tagText: { fontSize: 12, fontWeight: "700", color: BLUE_TEXT },
-  section: {
-    marginTop: 16,
-    marginHorizontal: 16,
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    padding: 12,
-  },
-  sectionTitle: { fontSize: 16, fontWeight: "800", color: BLUE_TEXT, marginBottom: 10 },
-  introCard: { backgroundColor: WHITE, borderRadius: 12, padding: 12 },
-  introText: { fontSize: 14, lineHeight: 20, color: "#1f2937" },
-  participants: { marginTop: 10, fontSize: 13, fontWeight: "700", color: GREY },
+  tagText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+
+  section: { marginTop: 12, marginHorizontal: 16 },
+  sectionTitle: { color: BLUE_TEXT, fontSize: 16, fontWeight: "800", marginBottom: 8 },
+  introCard: { backgroundColor: "#e9f0ff", borderRadius: 12, padding: 12 },
+  introText: { color: "#111827" },
+
+  participants: { marginTop: 12, color: BLUE_TEXT, fontWeight: "700" },
   joinBtn: {
-    marginTop: 10,
-    alignSelf: "center",
-    height: 40,
-    paddingHorizontal: 18,
-    borderRadius: 10,
-    backgroundColor: "#ef4444",
+    marginTop: 12,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#d84535",
     alignItems: "center",
     justifyContent: "center",
   },
-  joinText: { color: "#fff", fontWeight: "800" },
+  joinText: { color: "white", fontWeight: "800" },
 });

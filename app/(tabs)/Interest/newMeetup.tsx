@@ -9,12 +9,14 @@ import {
   Dimensions,
   Alert,
   Platform,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { useRouter, useNavigation } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as Location from "expo-location"; // static import is safer
+import * as Location from "expo-location";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 // Firestore and Auth
 import {
@@ -28,33 +30,65 @@ import { db, auth } from "../../../firebase";
 const { width } = Dimensions.get("window");
 const PANEL_W = Math.min(640, width - 28);
 
-// tags
-const TAGS = ["Sports", "Music", "Lifestyle", "Study"];
+// Fixed categories (single-select)
+const CATEGORIES = ["Sports", "Music", "Lifestyle", "Study", "Travel", "Food", "Arts"] as const;
 
-// defaults
+// Base tags (multi-select). Users can add custom tags on top of these.
+const BASE_TAGS = ["Sports", "Music", "Lifestyle", "Study"] as const;
+
+// Defaults
 const DEFAULT_IMAGE_URL =
   "https://images.unsplash.com/photo-1556816723-1ce827b9cfbb?q=80&w=1584&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
 const DEFAULT_SPONSOR_NAME = "sponsor name";
+
+// Format a Date into "YYYY-MM-DD HH:mm"
+function formatDateTime(d?: Date | null): string {
+  if (!d || Number.isNaN(d.getTime())) return "-";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day} ${hh}:${mm}`;
+}
 
 export default function NewMeetup() {
   const router = useRouter();
   const navigation = useNavigation();
 
   const backOrHome = () => {
-    if (navigation && typeof (navigation as any).canGoBack === "function" && (navigation as any).canGoBack()) {
+    if (
+      navigation &&
+      typeof (navigation as any).canGoBack === "function" &&
+      (navigation as any).canGoBack()
+    ) {
       router.back();
     } else {
       router.replace("/(tabs)/Interest/meetupMainPage");
     }
   };
 
+  // Basic form
   const [name, setName] = useState("");
-  const [time, setTime] = useState("");
-  const [maxCapInput, setMaxCapInput] = useState("");
   const [desc, setDesc] = useState("activity content");
-  const [selectedTags, setSelectedTags] = useState<string[]>(["Lifestyle"]);
-  const [query, setQuery] = useState("");
 
+  // Time picker state
+  const [dateVal, setDateVal] = useState<Date | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+
+  // Capacity
+  const [maxCapInput, setMaxCapInput] = useState("");
+
+  // Category single-select
+  const [selectedCategory, setSelectedCategory] = useState<string>("Lifestyle");
+
+  // Tags multi-select with custom add
+  const [selectedTags, setSelectedTags] = useState<string[]>(["Lifestyle"]);
+  const [customTags, setCustomTags] = useState<string[]>([]);
+  const [showAddTag, setShowAddTag] = useState(false);
+  const [newTagText, setNewTagText] = useState("");
+
+  // Location and map
   const [locationName, setLocationName] = useState("");
   const [region, setRegion] = useState<Region>({
     latitude: -37.8,
@@ -70,17 +104,30 @@ export default function NewMeetup() {
     );
   };
 
-  // geocode using expo-location
+  const confirmAddTag = () => {
+    const t = newTagText.trim();
+    if (!t) return;
+    if (
+      [...BASE_TAGS, ...customTags].some(
+        (x) => x.toLowerCase() === t.toLowerCase()
+      )
+    ) {
+      Alert.alert("Duplicate", "This tag already exists.");
+      return;
+    }
+    setCustomTags((prev) => [...prev, t]);
+    setSelectedTags((prev) => [...prev, t]);
+    setNewTagText("");
+    setShowAddTag(false);
+  };
+
   const handleGeocodeSubmit = async () => {
     const q = locationName.trim();
     if (!q) return;
 
     try {
       setIsGeocoding(true);
-
-      // Requesting foreground permission for safety
       await Location.requestForegroundPermissionsAsync().catch(() => {});
-
       const results = await Location.geocodeAsync(q);
       if (!results?.length) {
         Alert.alert("Not found", "Try another keyword or check your network.");
@@ -111,33 +158,27 @@ export default function NewMeetup() {
       return;
     }
 
-    // parse time to Firestore Timestamp
-    let dateVal: any = serverTimestamp();
-    const t = time.trim();
-    if (t) {
-      const parsed = new Date(t);
-      if (!isNaN(parsed.getTime())) {
-        dateVal = Timestamp.fromDate(parsed);
-      }
+    // Time handling: convert to Firestore Timestamp or use serverTimestamp
+    let dateToSave: any = serverTimestamp();
+    if (dateVal && !Number.isNaN(dateVal.getTime())) {
+      dateToSave = Timestamp.fromDate(dateVal);
     }
 
-    const category = selectedTags[0] ?? "Lifestyle";
+    // Parse max capacity
     const maxCapacity = parseInt(maxCapInput, 10);
 
+    // Build doc body with explicit category and tags
     const docBody = {
       title,
       description: desc,
-      date: dateVal,
+      date: dateToSave,
       creatorId: uid,
-      participants: [uid], // creator joins by default
-      maxCapacity: isNaN(maxCapacity) ? null : maxCapacity,
-      category,
+      participants: [uid],
+      maxCapacity: Number.isNaN(maxCapacity) ? null : maxCapacity,
+      category: selectedCategory || "Lifestyle",
       tags: selectedTags.length ? selectedTags : ["Lifestyle"],
       location: locationName.trim() || "Unknown",
-      locationGeo: {
-        latitude: region.latitude,
-        longitude: region.longitude,
-      },
+      locationGeo: { latitude: region.latitude, longitude: region.longitude },
       imageUrl: DEFAULT_IMAGE_URL,
       sponsorName: DEFAULT_SPONSOR_NAME,
     };
@@ -149,6 +190,8 @@ export default function NewMeetup() {
       Alert.alert("Publish failed", e?.message ?? "Unknown error");
     }
   };
+
+  const allTags = [...BASE_TAGS, ...customTags];
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -167,27 +210,49 @@ export default function NewMeetup() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={{ alignItems: "center", paddingBottom: 28 }}>
-          {/* Search bar */}
-          <View style={[styles.searchBox, { width: PANEL_W }]}>
-            <Ionicons name="search" size={18} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search meetups..."
-              value={query}
-              onChangeText={setQuery}
-            />
-          </View>
-
-          {/* Form card */}
+        <ScrollView
+          contentContainerStyle={{ alignItems: "center", paddingBottom: 28 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Top decorative search bar removed */}
+          {/* First content card starts here */}
           <View style={[styles.card, { width: PANEL_W }]}>
-            <LinedRow label="Title" value={name} onChange={setName} placeholder="Value" />
-            <LinedRow
-              label="Time"
-              value={time}
-              onChange={setTime}
-              placeholder="YYYY-MM-DD HH:mm eg 2025-09-20 20:00"
-            />
+            {/* Title */}
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.subLabel}>Title</Text>
+              <TextInput
+                style={styles.underlinedInput}
+                value={name}
+                onChangeText={setName}
+                placeholder="Value"
+              />
+            </View>
+
+            {/* Time (native picker) */}
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.subLabel}>Time</Text>
+              <TouchableOpacity
+                onPress={() => setShowPicker(true)}
+                activeOpacity={0.7}
+                style={styles.underlinedDisplay}
+              >
+                <Text style={{ color: "#314c9b" }}>
+                  {dateVal ? formatDateTime(dateVal) : "Select date & time"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {showPicker && (
+              <DateTimePicker
+                value={dateVal ?? new Date()}
+                mode="datetime"
+                display={Platform.OS === "ios" ? "inline" : "default"}
+                onChange={(event, selectedDate) => {
+                  if (Platform.OS === "android") setShowPicker(false);
+                  if (selectedDate) setDateVal(selectedDate);
+                }}
+              />
+            )}
 
             {/* Max capacity */}
             <View style={{ marginBottom: 12 }}>
@@ -201,6 +266,27 @@ export default function NewMeetup() {
               />
             </View>
 
+            {/* Category single-select */}
+            <Text style={[styles.subLabel, { marginTop: 6 }]}>Category</Text>
+            <View style={styles.tagRow}>
+              {CATEGORIES.map((c) => {
+                const active = selectedCategory === c;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    onPress={() => setSelectedCategory(c)}
+                    style={[styles.tag, active && styles.tagActive]}
+                  >
+                    <View style={styles.iconBox}>
+                      {active && <Ionicons name="checkmark" size={12} color="white" />}
+                    </View>
+                    <Text style={[styles.tagText, active && styles.tagTextActive]}>{c}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Description */}
             <Text style={styles.subLabel}>Description</Text>
             <TextInput
               style={styles.textArea}
@@ -209,27 +295,33 @@ export default function NewMeetup() {
               onChangeText={setDesc}
             />
 
+            {/* Tags multi-select */}
             <Text style={styles.subLabel}>Tags</Text>
             <View style={styles.tagRow}>
-              {TAGS.map((t) => (
-                <TouchableOpacity
-                  key={t}
-                  onPress={() => toggleTag(t)}
-                  style={[styles.tag, selectedTags.includes(t) && styles.tagActive]}
-                >
-                  {selectedTags.includes(t) && (
-                    <Ionicons name="checkmark" size={12} style={{ marginRight: 6 }} />
-                  )}
-                  <Text
-                    style={[
-                      styles.tagText,
-                      selectedTags.includes(t) && styles.tagTextActive,
-                    ]}
+              {allTags.map((t) => {
+                const active = selectedTags.includes(t);
+                return (
+                  <TouchableOpacity
+                    key={t}
+                    onPress={() => toggleTag(t)}
+                    style={[styles.tag, active && styles.tagActive]}
                   >
-                    {t}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <View style={styles.iconBox}>
+                      {active && <Ionicons name="checkmark" size={12} color="white" />}
+                    </View>
+                    <Text style={[styles.tagText, active && styles.tagTextActive]}>{t}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                onPress={() => setShowAddTag(true)}
+                style={[styles.tag, { borderWidth: 1, borderColor: "#afc6ff", backgroundColor: "#eef3ff" }]}
+              >
+                <View style={styles.iconBox}>
+                  <Ionicons name="add" size={12} color="#3b5aa9" />
+                </View>
+                <Text style={styles.tagText}>Add New Tag</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -255,9 +347,7 @@ export default function NewMeetup() {
                 region={region}
                 onRegionChangeComplete={setRegion}
               >
-                <Marker
-                  coordinate={{ latitude: region.latitude, longitude: region.longitude }}
-                />
+                <Marker coordinate={{ latitude: region.latitude, longitude: region.longitude }} />
               </MapView>
             </View>
           </View>
@@ -268,71 +358,54 @@ export default function NewMeetup() {
           </TouchableOpacity>
         </ScrollView>
       </View>
-    </SafeAreaView>
-  );
-}
 
-function LinedRow({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={styles.subLabel}>{label}</Text>
-      <TextInput
-        style={styles.underlinedInput}
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-      />
-    </View>
+      {/* Add new tag modal */}
+      <Modal visible={showAddTag} transparent animationType="fade" onRequestClose={() => setShowAddTag(false)}>
+        <View style={styles.modalMask}>
+          <View style={styles.modalCard}>
+            <Text style={[styles.subLabel, { marginBottom: 8 }]}>Add a custom tag</Text>
+            <TextInput
+              style={[styles.underlinedInput, { marginBottom: 14 }]}
+              placeholder="e.g. Hiking"
+              value={newTagText}
+              onChangeText={setNewTagText}
+            />
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12 }}>
+              <TouchableOpacity onPress={() => setShowAddTag(false)}>
+                <Text style={{ color: "#5e5651", fontWeight: "700" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmAddTag}>
+                <Text style={{ color: "#d84535", fontWeight: "700" }}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#dfeaff" },
   screen: { flex: 1, backgroundColor: "#dfeaff" },
+
   header: {
-    paddingTop: 24,
+    paddingTop: 16, // unified header top padding
     paddingHorizontal: 16,
     paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
   },
-  backBtn: {
-    width: 32, height: 32, alignItems: "center", justifyContent: "center",
-  },
-  title: {
-    flex: 1,
-    textAlign: "center",
-    fontSize: 26,
-    fontWeight: "700",
-    color: "#3b5aa9",
-  },
-  viewBtn: {
-    backgroundColor: "#cfe0ff",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
+  backBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  title: { flex: 1, textAlign: "center", fontSize: 26, fontWeight: "700", color: "#3b5aa9" },
+  viewBtn: { backgroundColor: "#cfe0ff", paddingHorizontal: 14, paddingVertical: 6, borderRadius: 10 },
   viewBtnText: { fontWeight: "600", color: "#3b5aa9" },
 
+  // kept for location input
   searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    borderRadius: 22,
-    paddingHorizontal: 12,
-    height: 40,
-    elevation: 1,
-    shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "white", borderRadius: 22, paddingHorizontal: 12, height: 40,
+    elevation: 1, shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
     marginTop: 6,
   },
   searchInput: { marginLeft: 8, flex: 1 },
@@ -341,53 +414,49 @@ const styles = StyleSheet.create({
     backgroundColor: "#cfe0ff",
     borderRadius: 16,
     padding: 14,
-    marginTop: 16,
+    marginTop: 12, // unified first card offset
   },
-  subLabel: {
-    color: "#3b5aa9",
-    marginBottom: 6,
-    fontWeight: "600",
-  },
+  subLabel: { color: "#3b5aa9", marginBottom: 6, fontWeight: "600" },
+  hintText: { color: "#6b7bb5", marginBottom: 8 },
+
   underlinedInput: {
     backgroundColor: "transparent",
     borderBottomWidth: 1,
     borderBottomColor: "#afc6ff",
     paddingVertical: 6,
   },
-  textArea: {
-    minHeight: 80,
-    borderRadius: 10,
-    backgroundColor: "white",
-    padding: 10,
-    textAlignVertical: "top",
-    marginBottom: 8,
-  },
-  tagRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 4 },
-  tag: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#eef3ff",
-    paddingHorizontal: 12,
+  underlinedDisplay: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#afc6ff",
     paddingVertical: 6,
-    borderRadius: 16,
   },
-  tagActive: {
-    backgroundColor: "#222",
+  textArea: {
+    minHeight: 80, borderRadius: 10, backgroundColor: "white",
+    padding: 10, textAlignVertical: "top", marginBottom: 8,
   },
+
+  tagRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 6 },
+  tag: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "#eef3ff",
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+  },
+  tagActive: { backgroundColor: "#222" },
   tagText: { color: "#3b5aa9", fontWeight: "600" },
   tagTextActive: { color: "white" },
+  iconBox: { width: 12, marginRight: 6, alignItems: "center" },
 
-  mapWrap: {
-    borderRadius: 12, overflow: "hidden", height: 140, marginBottom: 8,
-  },
+  mapWrap: { borderRadius: 12, overflow: "hidden", height: 140, marginBottom: 8 },
   map: { flex: 1 },
 
-  publishBtn: {
-    marginTop: 18,
-    backgroundColor: "#d84535",
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
+  publishBtn: { marginTop: 18, backgroundColor: "#d84535", paddingHorizontal: 22, paddingVertical: 12, borderRadius: 10 },
   publishText: { color: "white", fontWeight: "700", fontSize: 16 },
+
+  modalMask: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.3)", alignItems: "center", justifyContent: "center",
+    padding: 20,
+  },
+  modalCard: {
+    width: "100%", maxWidth: 420, backgroundColor: "#fff", borderRadius: 12, padding: 16,
+  },
 });

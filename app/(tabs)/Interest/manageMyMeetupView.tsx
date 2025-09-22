@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Image,
@@ -15,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { db } from "../../../firebase";
 import { doc, getDoc } from "firebase/firestore";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const { width } = Dimensions.get("window");
 const PANEL_W = Math.min(640, width - 28);
@@ -24,7 +24,7 @@ type Meetup = {
   description?: string;
   date?: any; // Firestore Timestamp | string | Date
   maxCapacity?: number | null;
-  participants?: string[]; // array of uids
+  participants?: string[];
   category?: string;
   tags?: string[];
   location?: string;
@@ -39,7 +39,7 @@ type Profile = {
   avatarUrl?: string;
 };
 
-// ---- utilities ----
+// format date as "YYYY-MM-DD HH:mm"
 function formatDate(val: any): string {
   try {
     let d: Date | null = null;
@@ -72,7 +72,7 @@ export default function ManageMyMeetupView() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
 
-  // ---- load a single meetup by id ----
+  // load meetup
   useEffect(() => {
     (async () => {
       if (!id) {
@@ -88,8 +88,7 @@ export default function ManageMyMeetupView() {
           router.back();
           return;
         }
-        const data = snap.data() as Meetup;
-        setMeetup(data);
+        setMeetup(snap.data() as Meetup);
       } catch (e: any) {
         Alert.alert("Load failed", e?.message ?? "Unknown error");
         router.back();
@@ -99,20 +98,16 @@ export default function ManageMyMeetupView() {
     })();
   }, [id]);
 
-  // ---- load participant profiles from users/{uid} (best-effort) ----
+  // load participant profiles (best-effort)
   useEffect(() => {
     (async () => {
       if (!meetup?.participants || meetup.participants.length === 0) {
         setProfiles([]);
         return;
       }
-      // If you have a `users` collection (doc id = uid, with `displayName` and `avatarUrl`),
-      // fetch the first 12 profiles to display.
       setLoadingProfiles(true);
       try {
         const uids = meetup.participants.slice(0, 12);
-        // Fetch with individual getDoc calls for simplicity.
-        // If the list can be large, consider batched fetching or an `in` query.
         const results = await Promise.all(
           uids.map(async (uid) => {
             try {
@@ -126,7 +121,6 @@ export default function ManageMyMeetupView() {
                 } as Profile;
               }
             } catch {}
-            // Fallback to uid if the profile doc is missing.
             return { id: uid, name: uid } as Profile;
           })
         );
@@ -139,22 +133,22 @@ export default function ManageMyMeetupView() {
     })();
   }, [meetup?.participants]);
 
-  const tags = useMemo(
-    () => meetup?.tags ?? (meetup?.category ? [meetup.category] : []),
-    [meetup]
-  );
+  const tags = useMemo(() => meetup?.tags ?? [], [meetup?.tags]);
+  const category = meetup?.category || "-";
 
   if (loading) {
     return (
-      <View style={[styles.screen, { alignItems: "center", justifyContent: "center" }]}>
+      <SafeAreaView
+        style={[styles.screen, { alignItems: "center", justifyContent: "center" }]}
+      >
         <ActivityIndicator />
         <Text style={{ marginTop: 8, color: "#3b5aa9" }}>Loading...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -170,17 +164,7 @@ export default function ManageMyMeetupView() {
       </View>
 
       <ScrollView contentContainerStyle={{ alignItems: "center", paddingBottom: 28 }}>
-        {/* Search (decorative placeholder) */}
-        <View style={[styles.searchBox, { width: PANEL_W }]}>
-          <Ionicons name="search" size={18} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search meetups..."
-            editable={false}
-          />
-        </View>
-
-        {/* Read-only meetup details */}
+        {/* First card */}
         <View style={[styles.card, { width: PANEL_W }]}>
           <RowDisplay label="Name" value={meetup?.title || "-"} />
           <RowDisplay label="Time" value={formatDate(meetup?.date)} />
@@ -192,11 +176,17 @@ export default function ManageMyMeetupView() {
             }
           />
 
+          <Text style={styles.subLabel}>Category</Text>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <View style={styles.singleTag}>
+              <Ionicons name="bookmark" size={12} color="white" style={{ marginRight: 6 }} />
+              <Text style={{ color: "white", fontWeight: "700" }}>{category}</Text>
+            </View>
+          </View>
+
           <Text style={styles.subLabel}>Description</Text>
           <View style={styles.textAreaReadonly}>
-            <Text style={styles.descText}>
-              {meetup?.description || "No description"}
-            </Text>
+            <Text style={styles.descText}>{meetup?.description || "No description"}</Text>
           </View>
 
           <Text style={styles.subLabel}>Tags</Text>
@@ -270,7 +260,7 @@ export default function ManageMyMeetupView() {
           )}
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -288,7 +278,7 @@ function RowDisplay({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#dfeaff" },
   header: {
-    paddingTop: 60,
+    paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: 10,
     flexDirection: "row",
@@ -305,26 +295,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
 
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    borderRadius: 22,
-    paddingHorizontal: 12,
-    height: 40,
-    elevation: 1,
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    marginTop: 6,
-  },
-  searchInput: { marginLeft: 8, flex: 1 },
-
   card: {
     backgroundColor: "#cfe0ff",
     borderRadius: 16,
     padding: 14,
-    marginTop: 16,
+    marginTop: 12,
   },
   subLabel: { color: "#3b5aa9", marginBottom: 6, fontWeight: "600" },
 

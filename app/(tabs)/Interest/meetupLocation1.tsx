@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  TextInput,
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +19,7 @@ type MeetupDoc = {
   location?: string;
   locationGeo?: { latitude: number; longitude: number };
   participants?: string[];
+  maxCapacity?: number | null;
 };
 
 export default function MeetupLocation1Page() {
@@ -32,13 +32,13 @@ export default function MeetupLocation1Page() {
       ? params.id[0]
       : undefined;
 
-  const [query, setQuery] = useState("");
   const router = useRouter();
 
   // ui states from backend only
   const [title, setTitle] = useState<string | null>(null);
   const [desc, setDesc] = useState<string | null>(null);
   const [participantsCount, setParticipantsCount] = useState<number | null>(null);
+  const [maxCapacity, setMaxCapacity] = useState<number | null>(null);
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">(
@@ -66,6 +66,10 @@ export default function MeetupLocation1Page() {
 
         const p = Array.isArray((data as any).participants) ? (data as any).participants : [];
         setParticipantsCount(p.length);
+
+        const cap =
+          typeof (data as any).maxCapacity === "number" ? (data as any).maxCapacity : null;
+        setMaxCapacity(cap);
 
         const g = (data as any).locationGeo;
         if (g && typeof g.latitude === "number" && typeof g.longitude === "number") {
@@ -126,19 +130,6 @@ export default function MeetupLocation1Page() {
           </Pressable>
         </View>
 
-        {/* Search */}
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color="#6b7280" />
-          <TextInput
-            placeholder="Search meetups..."
-            placeholderTextColor="#9aa3b2"
-            style={styles.searchInput}
-            value={query}
-            onChangeText={setQuery}
-            returnKeyType="search"
-          />
-        </View>
-
         {/* Map section */}
         <View style={styles.mapWrap}>
           <MapView
@@ -164,7 +155,11 @@ export default function MeetupLocation1Page() {
           <View style={styles.introCard}>
             <Text style={styles.introText}>{desc}</Text>
           </View>
-          <Text style={styles.participants}>Participants: {participantsCount}</Text>
+          {/* Participants and capacity */}
+          <Text style={styles.participants}>
+            Participants: {participantsCount}
+            {typeof maxCapacity === "number" ? ` / ${maxCapacity}` : ""}
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -181,7 +176,8 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   header: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 16,
+    paddingBottom: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -194,35 +190,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   title: { fontSize: 20, fontWeight: "700", color: "#2c3e50" },
-  searchBox: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    paddingHorizontal: 12,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: WHITE,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  searchInput: { flex: 1, fontSize: 14, color: "#111827" },
+
   mapWrap: {
     marginHorizontal: 16,
-    marginTop: 16,
+    marginTop: 12,
     borderRadius: 16,
     overflow: "hidden",
     height: 200,
   },
   map: { width: "100%", height: "100%" },
+
   section: {
-    marginTop: 16,
+    marginTop: 12,
     marginHorizontal: 16,
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    padding: 12,
+    backgroundColor: "transparent",
   },
-  sectionTitle: { fontSize: 16, fontWeight: "800", color: BLUE_TEXT, marginBottom: 10 },
-  introCard: { backgroundColor: WHITE, borderRadius: 12, padding: 12 },
-  introText: { fontSize: 14, lineHeight: 20, color: "#1f2937" },
-  participants: { marginTop: 10, fontSize: 13, fontWeight: "700", color: GREY },
+  sectionTitle: { color: BLUE_TEXT, fontSize: 16, fontWeight: "800", marginBottom: 8 },
+  introCard: { backgroundColor: CARD_BG, borderRadius: 12, padding: 12 },
+  introText: { color: "#111827" },
+  participants: { marginTop: 12, color: BLUE_TEXT, fontWeight: "700" },
 });

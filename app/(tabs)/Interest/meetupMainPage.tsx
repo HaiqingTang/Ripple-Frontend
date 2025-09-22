@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  TextInput,
   ScrollView,
   ImageBackground,
   FlatList,
@@ -35,11 +34,9 @@ type Meetup = {
 
 export default function MeetupMainPage() {
   const router = useRouter();
-  const [queryText, setQueryText] = useState("");
   const [top, setTop] = useState<Meetup | null>(null);
   const [myMeetups, setMyMeetups] = useState<Meetup[]>([]);
 
-  // load latest meetup
   useEffect(() => {
     const q1 = query(collection(db, "meetups"), orderBy("date", "desc"), limit(1));
     const unsub = onSnapshot(q1, (snap) => {
@@ -67,7 +64,6 @@ export default function MeetupMainPage() {
     return () => unsub();
   }, []);
 
-  // load my meetups preview
   useEffect(() => {
     if (!auth.currentUser) return;
     const q2 = query(
@@ -101,12 +97,10 @@ export default function MeetupMainPage() {
   }, []);
 
   const onAdd = () => router.push("/(tabs)/Interest/newMeetup");
-
   const onOpenTop = () => {
     if (!top) return;
     router.push({ pathname: "/(tabs)/Interest/meetupDetail1", params: { id: top.id } });
   };
-
   const onOpenMeetup = (m: Meetup) => {
     router.push({ pathname: "/(tabs)/Interest/meetupDetail1", params: { id: m.id } });
   };
@@ -117,7 +111,7 @@ export default function MeetupMainPage() {
         contentContainerStyle={{ paddingTop: 0, paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header restored to original arrangement and spacing */}
+        {/* Header */}
         <View style={styles.header}>
           <Pressable hitSlop={8} onPress={() => router.replace("/(tabs)/Interest")}>
             <Ionicons name="chevron-back" size={22} color="#2c3e50" />
@@ -128,19 +122,7 @@ export default function MeetupMainPage() {
           </Pressable>
         </View>
 
-        {/* Search */}
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color="#6b7280" />
-          <TextInput
-            placeholder="Search meetups..."
-            placeholderTextColor="#9aa3b2"
-            style={styles.searchInput}
-            value={queryText}
-            onChangeText={setQueryText}
-          />
-        </View>
-
-        {/* Hero card clickable */}
+        {/* Hero card */}
         <Pressable onPress={onOpenTop} disabled={!top} style={{ paddingHorizontal: 16 }}>
           <ImageBackground
             source={{
@@ -161,7 +143,7 @@ export default function MeetupMainPage() {
           </ImageBackground>
         </Pressable>
 
-        {/* My Meetups card */}
+        {/* My Meetups */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>My Meetups</Text>
@@ -214,30 +196,17 @@ const BLUE_TEXT = "#345BCE";
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   header: {
+    paddingTop: 16,
     paddingHorizontal: 16,
-    paddingVertical: 12, // back to original spacing
+    paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   title: { fontSize: 20, fontWeight: "800", color: "#1f2937" },
-  searchBox: {
-    marginHorizontal: 16,
-    paddingHorizontal: 12,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  searchInput: { flex: 1, fontSize: 15, color: "#111827" },
-  hero: { height: 220, borderRadius: 16, overflow: "hidden" },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.25)",
-  },
+
+  hero: { height: 220, borderRadius: 16, overflow: "hidden", marginTop: 12 },
+  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.25)" },
   heroTextWrap: { position: "absolute", bottom: 16, left: 16, right: 16 },
   heroDate: { color: "#fff", fontWeight: "800", fontSize: 18, marginBottom: 4 },
   heroTitle: { color: "#fff", fontWeight: "900", fontSize: 28 },
@@ -250,8 +219,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
+
   card: {
-    marginTop: 16,
+    marginTop: 12,
     marginHorizontal: 16,
     padding: 12,
     borderRadius: 16,
@@ -263,11 +233,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: BLUE_TEXT,
-  },
+  cardTitle: { fontSize: 16, fontWeight: "800", color: BLUE_TEXT },
   allBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   allText: { color: "#6b7280", fontSize: 12, fontWeight: "600" },
   meetupRow: {

@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions,
-  Alert, Platform, ActivityIndicator,
+  Alert, Platform, ActivityIndicator, Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 // Firestore
 import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
@@ -16,29 +17,26 @@ import { db } from "../../../firebase";
 const { width } = Dimensions.get("window");
 const PANEL_W = Math.min(640, width - 28);
 
-// Reusable defaults
+// Defaults
 const DEFAULT_IMAGE_URL =
   "https://images.unsplash.com/photo-1556816723-1ce827b9cfbb?q=80&w=1584&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
 const DEFAULT_SPONSOR_NAME = "sponsor name";
-const TAGS = ["Sports", "Music", "Lifestyle", "Study"] as const;
 
-/** Format Firestore Timestamp/string/Date into a simple input string */
-function tsToInput(val: any): string {
-  try {
-    let d: Date | null = null;
-    if (val?.seconds) d = new Date(val.seconds * 1000);
-    else if (val instanceof Date) d = val;
-    else if (typeof val === "string") d = new Date(val);
-    if (!d || Number.isNaN(d.getTime())) return "";
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    return `${y}-${m}-${day} ${hh}:${mm}`;
-  } catch {
-    return "";
-  }
+// Fixed categories (single-select)
+const CATEGORIES = ["Sports", "Music", "Lifestyle", "Study", "Travel", "Food", "Arts"] as const;
+
+// Base tags (multi-select). Users can add custom tags on top of these.
+const BASE_TAGS = ["Sports", "Music", "Lifestyle", "Study"] as const;
+
+// Format a Date into "YYYY-MM-DD HH:mm"
+function formatDateTime(d?: Date | null): string {
+  if (!d || Number.isNaN(d.getTime())) return "-";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day} ${hh}:${mm}`;
 }
 
 export default function ManageMyMeetupEdit() {
@@ -48,18 +46,27 @@ export default function ManageMyMeetupEdit() {
   // Safe-area + TabBar height to avoid footer buttons being covered
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const bottomPadding = tabBarHeight + insets.bottom + 20; // extra breathing space
+  const bottomPadding = tabBarHeight + insets.bottom + 20;
 
   // Loading / saving state
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Form state (aligned with NewMeetup schema)
+  // Form state
   const [title, setTitle] = useState("");
-  const [time, setTime] = useState("");                // input string -> Timestamp on submit
-  const [maxCapInput, setMaxCapInput] = useState("");  // string -> number|null
+  const [dateVal, setDateVal] = useState<Date | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+
+  const [maxCapInput, setMaxCapInput] = useState("");
   const [desc, setDesc] = useState("activity content");
+
   const [selectedTags, setSelectedTags] = useState<string[]>(["Lifestyle"]);
+  const [customTags, setCustomTags] = useState<string[]>([]);
+  const [showAddTag, setShowAddTag] = useState(false);
+  const [newTagText, setNewTagText] = useState("");
+
+  const [selectedCategory, setSelectedCategory] = useState<string>("Lifestyle");
+
   const [locationName, setLocationName] = useState("");
 
   // Map region
@@ -73,7 +80,7 @@ export default function ManageMyMeetupEdit() {
   // Read-only derived info
   const [participantsCount, setParticipantsCount] = useState(0);
 
-  /** Initial fetch of meetup data */
+  // Initial fetch of meetup data
   useEffect(() => {
     (async () => {
       if (!id) {
@@ -92,14 +99,34 @@ export default function ManageMyMeetupEdit() {
         const data = snap.data() as any;
 
         setTitle(String(data.title ?? ""));
-        setTime(tsToInput(data.date));
+
+        // Convert date to Date
+        let initDate: Date | null = null;
+        if (data.date?.seconds) initDate = new Date(data.date.seconds * 1000);
+        else if (typeof data.date === "string") {
+          const d = new Date(data.date);
+          initDate = Number.isNaN(d.getTime()) ? null : d;
+        } else if (data.date instanceof Date) {
+          initDate = data.date;
+        }
+        setDateVal(initDate);
+
         setMaxCapInput(
           typeof data.maxCapacity === "number" ? String(data.maxCapacity) : ""
         );
         setDesc(String(data.description ?? "activity content"));
-        setSelectedTags(
-          Array.isArray(data.tags) && data.tags.length ? data.tags.map(String) : ["Lifestyle"]
+
+        const initialTags =
+          Array.isArray(data.tags) && data.tags.length
+            ? data.tags.map(String)
+            : ["Lifestyle"];
+        setSelectedTags(initialTags);
+
+        // Category is now independent of tags
+        setSelectedCategory(
+          typeof data.category === "string" && data.category ? data.category : "Lifestyle"
         );
+
         setLocationName(String(data.location ?? ""));
         setRegion((r) => ({
           ...r,
@@ -118,14 +145,32 @@ export default function ManageMyMeetupEdit() {
     })();
   }, [id]);
 
-  /** Toggle tag selection (multi-select) */
+  // Toggle a tag (multi-select) with stable chip size
   const toggleTag = (t: string) => {
     setSelectedTags((prev) =>
       prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
     );
   };
 
-  /** Geocode location name (dynamic import to avoid native crash if module absent) */
+  // Add a custom tag
+  const confirmAddTag = () => {
+    const t = newTagText.trim();
+    if (!t) return;
+    if (
+      [...BASE_TAGS, ...customTags].some(
+        (x) => x.toLowerCase() === t.toLowerCase()
+      )
+    ) {
+      Alert.alert("Duplicate", "This tag already exists.");
+      return;
+    }
+    setCustomTags((prev) => [...prev, t]);
+    setSelectedTags((prev) => [...prev, t]);
+    setNewTagText("");
+    setShowAddTag(false);
+  };
+
+  // Geocode location name (dynamic import to avoid native crash if module absent)
   const [isGeocoding, setIsGeocoding] = useState(false);
   const handleGeocodeSubmit = async () => {
     const q = locationName.trim();
@@ -150,7 +195,7 @@ export default function ManageMyMeetupEdit() {
     }
   };
 
-  /** Submit updates to Firestore */
+  // Submit updates to Firestore
   const onSubmit = async () => {
     if (!id) return;
     const titleTrim = title.trim();
@@ -158,18 +203,10 @@ export default function ManageMyMeetupEdit() {
       Alert.alert("Missing title", "Please enter a meetup name.");
       return;
     }
-
-    // Parse time; leave unchanged if empty
-    const t = time.trim();
+    // Convert date to Firestore Timestamp if provided
     let dateToSave: Timestamp | undefined = undefined;
-    if (t) {
-      const parsed = new Date(t);
-      if (!Number.isNaN(parsed.getTime())) {
-        dateToSave = Timestamp.fromDate(parsed);
-      } else {
-        Alert.alert("Invalid date", "Please use a valid format, e.g. 2025-09-20 20:00");
-        return;
-      }
+    if (dateVal && !Number.isNaN(dateVal.getTime())) {
+      dateToSave = Timestamp.fromDate(dateVal);
     }
 
     // Parse max capacity
@@ -178,7 +215,9 @@ export default function ManageMyMeetupEdit() {
       title: titleTrim,
       description: desc,
       maxCapacity: Number.isNaN(maxCap) ? null : maxCap,
-      category: selectedTags[0] ?? "Lifestyle",
+      // Category comes from single-select category chips
+      category: selectedCategory || "Lifestyle",
+      // Tags come from multi-select (base + custom)
       tags: selectedTags.length ? selectedTags : ["Lifestyle"],
       location: locationName.trim() || "Unknown",
       locationGeo: { latitude: region.latitude, longitude: region.longitude },
@@ -207,6 +246,9 @@ export default function ManageMyMeetupEdit() {
     );
   }
 
+  // Combined tag list to render (base + custom)
+  const allTags = [...BASE_TAGS, ...customTags];
+
   return (
     <SafeAreaView style={styles.screen}>
       {/* Header */}
@@ -221,22 +263,38 @@ export default function ManageMyMeetupEdit() {
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ alignItems: "center", paddingBottom: bottomPadding }}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Readonly search bar for visual consistency */}
-        <View style={[styles.searchBox, { width: PANEL_W }]}>
-          <Ionicons name="search" size={18} />
-          <TextInput style={styles.searchInput} placeholder="Search meetups..." editable={false} />
-        </View>
-
-        {/* Form card */}
+        {/* Top decorative search bar removed */}
+        {/* First content card starts here */}
         <View style={[styles.card, { width: PANEL_W }]}>
           <LinedRow label="Title" value={title} onChange={setTitle} placeholder="Value" />
-          <LinedRow
-            label="Time"
-            value={time}
-            onChange={setTime}
-            placeholder="YYYY-MM-DD HH:mm eg 2025-09-20 20:00"
-          />
+
+          {/* Time (native picker) */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={styles.subLabel}>Time</Text>
+            <TouchableOpacity
+              onPress={() => setShowPicker(true)}
+              activeOpacity={0.7}
+              style={styles.underlinedDisplay}
+            >
+              <Text style={{ color: "#314c9b" }}>
+                {dateVal ? formatDateTime(dateVal) : "Select date & time"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {showPicker && (
+            <DateTimePicker
+              value={dateVal ?? new Date()}
+              mode="datetime"
+              display={Platform.OS === "ios" ? "inline" : "default"}
+              onChange={(event, selectedDate) => {
+                if (Platform.OS === "android") setShowPicker(false);
+                if (selectedDate) setDateVal(selectedDate);
+              }}
+            />
+          )}
+
           <LinedRow
             label="Max capacity"
             value={maxCapInput}
@@ -244,6 +302,26 @@ export default function ManageMyMeetupEdit() {
             placeholder="eg 20"
             keyboardType="number-pad"
           />
+
+          {/* Category single-select */}
+          <Text style={[styles.subLabel, { marginTop: 6 }]}>Category</Text>
+          <View style={styles.tagRow}>
+            {CATEGORIES.map((c) => {
+              const active = selectedCategory === c;
+              return (
+                <TouchableOpacity
+                  key={c}
+                  onPress={() => setSelectedCategory(c)}
+                  style={[styles.tag, active && styles.tagActive]}
+                >
+                  <View style={styles.iconBox}>
+                    {active && <Ionicons name="checkmark" size={12} color="white" />}
+                  </View>
+                  <Text style={[styles.tagText, active && styles.tagTextActive]}>{c}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           <Text style={styles.subLabel}>Description</Text>
           <TextInput
@@ -253,9 +331,10 @@ export default function ManageMyMeetupEdit() {
             onChangeText={setDesc}
           />
 
+          {/* Tags multi-select */}
           <Text style={styles.subLabel}>Tags</Text>
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-            {TAGS.map((t) => {
+          <View style={styles.tagRow}>
+            {allTags.map((t) => {
               const active = selectedTags.includes(t);
               return (
                 <TouchableOpacity
@@ -263,11 +342,22 @@ export default function ManageMyMeetupEdit() {
                   onPress={() => toggleTag(t)}
                   style={[styles.tag, active && styles.tagActive]}
                 >
-                  {active && <Ionicons name="checkmark" size={12} color="white" style={{ marginRight: 6 }} />}
+                  <View style={styles.iconBox}>
+                    {active && <Ionicons name="checkmark" size={12} color="white" />}
+                  </View>
                   <Text style={[styles.tagText, active && styles.tagTextActive]}>{t}</Text>
                 </TouchableOpacity>
               );
             })}
+            <TouchableOpacity
+              onPress={() => setShowAddTag(true)}
+              style={[styles.tag, { borderWidth: 1, borderColor: "#afc6ff", backgroundColor: "#eef3ff" }]}
+            >
+              <View style={styles.iconBox}>
+                <Ionicons name="add" size={12} color="#3b5aa9" />
+              </View>
+              <Text style={[styles.tagText]}>Add New Tag</Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={[styles.subLabel, { marginTop: 6 }]}>
@@ -304,7 +394,7 @@ export default function ManageMyMeetupEdit() {
           </Text>
         </View>
 
-        {/* Footer buttons (now always visible above TabBar) */}
+        {/* Footer buttons */}
         <View style={[styles.footerRow, { width: PANEL_W }]}>
           <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()} disabled={saving}>
             <Text style={styles.cancelText}>Cancel</Text>
@@ -314,6 +404,29 @@ export default function ManageMyMeetupEdit() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Add new tag modal */}
+      <Modal visible={showAddTag} transparent animationType="fade" onRequestClose={() => setShowAddTag(false)}>
+        <View style={styles.modalMask}>
+          <View style={styles.modalCard}>
+            <Text style={[styles.subLabel, { marginBottom: 8 }]}>Add a custom tag</Text>
+            <TextInput
+              style={[styles.underlinedInput, { marginBottom: 14 }]}
+              placeholder="e.g. Hiking"
+              value={newTagText}
+              onChangeText={setNewTagText}
+            />
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12 }}>
+              <TouchableOpacity onPress={() => setShowAddTag(false)}>
+                <Text style={{ color: "#5e5651", fontWeight: "700" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmAddTag}>
+                <Text style={{ color: "#d84535", fontWeight: "700" }}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -340,7 +453,7 @@ function LinedRow({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#dfeaff" },
   header: {
-    paddingTop: 0, // SafeAreaView already handles notch; keep header compact
+    paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: 10,
     flexDirection: "row",
@@ -349,6 +462,7 @@ const styles = StyleSheet.create({
   backBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   title: { flex: 1, textAlign: "center", fontSize: 26, fontWeight: "700", color: "#3b5aa9" },
 
+  // kept for location input box
   searchBox: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: "white", borderRadius: 22, paddingHorizontal: 12, height: 40,
@@ -361,7 +475,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#cfe0ff",
     borderRadius: 16,
     padding: 14,
-    marginTop: 16,
+    marginTop: 12, // unified first card offset
   },
   subLabel: { color: "#3b5aa9", marginBottom: 6, fontWeight: "600" },
   hintText: { color: "#6b7bb5", marginBottom: 8 },
@@ -372,11 +486,17 @@ const styles = StyleSheet.create({
     borderBottomColor: "#afc6ff",
     paddingVertical: 6,
   },
+  underlinedDisplay: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#afc6ff",
+    paddingVertical: 6,
+  },
   textArea: {
     minHeight: 80, borderRadius: 10, backgroundColor: "white",
     padding: 10, textAlignVertical: "top", marginBottom: 8,
   },
 
+  tagRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 6 },
   tag: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: "#eef3ff",
@@ -385,6 +505,7 @@ const styles = StyleSheet.create({
   tagActive: { backgroundColor: "#222" },
   tagText: { color: "#3b5aa9", fontWeight: "600" },
   tagTextActive: { color: "white" },
+  iconBox: { width: 12, marginRight: 6, alignItems: "center" },
 
   mapWrap: { borderRadius: 12, overflow: "hidden", height: 140, marginBottom: 8 },
   map: { flex: 1 },
@@ -395,4 +516,12 @@ const styles = StyleSheet.create({
   cancelText: { color: "#5e5651", fontWeight: "700" },
   submitBtn: { backgroundColor: "#d84535", paddingVertical: 12, paddingHorizontal: 22, borderRadius: 10 },
   submitText: { color: "white", fontWeight: "700" },
+
+  modalMask: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.3)", alignItems: "center", justifyContent: "center",
+    padding: 20,
+  },
+  modalCard: {
+    width: "100%", maxWidth: 420, backgroundColor: "#fff", borderRadius: 12, padding: 16,
+  },
 });
