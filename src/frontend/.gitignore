@@ -1,0 +1,50 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo / Metro
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# Native build (Android / iOS)
+android/.gradle/
+android/app/build/
+android/local.properties
+ios/Pods/
+ios/build/
+
+# Keystores & signing
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Debug logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.pem
+
+# Local env files
+.env*.local
+# 如果你用的是根目录 .env，也建议忽略：
+.env
+
+# TypeScript
+*.tsbuildinfo
+
+# example assets (如果项目里没有这个文件夹，可删掉此行)
+app-example
