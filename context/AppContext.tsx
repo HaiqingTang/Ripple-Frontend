@@ -3,6 +3,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 
 type AppContextValue = {
+	userId: string;
   fullName: string;
 	userName: string;
   dayOfWeek: string;
@@ -15,6 +16,7 @@ const AppContext = createContext<AppContextValue | undefined>(undefined);
 export const AppProvider = ({ children }: { children: React.ReactNode }) => {
 	const [fullName, setFullName] = useState<string>('User');
   const [userName, setUserName] = useState<string>('user');
+	const [userId, setUserId] = useState<string>('');
 
   const refreshUserData = () => {
     const user = auth.currentUser;
@@ -33,6 +35,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
         setUserName(name);
 				const fullName = user.displayName || 'User';
 				setFullName(fullName);
+				setUserId(user.uid);
       } else {
         setUserName('User');
         setFullName('User');
@@ -57,8 +60,8 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   );
 
   const value = useMemo(
-    () => ({ userName, fullName, dayOfWeek, formattedDate, refreshUserData }),
-    [userName, fullName, dayOfWeek, formattedDate]
+    () => ({ userId, userName, fullName, dayOfWeek, formattedDate,refreshUserData }),
+    [userId, userName, fullName, dayOfWeek, formattedDate]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

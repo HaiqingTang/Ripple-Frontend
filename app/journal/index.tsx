@@ -65,6 +65,7 @@ export default function JournalPage() {
     if (!selectedTags.includes(tag)) {
       setSelectedTags([...selectedTags, tag]);
     }
+    setIsTagModalVisible(false);
   };
 
   const getTagColor = (tag: string) => {
