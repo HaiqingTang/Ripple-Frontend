@@ -25,5 +25,5 @@ jobs:
       # Run the code review
       - uses: fxchen/code-review@latest
         with:
-          model: 'gpt-3.5-turbo-16k'
+          model: 'gpt-3.5-turbo'
           openai-key: ${{ secrets.OPENAI_API_KEY }}
