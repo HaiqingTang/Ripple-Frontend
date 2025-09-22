@@ -1,23 +1,25 @@
 import React, { useState } from 'react';
 import {
-  View,
-  ScrollView,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  Dimensions,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
+	View,
+	ScrollView,
+	Text,
+	StyleSheet,
+	TextInput,
+	TouchableOpacity,
+	Dimensions,
+	KeyboardAvoidingView,
+	Platform,
+	TouchableWithoutFeedback,
+	Keyboard, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import CustomButton from '@/components/CustomButton';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from 'firebase/auth';
+import {auth, db} from '@/lib/firebase';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {addDoc, collection, doc, setDoc} from "@firebase/firestore";
+import {useAppContext} from "@/context/AppContext";
 
 const { width, height } = Dimensions.get('window');
 
@@ -25,6 +27,7 @@ export default function SignUpPage() {
   const router = useRouter();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+	const [organization, setOrganization] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,6 +35,7 @@ export default function SignUpPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
+	const {userId, fullName } = useAppContext();
 
   // Validation functions
   const validateEmail = (email: string) => {
@@ -87,16 +91,26 @@ export default function SignUpPage() {
     try {
       // Create user account
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+			// Send email verifiaction to user
+	    await sendEmailVerification(userCredential.user);
+	    Alert.alert( 'A verification link has been sent to your email. Please verify your email before logging in.');
 
-      // Update user profile with name
+	    // Update user profile with name
       await updateProfile(userCredential.user, {
         displayName: `${firstName} ${lastName}`.trim(),
       });
 
+	    await addDoc(collection(db, "users"), {
+		    userId: userCredential.user.uid,
+		    name: `${firstName} ${lastName}`.trim(),
+		    email: email,
+		    ...(organization.trim() && { organization: organization.trim() })
+	    });
+
       console.log('Account created for:', userCredential.user.uid);
 
-      // Navigate to main app after successful signup
-      router.push('/(tabs)/personalLog');
+      // Navigate to login page after successful signup
+      router.push('/auth/login');
     } catch (error: any) {
       let message = 'Account creation failed. Please try again later';
 
@@ -114,6 +128,7 @@ export default function SignUpPage() {
           message = 'Password is too weak. Please choose a stronger password';
           break;
         default:
+					console.log(error.message);
           message = 'Account creation failed. Please try again later';
       }
 
@@ -191,6 +206,20 @@ export default function SignUpPage() {
                 />
               </View>
             </View>
+
+	          {/* Organization Input */}
+	          <View style={styles.inputContainer}>
+		          <Text style={styles.label}>Organization (Optional)</Text>
+		          <TextInput
+			          style={styles.input}
+			          placeholder="Enter your organization"
+			          placeholderTextColor="#9BA1A6"
+			          value={organization}
+			          onChangeText={setOrganization}
+			          autoCapitalize="none"
+			          autoCorrect={false}
+		          />
+	          </View>
 
             {/* Email Input */}
             <View style={styles.inputContainer}>
