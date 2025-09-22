@@ -1,6 +1,5 @@
-name: 'code-review'
-on: # rebuild any PRs and main branch changes
-  pull_request:
+name: Code review
+on: [pull_request]
 jobs:
   code-review:
     runs-on: ubuntu-latest
@@ -8,9 +7,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v3
-      - uses: necojackarc/auto-request-review@v0.13.0
-        env:
-          NODE_OPTIONS: '--experimental-fetch'
+      - uses: fxchen/code-review@latest
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          model: 'gpt-3.5-turbo-16k'
+          openai-key: ${{ secrets.OPENAI_API_KEY }}
