@@ -69,7 +69,12 @@ After downloading the app, users can:
 - Earn rewards through local business partnerships (e.g., gyms, yoga, dining)  
 
 ## Screenshots
-> _To be updated with current UI screenshots._
+<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-09-24 at 01 20 33" src="https://github.com/user-attachments/assets/9c3834eb-98b1-48f4-bdbf-5aeae538d5e6" />
+<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-09-24 at 01 21 05" src="https://github.com/user-attachments/assets/c13cedbd-30d7-49c8-92a2-5f1a9d03adeb" />
+<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-09-24 at 01 21 15" src="https://github.com/user-attachments/assets/01bdc8e6-208a-48c4-9ca2-0e44aca535cf" />
+<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-09-24 at 01 21 46" src="https://github.com/user-attachments/assets/23d2ab72-296f-4487-bdac-1db13916c8a6" />
+<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-09-24 at 01 20 46" src="https://github.com/user-attachments/assets/76b0fe0e-d16d-4719-a9b7-b09cb60302b9" />
+
 
 ## Tech Stack
 - **Framework**: React Native + Expo  
@@ -111,7 +116,23 @@ After downloading the app, users can:
 - UI improvements based on client feedback:  
   - Date input changed to **dd-mm-yyyy** format with time picker  
   - Fixed location autocomplete bug  
-  - Unified and clarified icon usage  
+  - Unified and clarified icon usage
+
+**Backend**
+- Connected **Club** to Firestore with real-time subscriptions, supporting search, category filtering, and join/leave operations.
+- Integrated **Meetups** with Firestore real-time updates, including list, filtering, and detail views.
+- Created a **Meetup creation** page, supporting title, description, time, attendees, categories, tags, and location.
+- Created a **Meetup editing** page for updating event details, attendees, tags, and location, with map support.
+- Enabled meetup participation flow, supporting join and leave operations.
+- Built a **Meetup details view**, displaying complete data including sponsors, categories, attendees, and dynamic attendee count.
+- Built a **Location view** using Firestore `locationGeo` for map rendering and attendee overview.
+- Created a **My Meetups** page to display joined events and allow attendees to leave.
+- Built a **Manage My Meetups** to allow creators to list, search, edit, and delete their own events.
+- Supported **Club Topic Pages**, providing post updates and membership-based content access.
+- Ensured real-time sync for all club and meetup functionality through Firestore subscriptions.
+- Designed an extensible data model, including Firestore collections for clubs, meetups, and posts.
+- Integrated Expo Location to geocode user-entered addresses into Firestore coordinates.
+- Connected Firebase Auth to identify the current user for event creation, participation, and access control.
 
 **Tooling**
 - Configured GitHub Actions for ChatGPT PR Review  
