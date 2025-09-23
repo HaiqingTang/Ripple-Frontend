@@ -133,7 +133,10 @@ export default function MyClubs() {
   }, [uid]);
 
   const openClub = (club: Club) => {
-    Alert.alert("Open Club", club.name);
+    router.push({
+      pathname: "/(tabs)/Interest/clubTopic",
+      params: { name: club.name },
+    });
   };
 
   /** Header */
@@ -148,8 +151,8 @@ export default function MyClubs() {
   );
 
   /** SearchBar */
-  const SearchBar = () => (
-    <View style={styles.searchWrap}>
+  const SearchBarEl = useMemo(() => (
+    <View style={styles.searchWrap} pointerEvents="box-none">
       <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
       <TextInput
         placeholder="Search clubs..."
@@ -158,12 +161,20 @@ export default function MyClubs() {
         onChangeText={setQueryText}
         returnKeyType="search"
         style={styles.searchInput}
+        autoCorrect={false}
+        autoCapitalize="none"
+        blurOnSubmit={false}
+        underlineColorAndroid="transparent"
       />
-      <Pressable onPress={() => setQueryText(queryText)} hitSlop={10} style={{ paddingHorizontal: 10 }}>
-        <Ionicons name="search" size={18} color="#99A2C0" />
-      </Pressable>
+      {queryText.length > 0 ? (
+        <Pressable onPress={() => setQueryText("")} hitSlop={10} style={{ paddingHorizontal: 10 }}>
+          <Ionicons name="close-circle" size={18} color="#99A2C0" />
+        </Pressable>
+      ) : (
+        <View style={{ width: 38 }} />
+      )}
     </View>
-  );
+  ), [queryText]);
 
   /** Single card */
   const renderItem = ({ item }: { item: Club }) => (
@@ -181,7 +192,7 @@ export default function MyClubs() {
   return (
     <View style={styles.container}>
       <Header />
-      <SearchBar />
+      {SearchBarEl}
 
       <FlatList
         data={filtered}
@@ -199,6 +210,8 @@ export default function MyClubs() {
           </View>
         }
         ListFooterComponent={<View style={{ height: 24 }} />}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       />
 
       {/* Static bottom icons (visual only) */}

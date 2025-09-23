@@ -29,7 +29,6 @@ type GridItem = Club | Placeholder;
 const TAGS = ["All", "Arts", "Food", "Lifestyle", "Music", "Sports", "Study", "Travel"] as const;
 type Tag = (typeof TAGS)[number];
 
-// 你的库里写的是 "Sport"（单数），这里做个映射避免筛不到
 const TAG_TO_CATEGORY: Record<Tag, string | null> = {
   All: null,
   Arts: "Arts",
@@ -84,7 +83,6 @@ export default function AllClubs() {
     });
   }, [queryText, tag, data]);
 
-  // 填充占位，保证最后一行也能 space-between 对齐
   const filled: GridItem[] = useMemo(() => {
     const arr: GridItem[] = [...filtered];
     const mod = arr.length % 3;
@@ -115,7 +113,6 @@ export default function AllClubs() {
     }
   }, []);
 
-  // 点击卡片 -> 带 name 跳转到 clubTopic
   const openClub = (club: Club) => {
     router.push({
       pathname: "/(tabs)/Interest/clubTopic",
@@ -133,8 +130,8 @@ export default function AllClubs() {
     </View>
   );
 
-  const SearchBar = () => (
-    <View style={styles.searchWrap}>
+  const SearchBarEl = useMemo(() => (
+    <View style={styles.searchWrap} pointerEvents="box-none">
       <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
       <TextInput
         placeholder="Search clubs..."
@@ -143,12 +140,16 @@ export default function AllClubs() {
         onChangeText={setQueryText}
         returnKeyType="search"
         style={styles.searchInput}
+        autoCorrect={false}
+        autoCapitalize="none"
+        blurOnSubmit={false}
+        underlineColorAndroid="transparent"
       />
       <Pressable onPress={() => setQueryText("")} hitSlop={10} style={{ paddingHorizontal: 10 }}>
         <Ionicons name="close" size={18} color="#99A2C0" />
       </Pressable>
     </View>
-  );
+  ), [queryText]);
 
   const TagChips = () => (
     <View style={styles.tagsWrap}>
@@ -185,7 +186,7 @@ export default function AllClubs() {
   return (
     <View style={styles.container}>
       <Header />
-      <SearchBar />
+      {SearchBarEl}
       <TagChips />
 
       <FlatList
@@ -199,6 +200,8 @@ export default function AllClubs() {
         ListEmptyComponent={<Text style={{ textAlign: "center", color: "#6b7280", marginTop: 16 }}>No clubs</Text>}
         ListFooterComponent={<View style={{ height: 24 }} />}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       />
 
       <View style={styles.bottomBar}>

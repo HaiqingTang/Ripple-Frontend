@@ -51,7 +51,6 @@ export default function ClubMainPage() {
 
   const hotUnsubRef = useRef<Unsubscribe | null>(null);
 
-  /** ===== 顶部海报：订阅 posts 中 hot==true 的最新一条（带索引，失败则降级） */
   useEffect(() => {
     // 先尝试：where(hot) + orderBy(createdAt) + limit(1)
     const qWithOrder: Query = query(
@@ -178,8 +177,8 @@ export default function ClubMainPage() {
     </View>
   );
 
-  const SearchBar = () => (
-    <View style={styles.searchWrap}>
+  const SearchBarEl = useMemo(() => (
+    <View style={styles.searchWrap} pointerEvents="box-none">
       <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
       <TextInput
         placeholder="Search clubs..."
@@ -188,6 +187,10 @@ export default function ClubMainPage() {
         onChangeText={setSearch}
         returnKeyType="search"
         style={styles.searchInput}
+        autoCorrect={false}
+        autoCapitalize="none"
+        blurOnSubmit={false}
+        underlineColorAndroid="transparent"
       />
       {search.length > 0 && (
         <Pressable onPress={() => setSearch("")} hitSlop={10} style={{ paddingHorizontal: 10 }}>
@@ -195,7 +198,7 @@ export default function ClubMainPage() {
         </Pressable>
       )}
     </View>
-  );
+  ), [search]);
 
   const Hero = () => (
     <Pressable
@@ -237,78 +240,33 @@ export default function ClubMainPage() {
   );
 
   const MyClubItem = ({ item }: { item: Club }) => (
-    <Pressable onPress={() => Alert.alert("Open Club", item.name)} style={styles.myClubItem}>
+    <Pressable
+      onPress={() =>
+        router.push({
+          pathname: "/(tabs)/Interest/clubTopic",
+          params: { name: item.name },
+        })
+      }
+      style={styles.allClubItem}
+    >
       <Image source={{ uri: item.coverImageUrl || AVATAR_PH }} style={styles.myClubAvatar} />
       <Text numberOfLines={1} style={styles.myClubName}>{item.name}</Text>
     </Pressable>
   );
 
   const AllClubThumb = ({ item }: { item: Club }) => (
-    <Pressable onPress={() => Alert.alert("Open Club", item.name)} style={styles.allClubItem}>
+    <Pressable
+      onPress={() =>
+        router.push({
+          pathname: "/(tabs)/Interest/clubTopic",
+          params: { name: item.name },
+        })
+      }
+      style={styles.allClubItem}
+    >
       <Image source={{ uri: item.coverImageUrl || PLACEHOLDER }} style={styles.allClubAvatar} />
       <Text numberOfLines={1} style={styles.allClubName}>{item.name}</Text>
     </Pressable>
-  );
-
-
-  const Content = () => (
-    <ScrollView
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: 24 }}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />
-      }
-    >
-      <Header />
-      <SearchBar />
-
-      <View style={styles.cardSectionHero}>
-        <Hero />
-      </View>
-
-      <View style={styles.cardSection}>
-        <SectionHeader
-          title="My Clubs"
-          actionText="All Clubs"
-          onAction={() => router.push("/Interest/myClubs")}
-        />
-        {myClubs && myClubs.length > 0 ? (
-          <FlatList
-            data={myClubs}
-            keyExtractor={(c) => c.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 6 }}
-            renderItem={({ item }) => <MyClubItem item={item} />}
-          />
-        ) : (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>You haven’t joined any clubs yet.</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.cardSection}>
-        <SectionHeader
-          title="All Clubs"
-          actionText="View More"
-          onAction={() => router.push("/Interest/allClubs")}
-        />
-        <FlatList
-          data={filteredAll}
-          keyExtractor={(c) => c.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 6 }}
-          renderItem={({ item }) => <AllClubThumb item={item} />}
-          ListEmptyComponent={
-            <View style={[styles.emptyBox, { marginHorizontal: 8 }]}>
-              <Text style={styles.emptyText}>No clubs found.</Text>
-            </View>
-          }
-        />
-      </View>
-    </ScrollView>
   );
 
   const BottomBar = () => (
@@ -330,7 +288,66 @@ export default function ClubMainPage() {
         </View>
       ) : (
         <>
-          <Content />
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />
+            }
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            <Header />
+            {SearchBarEl}
+
+            <View style={styles.cardSectionHero}>
+              <Hero />
+            </View>
+
+            <View style={styles.cardSection}>
+              <SectionHeader
+                title="My Clubs"
+                actionText="All Clubs"
+                onAction={() => router.push("/Interest/myClubs")}
+              />
+              {myClubs && myClubs.length > 0 ? (
+                <FlatList
+                  data={myClubs}
+                  keyExtractor={(c) => c.id}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 6 }}
+                  renderItem={({ item }) => <MyClubItem item={item} />}
+                />
+              ) : (
+                <View style={styles.emptyBox}>
+                  <Text style={styles.emptyText}>You haven’t joined any clubs yet.</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.cardSection}>
+              <SectionHeader
+                title="All Clubs"
+                actionText="View More"
+                onAction={() => router.push("/Interest/allClubs")}
+              />
+              <FlatList
+                data={filteredAll}
+                keyExtractor={(c) => c.id}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 6 }}
+                renderItem={({ item }) => <AllClubThumb item={item} />}
+                ListEmptyComponent={
+                  <View style={[styles.emptyBox, { marginHorizontal: 8 }]}>
+                    <Text style={styles.emptyText}>No clubs found.</Text>
+                  </View>
+                }
+              />
+            </View>
+          </ScrollView>
+
           <BottomBar />
         </>
       )}
