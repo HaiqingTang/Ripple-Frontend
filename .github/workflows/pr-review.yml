@@ -2,7 +2,10 @@ name: pr-review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened]   # PR 创建/推送新提交/重新打开时触发
+  # （可选）如果你也想在 push 到某些分支时自测，取消以下注释
+  # push:
+  #   branches: [ backend-meetup ]           # 或 main / develop 等
 
 permissions:
   pull-requests: write
@@ -10,26 +13,24 @@ permissions:
 
 jobs:
   review:
+    name: AI PR Review
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # 可选：只在有 OPENAI_API_KEY 时才运行，没配密钥就直接跳过避免失败
+      # 没配密钥就跳过，避免失败（可保留）
       - name: Skip when no OPENAI_API_KEY
         if: ${{ secrets.OPENAI_API_KEY == '' }}
         run: echo "No OPENAI_API_KEY set; skipping ChatGPT review."
 
-      - name: AI PR Review
+      # 选一个维护比较活跃的审查 Action（推荐）
+      - name: ChatGPT review
         if: ${{ secrets.OPENAI_API_KEY != '' }}
         uses: ruilisi/auto-pr-review@v1.0.7
         with:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-
-          # 选择你账号可用的模型（gpt-4o-mini 较常见；若你有其它模型权限可替换）
-          model: gpt-4o-mini
-
-          # 只审查这些后缀的改动
+          model: gpt-4o-mini             # 换成你账号可用的模型
           path_filters: |
             **/*.js
             **/*.ts
@@ -37,7 +38,5 @@ jobs:
             **/*.py
             **/*.cpp
             **/*.java
-
-          # 可选项：控制输出风格
           review_simple_changes: true
           review_comment_lgtm: false
