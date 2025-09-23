@@ -215,16 +215,17 @@ export default function AllClubs() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#DDE7FF",
-    paddingTop: Platform.select({ ios: 48, android: 20 }),
+    backgroundColor: "#dbe7ff",
+    paddingTop: Platform.select({ ios: 70, android: 20 }),
   },
 
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: H_PADDING,
-    marginBottom: 10,
+    marginBottom: 12,
   },
+
   backBtn: {
     width: 32,
     height: 32,
@@ -232,19 +233,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   title: {
     flex: 1,
     textAlign: "center",
-    fontSize: 34,
+    fontSize: 20,
     fontWeight: "800",
-    color: "#6B7AFF",
-    letterSpacing: 0.5,
+    color: "#1f2937",
   },
 
   searchWrap: {
     marginHorizontal: H_PADDING,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 16,
     backgroundColor: "white",
     flexDirection: "row",
     alignItems: "center",
@@ -254,7 +255,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  searchInput: { flex: 1, height: "100%", fontSize: 16, color: "#223" },
+
+  searchInput: {
+    flex: 1,
+    height: "100%",
+    fontSize: 16,
+    color: "#223"
+  },
 
   tagsWrap: {
     flexDirection: "row",
@@ -262,6 +269,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: H_PADDING,
     marginTop: 14,
   },
+
   tagChip: {
     borderRadius: 20,
     paddingHorizontal: 18,
@@ -269,13 +277,33 @@ const styles = StyleSheet.create({
     marginRight: 16,
     marginBottom: 12,
   },
-  tagChipActive: { backgroundColor: "#2B2B2B" },
-  tagChipIdle: { backgroundColor: "#E5E8F3" },
-  tagText: { fontWeight: "700" },
-  tagTextActive: { color: "#FFFFFF" },
-  tagTextIdle: { color: "#5C637C" },
 
-  card: { width: CARD_W, alignItems: "center", marginTop: 22 },
+  tagChipActive: {
+    backgroundColor: "#2B2B2B"
+  },
+
+  tagChipIdle: {
+    backgroundColor: "#E5E8F3"
+  },
+
+  tagText: {
+    fontWeight: "700"
+  },
+
+  tagTextActive: {
+    color: "#FFFFFF"
+  },
+
+  tagTextIdle: {
+    color: "#5C637C"
+  },
+
+  card: {
+    width: CARD_W,
+    alignItems: "center",
+    marginTop: 22
+  },
+
   cardImage: {
     width: CARD_W,
     height: IMAGE_H,
@@ -283,9 +311,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     backgroundColor: "#EAF0FF",
   },
-  cardLabel: { fontSize: 18, fontWeight: "700", color: "#111826" },
 
-  placeholder: { opacity: 0 },
+  cardLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111826"
+  },
+
+  placeholder: {
+    opacity: 0
+  },
 
   bottomBar: {
     height: 72,

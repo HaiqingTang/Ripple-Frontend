@@ -408,8 +408,8 @@ export default function ClubTopic() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#DDE7FF",
-    paddingTop: Platform.select({ ios: 10, android: 0 }),
+    backgroundColor: "#dbe7ff",
+    paddingTop: Platform.select({ ios: 20, android: 0 }),
   },
 
   stickyWrap: {
@@ -417,12 +417,14 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 10,
   },
+
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: H_PADDING,
     marginBottom: 10,
   },
+
   backBtn: {
     width: 30,
     height: 30,
@@ -431,6 +433,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 8,
   },
+
   searchBox: {
     flex: 1,
     height: 44,
@@ -444,7 +447,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  searchInput: { flex: 1, height: "100%", fontSize: 16, color: "#1F2A44" },
+
+  searchInput: {
+    flex: 1,
+    height: "100%",
+    fontSize: 16,
+    color: "#1F2A44"
+  },
 
   clubCard: {
     marginTop: 6,
@@ -455,10 +464,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  clubThumb: { width: 84, height: 84, borderRadius: 12, backgroundColor: "#EAF0FF" },
-  clubName: { fontSize: 22, fontWeight: "800", color: "#1B243D" },
-  clubMembers: { color: "#2B3B6E", marginTop: 2, fontWeight: "700" },
-  clubDesc: { color: "#2B3B6E", marginTop: 4, lineHeight: 18 },
+
+  clubThumb: {
+    width: 84,
+    height: 84,
+    borderRadius: 12,
+    backgroundColor: "#EAF0FF",
+  },
+
+  clubName: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#1B243D",
+  },
+
+  clubMembers: {
+    color: "#2B3B6E",
+    marginTop: 2,
+    fontWeight: "700",
+  },
+
+  clubDesc: {
+    color: "#2B3B6E",
+    marginTop: 4,
+    lineHeight: 18,
+  },
+
   joinBtn: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -467,9 +498,20 @@ const styles = StyleSheet.create({
     borderColor: "#8EA0FF",
     backgroundColor: "white",
   },
-  joinedBtn: { backgroundColor: "#8EA0FF", borderColor: "#8EA0FF" },
-  joinText: { color: "#5C6FD6", fontWeight: "800" },
-  joinedText: { color: "#fff" },
+
+  joinedBtn: {
+    backgroundColor: "#8EA0FF",
+    borderColor: "#8EA0FF",
+  },
+
+  joinText: {
+    color: "#5C6FD6",
+    fontWeight: "800",
+  },
+
+  joinedText: {
+    color: "#fff",
+  },
 
   composerCard: {
     marginTop: 10,
@@ -486,8 +528,19 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  composerAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
-  composerHint: { flex: 1, color: "#7A86A8" },
+
+  composerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+  },
+
+  composerHint: {
+    flex: 1,
+    color: "#7A86A8",
+  },
+
   writeBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -497,13 +550,42 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  writeBtnText: { color: "#fff", fontWeight: "800", marginRight: 4 },
 
-  postCard: { marginTop: 14, marginHorizontal: H_PADDING },
-  postHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
-  authorAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
-  authorName: { fontWeight: "800", fontSize: 16, color: "#1A2036" },
-  subMeta: { color: "#707AA0", marginTop: 2 },
+  writeBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+    marginRight: 4,
+  },
+
+  postCard: {
+    marginTop: 14,
+    marginHorizontal: H_PADDING,
+  },
+
+  postHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+
+  authorAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+  },
+
+  authorName: {
+    fontWeight: "800",
+    fontSize: 16,
+    color: "#1A2036",
+  },
+
+  subMeta: {
+    color: "#707AA0",
+    marginTop: 2,
+  },
+
   roundIcon: {
     width: 28,
     height: 28,
@@ -513,31 +595,55 @@ const styles = StyleSheet.create({
     backgroundColor: "#E7ECFF",
   },
 
-  // NEW: image wrap (to get rounded corners) + image style
   postImageWrap: {
     borderRadius: CARD_RADIUS,
     overflow: "hidden",
   },
+
   postImage: {
     width: "100%",
     height: SCREEN_W * 0.6,
   },
 
-  // NEW: caption below the image
   captionBox: {
     marginTop: 8,
     backgroundColor: "white",
     padding: 12,
     borderRadius: CARD_RADIUS,
   },
-  captionText: { color: "#1A2036" },
 
-  textOnly: { backgroundColor: "white", padding: 12, borderRadius: CARD_RADIUS },
+  captionText: {
+    color: "#1A2036",
+  },
 
-  postActions: { flexDirection: "row", alignItems: "center", marginTop: 8 },
-  lightPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: "#6275FF" },
-  lightPillText: { color: "white", fontWeight: "800" },
-  supportText: { color: "#5D678A", marginLeft: 6 },
+  textOnly: {
+    backgroundColor: "white",
+    padding: 12,
+    borderRadius: CARD_RADIUS,
+  },
+
+  postActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+  },
+
+  lightPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#6275FF",
+  },
+
+  lightPillText: {
+    color: "white",
+    fontWeight: "800",
+  },
+
+  supportText: {
+    color: "#5D678A",
+    marginLeft: 6,
+  },
 
   bottomBar: {
     height: 64,

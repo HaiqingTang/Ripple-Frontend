@@ -230,7 +230,7 @@ export default function ClubMainPage() {
       {!!actionText && (
         <Pressable hitSlop={10} style={styles.actionBtn} onPress={onAction}>
           <Text style={styles.actionText}>{actionText}</Text>
-          <Ionicons name="chevron-forward" size={16} color="#8EA0FF" />
+          <Ionicons name="chevron-forward" size={16} color="#6b7280" />
         </Pressable>
       )}
     </View>
@@ -244,10 +244,12 @@ export default function ClubMainPage() {
   );
 
   const AllClubThumb = ({ item }: { item: Club }) => (
-    <Pressable onPress={() => Alert.alert("Open Club", item.name)} style={styles.thumbItem}>
-      <Image source={{ uri: item.coverImageUrl || PLACEHOLDER }} style={styles.thumbImage} />
+    <Pressable onPress={() => Alert.alert("Open Club", item.name)} style={styles.allClubItem}>
+      <Image source={{ uri: item.coverImageUrl || PLACEHOLDER }} style={styles.allClubAvatar} />
+      <Text numberOfLines={1} style={styles.allClubName}>{item.name}</Text>
     </Pressable>
   );
+
 
   const Content = () => (
     <ScrollView
@@ -260,7 +262,7 @@ export default function ClubMainPage() {
       <Header />
       <SearchBar />
 
-      <View style={styles.cardSection}>
+      <View style={styles.cardSectionHero}>
         <Hero />
       </View>
 
@@ -339,53 +341,199 @@ export default function ClubMainPage() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#E9F0FF",
+    backgroundColor: "#dbe7ff",
     paddingHorizontal: 14,
-    paddingTop: Platform.select({ ios: 52, android: 24 }),
+    paddingTop: Platform.select({ ios: 70, android: 24 }),
   },
-  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12
+  },
+
   backBtn: {
-    width: 32, height: 32, borderRadius: 16,
-    alignItems: "center", justifyContent: "center"
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center"
   },
+
   title: {
-    flex: 1, textAlign: "center",
-    fontSize: 28, fontWeight: "800", color: "#6B7AFF", letterSpacing: 0.3
+    flex: 1,
+    textAlign: "center",
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#1f2937"
   },
+
   searchWrap: {
-    flexDirection: "row", alignItems: "center",
-    height: 48, borderRadius: 16, backgroundColor: "white",
-    shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 }, elevation: 2, marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "white",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    marginBottom: 14,
   },
-  searchInput: { flex: 1, height: "100%", fontSize: 16, color: "#203160" },
+
+  searchInput: {
+    flex: 1,
+    height: "100%",
+    fontSize: 16,
+    color: "#223"
+  },
+
   cardSection: {
-    backgroundColor: "#D7E2FF", borderRadius: 18, padding: 14, marginTop: 14
+    backgroundColor: "#C6DBFA",
+    borderRadius: 16,
+    padding: 12,
+    marginTop: 12
   },
-  heroMask: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.25)" },
-  heroBadgeRow: { position: "absolute", top: 10, right: 10, flexDirection: "row" },
+
+  cardSectionHero: {
+    backgroundColor: "#C6DBFA",
+    borderRadius: 16,
+    padding: 0,
+    marginTop: 12,
+    overflow: "hidden",
+  },
+  
+  heroMask: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.25)"
+  },
+
+  heroBadgeRow: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    flexDirection: "row"
+  },
+
   heroBadge: {
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.85)", color: "#1F254B", fontWeight: "800",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    color: "#1F254B",
+    fontWeight: "800",
   },
-  heroTitle: { color: "white", fontSize: 28, fontWeight: "900" },
+
+  heroTitle: {
+    color: "white",
+    fontSize: 22,
+    fontWeight: "900"
+  },
+
   sectionHeaderRow: {
-    paddingHorizontal: 6, marginBottom: 8, flexDirection: "row",
-    alignItems: "center", justifyContent: "space-between"
+    paddingHorizontal: 6,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  sectionTitle: { fontSize: 22, fontWeight: "800", color: "#6B7AFF" },
-  actionBtn: { paddingHorizontal: 6, paddingVertical: 4, flexDirection: "row", alignItems: "center" },
-  actionText: { color: "#8EA0FF", fontWeight: "700" },
-  myClubItem: { width: 96, marginHorizontal: 6, alignItems: "center" },
-  myClubAvatar: { width: 96, height: 76, borderRadius: 16, marginBottom: 8 },
-  myClubName: { fontSize: 16, color: "#1D2A5B", fontWeight: "700" },
-  thumbItem: { width: 98, height: 88, borderRadius: 16, overflow: "hidden", marginHorizontal: 6 },
-  thumbImage: { width: "100%", height: "100%" },
-  emptyBox: { marginHorizontal: 8, marginVertical: 8, padding: 14, backgroundColor: "white", borderRadius: 14 },
-  emptyText: { color: "#6E7CA8" },
-  loadingBox: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
+
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#345BCE",
+  },
+
+  actionBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  actionText: {
+    color: "#6b7280",
+    fontWeight: "700",
+  },
+
+  myClubItem: {
+    width: 96,
+    marginHorizontal: 6,
+    alignItems: "center",
+  },
+
+  myClubAvatar: {
+    width: 96,
+    height: 76,
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+
+  myClubName: {
+    fontSize: 12,
+    color: "#1D2A5B",
+    fontWeight: "700",
+  },
+
+  allClubItem: {
+    width: 96,
+    marginHorizontal: 6,
+    alignItems: "center",
+  },
+
+  allClubAvatar: {
+    width: 96,
+    height: 76,
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+
+  allClubName: {
+    fontSize: 12,
+    color: "#1D2A5B",
+    fontWeight: "700",
+  },
+
+  thumbItem: {
+    width: 98,
+    height: 88,
+    borderRadius: 16,
+    overflow: "hidden",
+    marginHorizontal: 6,
+  },
+
+  thumbImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  emptyBox: {
+    marginHorizontal: 8,
+    marginVertical: 8,
+    padding: 14,
+    backgroundColor: "white",
+    borderRadius: 14,
+  },
+
+  emptyText: {
+    color: "#6E7CA8",
+  },
+
+  loadingBox: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+
   bottomBar: {
-    height: 64, flexDirection: "row", justifyContent: "space-around", alignItems: "center",
-    backgroundColor: "#E9F0FF", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#CAD4FF",
+    height: 64,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    backgroundColor: "#E9F0FF",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#CAD4FF",
   },
 });
