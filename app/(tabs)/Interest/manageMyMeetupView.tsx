@@ -278,14 +278,22 @@ function RowDisplay({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#dfeaff" },
   header: {
-    paddingTop: 16,
+    paddingTop: 8,
     paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   },
   backBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
-  title: { flex: 1, textAlign: "center", fontSize: 26, fontWeight: "700", color: "#3b5aa9" },
+  title: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#2c3e50",
+  },
+
   plusBtn: {
     width: 32,
     height: 32,
@@ -299,7 +307,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#cfe0ff",
     borderRadius: 16,
     padding: 14,
-    marginTop: 12,
+    marginTop: 0,
   },
   subLabel: { color: "#3b5aa9", marginBottom: 6, fontWeight: "600" },
 

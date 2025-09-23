@@ -437,7 +437,7 @@ function LinedRow({
   label: string; value: string; onChange: (v: string) => void; placeholder?: string; keyboardType?: "default" | "number-pad";
 }) {
   return (
-    <View style={{ marginBottom: 12 }}>
+    <View style={{ marginBottom: 12}}>
       <Text style={styles.subLabel}>{label}</Text>
       <TextInput
         style={styles.underlinedInput}
@@ -451,34 +451,72 @@ function LinedRow({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#dfeaff" },
+  screen: {
+    flex: 1,
+    backgroundColor: "#dbe7ff",
+  },
+
   header: {
-    paddingTop: 16,
+    paddingTop: 8,
     paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   },
-  backBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
-  title: { flex: 1, textAlign: "center", fontSize: 26, fontWeight: "700", color: "#3b5aa9" },
+
+  backBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  title: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#2c3e50",
+  },
 
   // kept for location input box
   searchBox: {
-    flexDirection: "row", alignItems: "center",
-    backgroundColor: "white", borderRadius: 22, paddingHorizontal: 12, height: 40,
-    elevation: 1, shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderRadius: 22,
+    paddingHorizontal: 12,
+    height: 40,
+    elevation: 1,
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
     marginTop: 6,
   },
-  searchInput: { marginLeft: 8, flex: 1 },
+
+  searchInput: {
+    marginLeft: 8,
+    flex: 1,
+  },
 
   card: {
     backgroundColor: "#cfe0ff",
     borderRadius: 16,
     padding: 14,
-    marginTop: 12, // unified first card offset
+    marginTop: 0, // unified first card offset
   },
-  subLabel: { color: "#3b5aa9", marginBottom: 6, fontWeight: "600" },
-  hintText: { color: "#6b7bb5", marginBottom: 8 },
+
+  subLabel: {
+    color: "#3b5aa9",
+    marginBottom: 6,
+    fontWeight: "600",
+  },
+
+  hintText: {
+    color: "#6b7bb5",
+    marginBottom: 8,
+  },
 
   underlinedInput: {
     backgroundColor: "transparent",
@@ -486,42 +524,118 @@ const styles = StyleSheet.create({
     borderBottomColor: "#afc6ff",
     paddingVertical: 6,
   },
+
   underlinedDisplay: {
     borderBottomWidth: 1,
     borderBottomColor: "#afc6ff",
     paddingVertical: 6,
   },
+
   textArea: {
-    minHeight: 80, borderRadius: 10, backgroundColor: "white",
-    padding: 10, textAlignVertical: "top", marginBottom: 8,
+    minHeight: 80,
+    borderRadius: 10,
+    backgroundColor: "white",
+    padding: 10,
+    textAlignVertical: "top",
+    marginBottom: 8,
   },
 
-  tagRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 6 },
+  tagRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 6,
+  },
+
   tag: {
-    flexDirection: "row", alignItems: "center",
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#eef3ff",
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
-  tagActive: { backgroundColor: "#222" },
-  tagText: { color: "#3b5aa9", fontWeight: "600" },
-  tagTextActive: { color: "white" },
-  iconBox: { width: 12, marginRight: 6, alignItems: "center" },
 
-  mapWrap: { borderRadius: 12, overflow: "hidden", height: 140, marginBottom: 8 },
-  map: { flex: 1 },
-  locText: { textAlign: "center", color: "#3b5aa9", marginTop: 4 },
+  tagActive: {
+    backgroundColor: "#222",
+  },
 
-  footerRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 16 },
-  cancelBtn: { backgroundColor: "#d8d0cb", paddingVertical: 12, paddingHorizontal: 22, borderRadius: 10 },
-  cancelText: { color: "#5e5651", fontWeight: "700" },
-  submitBtn: { backgroundColor: "#d84535", paddingVertical: 12, paddingHorizontal: 22, borderRadius: 10 },
-  submitText: { color: "white", fontWeight: "700" },
+  tagText: {
+    color: "#3b5aa9",
+    fontWeight: "600",
+  },
+
+  tagTextActive: {
+    color: "white",
+  },
+
+  iconBox: {
+    width: 12,
+    marginRight: 6,
+    alignItems: "center",
+  },
+
+  mapWrap: {
+    borderRadius: 12,
+    overflow: "hidden",
+    height: 140,
+    marginBottom: 8,
+  },
+
+  map: {
+    flex: 1,
+  },
+
+  locText: {
+    textAlign: "center",
+    color: "#3b5aa9",
+    marginTop: 4,
+  },
+
+  footerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
+  },
+
+  cancelBtn: {
+    backgroundColor: "#d8d0cb",
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 10,
+  },
+
+  cancelText: {
+    color: "#5e5651",
+    fontWeight: "700",
+  },
+
+  submitBtn: {
+    backgroundColor: "#d84535",
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 10,
+  },
+
+  submitText: {
+    color: "white",
+    fontWeight: "700",
+  },
 
   modalMask: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.3)", alignItems: "center", justifyContent: "center",
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 20,
   },
+
   modalCard: {
-    width: "100%", maxWidth: 420, backgroundColor: "#fff", borderRadius: 12, padding: 16,
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
   },
+
 });

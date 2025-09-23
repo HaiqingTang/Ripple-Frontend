@@ -178,14 +178,14 @@ function fromDisplayDate(s: string) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#dfeaff" },
   header: {
-    paddingTop: 60,
+    paddingTop: 68,
     paddingHorizontal: 16,
     paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
   },
   backBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
-  title: { flex: 1, textAlign: "center", fontSize: 26, fontWeight: "700", color: "#3b5aa9" },
+  title: { flex: 1, textAlign: "center", fontSize: 18, fontWeight: "700", color: "#2c3e50" },
   plusBtn: {
     width: 32,
     height: 32,
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
-    marginTop: 6,
+    marginTop: 0,
   },
   searchInput: { marginLeft: 8, flex: 1 },
 

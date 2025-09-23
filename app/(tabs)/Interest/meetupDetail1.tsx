@@ -265,8 +265,8 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   header: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: 6,
+    paddingBottom: 6,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -287,13 +287,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: "#2c3e50",
     letterSpacing: 0.3,
   },
   card: {
-    marginTop: 12,
+    marginTop: 0,
     marginHorizontal: 16,
     backgroundColor: CARD_BG,
     borderRadius: 16,
