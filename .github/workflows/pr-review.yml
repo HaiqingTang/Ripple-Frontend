@@ -1,7 +1,8 @@
 name: pr-review
+
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 permissions:
   pull-requests: write
@@ -9,14 +10,34 @@ permissions:
 
 jobs:
   review:
-    name: ChatGPT code review
     runs-on: ubuntu-latest
     steps:
-      - uses: agogear/chatgpt-pr-review@0.0.17
+      - uses: actions/checkout@v4
+
+      # 可选：只在有 OPENAI_API_KEY 时才运行，没配密钥就直接跳过避免失败
+      - name: Skip when no OPENAI_API_KEY
+        if: ${{ secrets.OPENAI_API_KEY == '' }}
+        run: echo "No OPENAI_API_KEY set; skipping ChatGPT review."
+
+      - name: AI PR Review
+        if: ${{ secrets.OPENAI_API_KEY != '' }}
+        uses: ruilisi/auto-pr-review@v1.0.7
         with:
-          openai_max_tokens: 8192
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          github_pr_id: ${{ github.event.number }}
-          files: "*.js, *ts, *.py, *.cpp, *.java"
-          openai_model: gpt-5-mini
+
+          # 选择你账号可用的模型（gpt-4o-mini 较常见；若你有其它模型权限可替换）
+          model: gpt-4o-mini
+
+          # 只审查这些后缀的改动
+          path_filters: |
+            **/*.js
+            **/*.ts
+            **/*.tsx
+            **/*.py
+            **/*.cpp
+            **/*.java
+
+          # 可选项：控制输出风格
+          review_simple_changes: true
+          review_comment_lgtm: false
