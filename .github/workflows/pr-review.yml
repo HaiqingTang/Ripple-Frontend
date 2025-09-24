@@ -13,18 +13,26 @@ jobs:
     name: AI PR Review
     runs-on: ubuntu-latest
 
-    # 如果没有配置 OPENAI_API_KEY，就整个 job 跳过（注意 ${{ }} 必须有）
-    if: ${{ secrets.OPENAI_API_KEY != '' }}
+    # 把密钥映射到 env，后面步骤用 env 来做条件判断（避免在 if 里直接用 secrets）
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
 
+      # 没配密钥就跳过（不会报错）
+      - name: Skip when no OPENAI_API_KEY
+        if: ${{ env.OPENAI_API_KEY == '' || env.OPENAI_API_KEY == null }}
+        run: echo "No OPENAI_API_KEY set; skipping ChatGPT review."
+
+      # 真正的审查步骤（维护更活跃的 Action，模型换成你账号可用的）
       - name: ChatGPT review
+        if: ${{ env.OPENAI_API_KEY != '' && env.OPENAI_API_KEY != null }}
         uses: ruilisi/auto-pr-review@v1.0.7
         with:
-          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          openai_api_key: ${{ env.OPENAI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          model: gpt-4o-mini           # 换成你账号可用的模型
+          model: gpt-4o-mini
           path_filters: |
             **/*.js
             **/*.ts
