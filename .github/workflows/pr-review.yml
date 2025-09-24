@@ -26,12 +26,14 @@ jobs:
           set -euo pipefail
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
+          # 取本次 PR 改动文件
           git diff --name-only "$BASE" "$HEAD" > all.txt
-          # 仅保留你原来 files 参数定义的后缀（*.js, *.ts, *.py, *.cpp, *.java）
+          # 仅保留你原先 files 参数定义的后缀（*.js, *.ts, *.py, *.cpp, *.java）
           grep -E '\.(js|ts|py|cpp|java)$' all.txt | sed '/^\s*$/d' > changed.txt || true
 
           # 分批（每批 ≤10）
           mapfile -t FILES < <(cat changed.txt 2>/dev/null || true)
+
           CHUNKS_JSON="[]"
           if [ "${#FILES[@]}" -gt 0 ]; then
             BATCHES=(); COUNT=0; BATCH=""
@@ -41,8 +43,10 @@ jobs:
               if [ "$COUNT" -eq 10 ]; then BATCHES+=("$BATCH"); BATCH=""; COUNT=0; fi
             done
             if [ -n "$BATCH" ]; then BATCHES+=("$BATCH"); fi
+            # 压成单行 JSON
             CHUNKS_JSON=$(printf '%s\n' "${BATCHES[@]}" | jq -R . | jq -s -c .)
           fi
+
           echo "chunks=$CHUNKS_JSON" >> "$GITHUB_OUTPUT"
 
   review:
@@ -52,17 +56,46 @@ jobs:
     if: ${{ needs.gather.outputs.chunks != '' && needs.gather.outputs.chunks != '[]' }}
     strategy:
       fail-fast: false
-      max-parallel: 1  # ✅ 只跑一个批次，降低瞬时请求
+      max-parallel: 1  # 串行跑，避免并发触发限额
       matrix:
         files_batch: ${{ fromJSON(needs.gather.outputs.chunks) }}
     steps:
+      # 如果没有 OPENAI_API_KEY（例如 fork PR），直接留言解释并跳过
+      - name: Comment when missing OPENAI_API_KEY
+        if: ${{ secrets.OPENAI_API_KEY == '' || secrets.OPENAI_API_KEY == null }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "⚠️ Skipping AI review: `OPENAI_API_KEY` is not available in this PR context (e.g., fork PR).",
+            });
+
+      # 只有有 key 才跑审查
       - name: Run ChatGPT PR review (≤ 10 files)
+        id: prrun
+        if: ${{ secrets.OPENAI_API_KEY != '' && secrets.OPENAI_API_KEY != null }}
         uses: agogear/chatgpt-pr-review@0.0.17
-        continue-on-error: true  # ✅ 即使配额报错也不让 CI 失败
+        continue-on-error: true  # 失败也不让 CI 掉红
         with:
           openai_max_tokens: 8192
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_pr_id: ${{ github.event.number }}
-          files: ${{ matrix.files_batch }}  # 分批后的文件列表（逗号分隔）
+          files: ${{ matrix.files_batch }}   # 分批后的文件列表（逗号分隔，≤10）
           openai_model: gpt-5-mini
+
+      # 如果上一步失败（如配额超限），发一条兜底评论提示原因
+      - name: Fallback comment on failure
+        if: ${{ steps.prrun.outcome == 'failure' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "⚠️ AI review step failed for this batch (likely API quota/rate limit). Please check OpenAI billing/quotas and re-run.",
+            });
