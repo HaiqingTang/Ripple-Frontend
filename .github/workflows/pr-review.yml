@@ -1,7 +1,8 @@
 name: pr-review
+
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 permissions:
   pull-requests: write
@@ -11,12 +12,31 @@ jobs:
   review:
     name: ChatGPT code review
     runs-on: ubuntu-latest
+
+    # 用 env 映射 secret，便于条件判断
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
     steps:
-      - uses: agogear/chatgpt-pr-review@0.0.17
+      # 没有 key 就跳过，不报错
+      - name: Skip when no OPENAI_API_KEY
+        if: ${{ env.OPENAI_API_KEY == '' || env.OPENAI_API_KEY == null }}
+        run: echo "No OPENAI_API_KEY set; skipping ChatGPT review."
+
+      # 真正的审查（有 key 才执行）
+      - name: Run ChatGPT PR review
+        if: ${{ env.OPENAI_API_KEY != '' && env.OPENAI_API_KEY != null }}
+        uses: agogear/chatgpt-pr-review@0.0.17
         with:
-          openai_max_tokens: 8192
-          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          # —— 用量相关（降配）——
+          openai_api_key: ${{ env.OPENAI_API_KEY }}
+          openai_model: gpt-5-mini
+          openai_max_tokens: 800
+
+          # —— 只审查前端代码，减少 diff 大小 ——
+          # Action 会按逗号分隔匹配
+          files: "**/*.ts, **/*.tsx, **/*.js, **/*.jsx"
+
+          # GitHub 相关（保持原来用法）
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_pr_id: ${{ github.event.number }}
-          files: "*.js, *ts, *.py, *.cpp, *.java"
-          openai_model: gpt-5-mini
