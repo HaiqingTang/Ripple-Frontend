@@ -10,35 +10,112 @@ permissions:
 
 jobs:
   review:
-    name: AI PR Review
+    name: AI PR Review (OpenAI direct)
     runs-on: ubuntu-latest
 
-    # 把密钥映射到 env，后面步骤用 env 来做条件判断（避免在 if 里直接用 secrets）
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # 你账号可用的模型：若 gpt-4o-mini 不可用，就换成你有权限的名称
+      OPENAI_MODEL: gpt-4o-mini
+      # 控制审查最大 diff 大小（字符数，避免超 token）
+      DIFF_LIMIT: "60000"
 
     steps:
-      - uses: actions/checkout@v4
-
-      # 没配密钥就跳过（不会报错）
-      - name: Skip when no OPENAI_API_KEY
-        if: ${{ env.OPENAI_API_KEY == '' || env.OPENAI_API_KEY == null }}
-        run: echo "No OPENAI_API_KEY set; skipping ChatGPT review."
-
-      # 真正的审查步骤（维护更活跃的 Action，模型换成你账号可用的）
-      - name: ChatGPT review
-        if: ${{ env.OPENAI_API_KEY != '' && env.OPENAI_API_KEY != null }}
-        uses: ruilisi/auto-pr-review@v1.0.7
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          openai_api_key: ${{ env.OPENAI_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          model: gpt-4o-mini
-          path_filters: |
-            **/*.js
-            **/*.ts
-            **/*.tsx
-            **/*.py
-            **/*.cpp
-            **/*.java
-          review_simple_changes: true
-          review_comment_lgtm: false
+          fetch-depth: 0  # 我们需要拿 base/head 的完整 diff
+
+      - name: Ensure API key exists
+        if: ${{ env.OPENAI_API_KEY == '' || env.OPENAI_API_KEY == null }}
+        run: |
+          echo "No OPENAI_API_KEY set; skipping ChatGPT review."
+          exit 0
+
+      - name: Build diff
+        id: diff
+        run: |
+          set -e
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          echo "Base: $BASE_SHA"
+          echo "Head: $HEAD_SHA"
+
+          # 只对常见代码后缀做审查，且排除 node_modules 等
+          git --no-pager diff --unified=0 "$BASE_SHA" "$HEAD_SHA" -- \
+            ':(exclude)**/node_modules/**' \
+            ':(exclude)**/dist/**' \
+            ':(exclude)**/build/**' \
+            '**/*.js' '**/*.jsx' '**/*.ts' '**/*.tsx' \
+            '**/*.py' '**/*.cpp' '**/*.java' \
+            '**/*.json' '**/*.yaml' '**/*.yml' \
+            > full.diff || true
+
+          # 截断，避免超长
+          head -c "$DIFF_LIMIT" full.diff > pr.diff || true
+
+          DIFF_SIZE=$(wc -c < pr.diff || echo 0)
+          echo "DIFF_SIZE=$DIFF_SIZE" >> $GITHUB_OUTPUT
+
+      - name: Skip if no relevant changes
+        if: ${{ steps.diff.outputs.DIFF_SIZE == '0' }}
+        run: echo "No relevant changes to review. Skipping."
+
+      - name: Call OpenAI for review
+        if: ${{ steps.diff.outputs.DIFF_SIZE != '0' }}
+        id: ai
+        shell: bash
+        run: |
+          set -e
+          echo "Preparing prompt..."
+          # 这里是系统提示词，你可以按需调整
+          cat > system.txt << 'SYS'
+  You are a senior full-stack engineer reviewing a GitHub Pull Request diff.
+- Stack: Expo + React Native (expo-router), TypeScript.
+- Focus on: navigation correctness (expo-router paths, _layout.tsx), UI layout stability (fixed sizes, sticky header), safe mock vs. real API separation, pagination & refresh logic, accessibility, performance, error handling.
+- Output actionable, concise items with code suggestions when helpful.
+  SYS
+  
+  # 用户消息，放入 diff
+  echo 'Please review the following PR diff. Identify issues, risks, and concrete improvements. Provide a prioritized checklist and code examples where appropriate.
+  
+  ```diff' > user.txt
+  cat pr.diff >> user.txt
+  echo '```' >> user.txt
+  
+  echo "Calling OpenAI..."
+  # 直接调用 Chat Completions（若你的账号需用其它端点/参数，按需修改）
+  RESP=$(curl -sS https://api.openai.com/v1/chat/completions \
+-H "Authorization: Bearer ${OPENAI_API_KEY}" \
+-H "Content-Type: application/json" \
+  -d @- <<EOF
+  {
+    "model": "${OPENAI_MODEL}",
+    "temperature": 0.2,
+    "messages": [
+      { "role": "system", "content": "$(sed ':a;N;$!ba;s/\n/\\n/g' system.txt)" },
+      { "role": "user",   "content": "$(sed ':a;N;$!ba;s/\n/\\n/g' user.txt)" }
+    ]
+  }
+  EOF
+  )
+  
+  # 取出内容写入 review.md（不同模型返回结构一致，取第一条）
+  echo "$RESP" | jq -r '.choices[0].message.content' > review.md || echo "Parsing failed" > review.md
+  
+  echo "Review content:"
+  head -n 50 review.md || true
+
+- name: Post PR comment
+  if: ${{ steps.diff.outputs.DIFF_SIZE != '0' }}
+  uses: actions/github-script@v7
+  with:
+    script: |
+      const fs = require('fs');
+      const body = fs.readFileSync('review.md', 'utf8');
+      await github.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: context.issue.number,
+        body,
+      });
