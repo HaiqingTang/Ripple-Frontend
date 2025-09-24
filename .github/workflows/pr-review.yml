@@ -15,16 +15,14 @@ jobs:
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      # 你账号可用的模型：若 gpt-4o-mini 不可用，就换成你有权限的名称
-      OPENAI_MODEL: gpt-4o-mini
-      # 控制审查最大 diff 大小（字符数，避免超 token）
-      DIFF_LIMIT: "60000"
+      OPENAI_MODEL: gpt-4o-mini   # 换成你账号可用的模型：如 gpt-4o
+      DIFF_LIMIT: "60000"         # 最大 diff 字符数，防止超长
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 我们需要拿 base/head 的完整 diff
+          fetch-depth: 0
 
       - name: Ensure API key exists
         if: ${{ env.OPENAI_API_KEY == '' || env.OPENAI_API_KEY == null }}
@@ -34,14 +32,14 @@ jobs:
 
       - name: Build diff
         id: diff
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           echo "Base: $BASE_SHA"
           echo "Head: $HEAD_SHA"
 
-          # 只对常见代码后缀做审查，且排除 node_modules 等
           git --no-pager diff --unified=0 "$BASE_SHA" "$HEAD_SHA" -- \
             ':(exclude)**/node_modules/**' \
             ':(exclude)**/dist/**' \
@@ -51,71 +49,79 @@ jobs:
             '**/*.json' '**/*.yaml' '**/*.yml' \
             > full.diff || true
 
-          # 截断，避免超长
           head -c "$DIFF_LIMIT" full.diff > pr.diff || true
+          DIFF_SIZE="$(wc -c < pr.diff || echo 0)"
+          echo "diff_size=$DIFF_SIZE" >> "$GITHUB_OUTPUT"
+          echo "Collected diff bytes: $DIFF_SIZE"
 
-          DIFF_SIZE=$(wc -c < pr.diff || echo 0)
-          echo "DIFF_SIZE=$DIFF_SIZE" >> $GITHUB_OUTPUT
+      - name: Skip when no relevant changes
+        if: ${{ steps.diff.outputs.diff_size == '0' }}
+        run: echo "No relevant code changes. Skipping review."
 
-      - name: Skip if no relevant changes
-        if: ${{ steps.diff.outputs.DIFF_SIZE == '0' }}
-        run: echo "No relevant changes to review. Skipping."
-
-      - name: Call OpenAI for review
-        if: ${{ steps.diff.outputs.DIFF_SIZE != '0' }}
+      - name: Prepare prompt & call OpenAI
+        if: ${{ steps.diff.outputs.diff_size != '0' }}
         id: ai
         shell: bash
         run: |
-          set -e
-          echo "Preparing prompt..."
-          # 这里是系统提示词，你可以按需调整
-          cat > system.txt << 'SYS'
-  You are a senior full-stack engineer reviewing a GitHub Pull Request diff.
-- Stack: Expo + React Native (expo-router), TypeScript.
-- Focus on: navigation correctness (expo-router paths, _layout.tsx), UI layout stability (fixed sizes, sticky header), safe mock vs. real API separation, pagination & refresh logic, accessibility, performance, error handling.
-- Output actionable, concise items with code suggestions when helpful.
-  SYS
-  
-  # 用户消息，放入 diff
-  echo 'Please review the following PR diff. Identify issues, risks, and concrete improvements. Provide a prioritized checklist and code examples where appropriate.
-  
-  ```diff' > user.txt
-  cat pr.diff >> user.txt
-  echo '```' >> user.txt
-  
-  echo "Calling OpenAI..."
-  # 直接调用 Chat Completions（若你的账号需用其它端点/参数，按需修改）
-  RESP=$(curl -sS https://api.openai.com/v1/chat/completions \
--H "Authorization: Bearer ${OPENAI_API_KEY}" \
--H "Content-Type: application/json" \
-  -d @- <<EOF
-  {
-    "model": "${OPENAI_MODEL}",
-    "temperature": 0.2,
-    "messages": [
-      { "role": "system", "content": "$(sed ':a;N;$!ba;s/\n/\\n/g' system.txt)" },
-      { "role": "user",   "content": "$(sed ':a;N;$!ba;s/\n/\\n/g' user.txt)" }
-    ]
-  }
-  EOF
-  )
-  
-  # 取出内容写入 review.md（不同模型返回结构一致，取第一条）
-  echo "$RESP" | jq -r '.choices[0].message.content' > review.md || echo "Parsing failed" > review.md
-  
-  echo "Review content:"
-  head -n 50 review.md || true
+          set -euo pipefail
 
-- name: Post PR comment
-  if: ${{ steps.diff.outputs.DIFF_SIZE != '0' }}
+          # ---- system prompt（heredoc 必须顶格，不要缩进）----
+          cat > system.txt <<'SYS'
+  You are a senior full-stack engineer reviewing a GitHub Pull Request diff.
+Stack: Expo + React Native (expo-router), TypeScript.
+Focus areas:
+  - Navigation correctness (expo-router paths, _layout.tsx)
+  - UI layout stability (fixed sizes for grids/lists, sticky header on clubTopic)
+  - Separation of mock vs. real API, no real network calls without backend
+  - Infinite scroll & pull-to-refresh logic; error/empty/loading states
+  - Accessibility (accessibilityRole, hitSlop), performance, code reuse
+  Return a prioritized checklist with concrete, actionable suggestions and small code snippets when useful.
+  SYS
+
+# ---- user prompt，包一段 diff ----
+  {
+    echo "Please review the following PR diff. Identify issues, risks, and concrete improvements. Provide a prioritized checklist and code examples where appropriate."
+    echo
+    echo '```diff'
+    cat pr.diff
+    echo '```'
+  } > user.txt
+  
+  # ---- 组装 JSON ----
+  jq -n \
+    --arg model "$OPENAI_MODEL" \
+    --rawfile sys system.txt \
+    --rawfile usr user.txt \
+    '{
+      model: $model,
+      temperature: 0.2,
+      messages: [
+        {role:"system", content: $sys},
+        {role:"user",   content: $usr}
+      ]
+    }' > payload.json
+  
+  # ---- 调 OpenAI ----
+  curl -sS https://api.openai.com/v1/chat/completions \
+    -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d @payload.json \
+    | jq -r '.choices[0].message.content // "No content returned from OpenAI."' \
+    > review.md
+  
+  echo "Preview (first 40 lines):"
+  head -n 40 review.md || true
+  
+  - name: Post PR comment
+  if: ${{ steps.diff.outputs.diff_size != '0' }}
   uses: actions/github-script@v7
   with:
-    script: |
-      const fs = require('fs');
-      const body = fs.readFileSync('review.md', 'utf8');
-      await github.rest.issues.createComment({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        issue_number: context.issue.number,
-        body,
-      });
+  script: |
+    const fs = require('fs');
+    const body = fs.readFileSync('review.md', 'utf8');
+    await github.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: context.issue.number,
+      body,
+    });
