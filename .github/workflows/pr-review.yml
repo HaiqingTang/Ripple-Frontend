@@ -1,0 +1,63 @@
+name: pr-review
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  review:
+    name: Hugging Face code review
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_MODEL: meta-llama/Llama-3.1-8B-Instruct
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
+          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > pr.diff
+          head -c 12000 pr.diff > pr_trimmed.diff
+
+      - name: Build prompt
+        run: |
+          echo "You are a code reviewer. Review this PR diff and give concise, actionable feedback in markdown bullet points." > prompt.txt
+          echo "\nDIFF:\n\`\`\`diff" >> prompt.txt
+          cat pr_trimmed.diff >> prompt.txt
+          echo "\`\`\`" >> prompt.txt
+
+      - name: Call Hugging Face API
+        run: |
+          jq -n --rawfile text prompt.txt \
+            '{inputs: $text, parameters: {max_new_tokens: 400, temperature: 0.2}}' > payload.json
+
+          curl -s -H "Authorization: Bearer $HF_TOKEN" \
+               -H "Content-Type: application/json" \
+               -X POST https://api-inference.huggingface.co/models/$HF_MODEL \
+               --data-binary @payload.json > response.json
+
+          if jq -e '.[0].generated_text' response.json >/dev/null 2>&1; then
+            jq -r '.[0].generated_text' response.json > review.md
+          else
+            echo "⚠️ HF review failed or empty response." > review.md
+          fi
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('review.md','utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "🧠 **HF Review (meta-llama/Llama-3.1-8B-Instruct)**\n\n" + body
+            });

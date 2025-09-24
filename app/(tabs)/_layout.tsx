@@ -38,7 +38,7 @@ export default function TabsLayout() {
           <Ionicons name="happy-outline" size={28} color={color} /> }}
       />
       <Tabs.Screen
-        name="Interest/index"
+        name="Interest"
         options={{ tabBarIcon: ({ color }) =>
           <Ionicons name="chatbubble-ellipses-outline" size={28} color={color} /> }}
       />
