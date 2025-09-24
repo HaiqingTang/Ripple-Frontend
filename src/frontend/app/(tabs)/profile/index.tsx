@@ -192,8 +192,6 @@ const styles = StyleSheet.create({
 	},
 	tabRow: {
 		flexDirection: "row",
-		// justifyContent: "center",
-		// alignItems: "center",
 		borderBottomWidth: 1,
 		borderBottomColor: "#E0E0E0",
 		paddingVertical: 10,

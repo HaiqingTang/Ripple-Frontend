@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Dimensions,KeyboardAvoidingView,
+import { View, Text, StyleSheet, TextInput, TouchableOpacity,KeyboardAvoidingView,
 	Platform,
 	TouchableWithoutFeedback,
 	Keyboard, } from 'react-native';
@@ -8,8 +8,6 @@ import { Ionicons } from '@expo/vector-icons';
 import CustomButton from '@/components/CustomButton';
 import {signInWithEmailAndPassword} from 'firebase/auth';
 import {auth} from '@/lib/firebase';
-
-const { width, height } = Dimensions.get('window');
 
 export default function LoginPage() {
   const router = useRouter();

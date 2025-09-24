@@ -6,7 +6,6 @@ import {
 	StyleSheet,
 	TextInput,
 	TouchableOpacity,
-	Dimensions,
 	KeyboardAvoidingView,
 	Platform,
 	TouchableWithoutFeedback,
@@ -21,7 +20,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {addDoc, collection, doc, setDoc} from "@firebase/firestore";
 import {useAppContext} from "@/context/AppContext";
 
-const { width, height } = Dimensions.get('window');
 
 export default function SignUpPage() {
   const router = useRouter();
