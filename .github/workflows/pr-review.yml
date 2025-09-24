@@ -8,99 +8,56 @@ permissions:
   contents: read
 
 jobs:
-  gather:
-    name: Gather changed files (chunk <= 10)
+  review:
+    name: Hugging Face code review
     runs-on: ubuntu-latest
-    outputs:
-      chunks: ${{ steps.build_chunks.outputs.chunks }}
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_MODEL: meta-llama/Llama-3.1-8B-Instruct
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Build chunks
-        id: build_chunks
-        shell: bash
+      - name: Get PR diff
         run: |
-          set -euo pipefail
-          BASE="${{ github.event.pull_request.base.sha }}"
-          HEAD="${{ github.event.pull_request.head.sha }}"
+          git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
+          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > pr.diff
+          head -c 12000 pr.diff > pr_trimmed.diff
 
-          # 本次 PR 改动的文件
-          git diff --name-only "$BASE" "$HEAD" > all.txt
+      - name: Build prompt
+        run: |
+          echo "You are a code reviewer. Review this PR diff and give concise, actionable feedback in markdown bullet points." > prompt.txt
+          echo "\nDIFF:\n\`\`\`diff" >> prompt.txt
+          cat pr_trimmed.diff >> prompt.txt
+          echo "\`\`\`" >> prompt.txt
 
-          # 仅保留与你原 files 参数一致的后缀（*.js, *.ts, *.py, *.cpp, *.java）
-          grep -E '\.(js|ts|py|cpp|java)$' all.txt | sed '/^\s*$/d' > changed.txt || true
+      - name: Call Hugging Face API
+        run: |
+          jq -n --rawfile text prompt.txt \
+            '{inputs: $text, parameters: {max_new_tokens: 400, temperature: 0.2}}' > payload.json
 
-          # 分批（每批 ≤ 10）
-          mapfile -t FILES < <(cat changed.txt 2>/dev/null || true)
+          curl -s -H "Authorization: Bearer $HF_TOKEN" \
+               -H "Content-Type: application/json" \
+               -X POST https://api-inference.huggingface.co/models/$HF_MODEL \
+               --data-binary @payload.json > response.json
 
-          CHUNKS_JSON="[]"
-          if [ "${#FILES[@]}" -gt 0 ]; then
-            BATCHES=(); COUNT=0; BATCH=""
-            for f in "${FILES[@]}"; do
-              if [ -z "$BATCH" ]; then BATCH="$f"; else BATCH="$BATCH,$f"; fi
-              COUNT=$((COUNT+1))
-              if [ "$COUNT" -eq 10 ]; then BATCHES+=("$BATCH"); BATCH=""; COUNT=0; fi
-            done
-            if [ -n "$BATCH" ]; then BATCHES+=("$BATCH"); fi
-            # 压成单行 JSON（关键：-c）
-            CHUNKS_JSON=$(printf '%s\n' "${BATCHES[@]}" | jq -R . | jq -s -c .)
+          if jq -e '.[0].generated_text' response.json >/dev/null 2>&1; then
+            jq -r '.[0].generated_text' response.json > review.md
+          else
+            echo "⚠️ HF review failed or empty response." > review.md
           fi
 
-          echo "chunks=$CHUNKS_JSON" >> "$GITHUB_OUTPUT"
-
-  review:
-    name: ChatGPT code review
-    needs: gather
-    runs-on: ubuntu-latest
-    if: ${{ needs.gather.outputs.chunks != '' && needs.gather.outputs.chunks != '[]' }}
-    # 把 secret 映射到 env，再用 env 做 if 判断（避免在 if 里直接用 secrets）
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        files_batch: ${{ fromJSON(needs.gather.outputs.chunks) }}
-    steps:
-      # 没有 Key：留言并跳过
-      - name: Comment when missing OPENAI_API_KEY
-        if: ${{ env.OPENAI_API_KEY == '' }}
+      - name: Comment on PR
         uses: actions/github-script@v7
         with:
           script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('review.md','utf8');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: "⚠️ Skipping AI review: no `OPENAI_API_KEY` found in repository secrets.",
-            });
-
-      # 有 Key 才跑审查（保持你的原配置）
-      - name: Run ChatGPT PR review (≤ 10 files)
-        id: prrun
-        if: ${{ env.OPENAI_API_KEY != '' }}
-        uses: agogear/chatgpt-pr-review@0.0.17
-        continue-on-error: true
-        with:
-          openai_max_tokens: 8192
-          openai_api_key: ${{ env.OPENAI_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          github_pr_id: ${{ github.event.number }}
-          files: ${{ matrix.files_batch }}   # 分批后的文件（逗号分隔，≤10）
-          openai_model: gpt-4o-mini
-
-      # 如果调用失败（比如配额不足），兜底发提示
-      - name: Fallback comment on failure
-        if: ${{ steps.prrun.outcome == 'failure' && env.OPENAI_API_KEY != '' }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: "⚠️ AI review step failed for this batch (likely API quota/rate limit). Please check OpenAI billing/quotas.",
+              body: "🧠 **HF Review (meta-llama/Llama-3.1-8B-Instruct)**\n\n" + body
             });
