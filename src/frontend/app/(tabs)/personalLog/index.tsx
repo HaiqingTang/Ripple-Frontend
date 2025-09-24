@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
 	View,
 	Text,
 	ScrollView,
 	TouchableOpacity,
-	TextInput,
+	Image,
 	Dimensions,
 	KeyboardAvoidingView,
 	Platform, Alert,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import JournalIcon from '@/assets/images/journaling.png';
 import { useAppContext } from '@/context/AppContext';
 import {addDoc, collection} from "@firebase/firestore";
 import {db} from "@/lib/firebase";
@@ -24,6 +25,7 @@ const BLUE = '#4A90E2';
 export default function PersonalLog() {
   const router = useRouter();
   const params = useLocalSearchParams<{ journal?: string; tags?: string }>();
+  const scrollViewRef = useRef<ScrollView>(null);
   const [dayRating, setDayRating] = useState(5);
   const [moodRating, setMoodRating] = useState(6);
   const [selectedEmoji, setSelectedEmoji] = useState(2);
@@ -33,22 +35,33 @@ export default function PersonalLog() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const {userId, fullName, dayOfWeek, formattedDate } = useAppContext();
 
-  const emojis = ['😢', '😕', '😐', '😊', '😄'];
+  const emojis = ['😢', '😠', '😐', '😊', '😄'];
 
-  // fullName now comes from AppContext
 
-  // Pull incoming journal and tags from journal screen
+  //TODO: fix the scrolling to the journal section when returning from the journal page
   useEffect(() => {
+    let shouldScrollToJournal = false;
+    
     if (params.journal) {
       setJournalText(String(params.journal));
+      shouldScrollToJournal = true;
     }
     if (params.tags) {
       try {
         const parsed = JSON.parse(String(params.tags));
         if (Array.isArray(parsed)) setSelectedTags(parsed as string[]);
+        shouldScrollToJournal = true;
       } catch {}
     }
+    
+    // Scroll to journaling section when returning from journal page, now this does not work
+    if (shouldScrollToJournal) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ y: 800, animated: true });
+      }, 300);
+    }
   }, [params.journal, params.tags]);
+
 
   const handleSave = async () => {
 	  const logData = {
@@ -205,12 +218,12 @@ export default function PersonalLog() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 20 }}
         >
-        {/* Header Section */}
-        <Card>
+                {/* Header Section */}
+                <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 28, fontWeight: '700', color: '#333' }}>
-                Good Morning {fullName}!
+                Welcome {fullName}!
               </Text>
               <Text style={{ fontSize: 16, color: '#666', marginTop: 4 }}>
                 It's {dayOfWeek}!
@@ -222,16 +235,7 @@ export default function PersonalLog() {
                 You&apos;ve been doing an awesome job with logging! Awesome work!
               </Text>
             </View>
-            <View style={{
-              width: 60,
-              height: 60,
-              backgroundColor: BLUE_BG,
-              borderRadius: 30,
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Ionicons name="trending-up" size={24} color="#FF4444" />
-            </View>
+            <Image source={JournalIcon} style={{ width: 145, height: 145, marginLeft: -10 }} />
           </View>
           <TouchableOpacity 
             style={{
@@ -291,7 +295,11 @@ export default function PersonalLog() {
             min={1}
             max={10}
           />
-          <Text style={{ fontSize: 16, fontWeight: '500', color: '#333', marginTop: 16 }}>
+        </Card>
+
+        {/* Emotion Section */}
+        <Card>
+        <Text style={{ fontSize: 16, fontWeight: '500', color: '#333', marginTop: 16 }}>
             What are you feeling?
           </Text>
           <View style={{ 
