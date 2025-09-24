@@ -1,16 +1,11 @@
 name: pr-review
-
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize]
 
 permissions:
   pull-requests: write
   contents: read
-
-env:
-  OPENAI_MODEL: gpt-4o-mini
-  OPENAI_MAX_TOKENS: "800"
 
 jobs:
   gather:
@@ -33,26 +28,45 @@ jobs:
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
 
-          # 仅收集前端代码文件；排除生成目录/文档
-          git diff --name-only "$BASE" "$HEAD" -- \
-            ':(exclude)**/node_modules/**' \
-            ':(exclude)**/dist/**' \
-            ':(exclude)**/build/**' \
-            ':(exclude)**/*.md' \
-            '**/*.ts' '**/*.tsx' '**/*.js' '**/*.jsx' \
-          | sed '/^\s*$/d' > changed.txt
+          # 取本次 PR 改动文件
+          git diff --name-only "$BASE" "$HEAD" > all.txt
 
-          echo "Changed files:"
-          cat changed.txt || true
+          # 仅保留与你原来 files 入参一致的后缀（*.js, *ts, *.py, *.cpp, *.java）
+          # 注意：保持原语义，这里只匹配 .ts（不额外加入 .tsx）
+          grep -E '\.(js|ts|py|cpp|java)$' all.txt | sed '/^\s*$/d' > changed.txt || true
 
-          # 用 jq 把文件按 10 个一组切片，输出 JSON 数组
-          jq -R -s 'split("\n") | map(select(length>0)) |
-            [ range(0; length; 10) as $i | (.[ $i : ($i+10) ] | join(",")) ]' < changed.txt > batches.json
+          # 分批（每批最多10个），输出为 JSON 数组到 $GITHUB_OUTPUT
+          mapfile -t FILES < <(cat changed.txt 2>/dev/null || true)
 
-          echo "chunks=$(cat batches.json)" >> "$GITHUB_OUTPUT"
+          CHUNKS_JSON="[]"
+          if [ "${#FILES[@]}" -gt 0 ]; then
+            BATCHES=()
+            COUNT=0
+            BATCH=""
+            for f in "${FILES[@]}"; do
+              if [ -z "$BATCH" ]; then
+                BATCH="$f"
+              else
+                BATCH="$BATCH,$f"
+              fi
+              COUNT=$((COUNT+1))
+              if [ "$COUNT" -eq 10 ]; then
+                BATCHES+=("$BATCH")
+                BATCH=""
+                COUNT=0
+              fi
+            done
+            if [ -n "$BATCH" ]; then
+              BATCHES+=("$BATCH")
+            fi
+            # 组装 JSON 数组
+            CHUNKS_JSON=$(printf '%s\n' "${BATCHES[@]}" | jq -R . | jq -s .)
+          fi
+
+          echo "chunks=${CHUNKS_JSON}" >> "$GITHUB_OUTPUT"
 
   review:
-    name: ChatGPT code review (batched)
+    name: ChatGPT code review
     needs: gather
     runs-on: ubuntu-latest
     if: ${{ needs.gather.outputs.chunks != '' && needs.gather.outputs.chunks != '[]' }}
@@ -60,22 +74,14 @@ jobs:
       fail-fast: false
       matrix:
         files_batch: ${{ fromJSON(needs.gather.outputs.chunks) }}
-
     steps:
       - name: Run ChatGPT PR review (≤ 10 files)
-        if: ${{ secrets.OPENAI_API_KEY != '' }}
         uses: agogear/chatgpt-pr-review@0.0.17
         with:
+          openai_max_tokens: 8192
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-          openai_model: ${{ env.OPENAI_MODEL }}
-          openai_max_tokens: ${{ env.OPENAI_MAX_TOKENS }}
-
-          # 当前批次（逗号分隔，数量 ≤ 10）
-          files: ${{ matrix.files_batch }}
-
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_pr_id: ${{ github.event.number }}
-
-      - name: Skip (no OPENAI_API_KEY)
-        if: ${{ secrets.OPENAI_API_KEY == '' }}
-        run: echo "No OPENAI_API_KEY provided; skipping AI review for this batch."
+          # 这里传入每批文件（逗号分隔，数量 ≤ 10），替代原来的通配符
+          files: ${{ matrix.files_batch }}
+          openai_model: gpt-5-mini
