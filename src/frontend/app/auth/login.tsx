@@ -37,6 +37,11 @@ export default function LoginPage() {
 	  setErrorMessage('');
 	  try {
 		  const userCredential = await signInWithEmailAndPassword(auth, email, password);
+			const user = userCredential.user;
+			if (!user.emailVerified) {
+				setErrorMessage('Email not verified. Please verify your email before logging in');
+				return;
+			}
 		  console.log('Logged in user:', userCredential.user.uid);
 		  // Navigate to quicknote tab after successful login
 		  router.push('/(tabs)/personalLog');

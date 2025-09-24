@@ -1,0 +1,23 @@
+name: pr-review
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  review:
+    name: ChatGPT code review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: agogear/chatgpt-pr-review@0.0.17
+        with:
+          openai_max_tokens: 8192
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_pr_id: ${{ github.event.number }}
+          files: "*.js, *.tsx, *.py, *.cpp, *.java"
+          openai_model: gpt-5-mini
+          logging: debug
