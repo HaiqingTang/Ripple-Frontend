@@ -24,46 +24,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
-
-          # 取本次 PR 改动文件
           git diff --name-only "$BASE" "$HEAD" > all.txt
-
-          # 仅保留与你原来 files 入参一致的后缀（*.js, *ts, *.py, *.cpp, *.java）
-          # 注意：保持原语义，这里只匹配 .ts（不额外加入 .tsx）
+          # 仅保留你原来 files 参数定义的后缀（*.js, *.ts, *.py, *.cpp, *.java）
           grep -E '\.(js|ts|py|cpp|java)$' all.txt | sed '/^\s*$/d' > changed.txt || true
 
-          # 分批（每批最多10个）
+          # 分批（每批 ≤10）
           mapfile -t FILES < <(cat changed.txt 2>/dev/null || true)
-
           CHUNKS_JSON="[]"
           if [ "${#FILES[@]}" -gt 0 ]; then
-            BATCHES=()
-            COUNT=0
-            BATCH=""
+            BATCHES=(); COUNT=0; BATCH=""
             for f in "${FILES[@]}"; do
-              if [ -z "$BATCH" ]; then
-                BATCH="$f"
-              else
-                BATCH="$BATCH,$f"
-              fi
+              if [ -z "$BATCH" ]; then BATCH="$f"; else BATCH="$BATCH,$f"; fi
               COUNT=$((COUNT+1))
-              if [ "$COUNT" -eq 10 ]; then
-                BATCHES+=("$BATCH")
-                BATCH=""
-                COUNT=0
-              fi
+              if [ "$COUNT" -eq 10 ]; then BATCHES+=("$BATCH"); BATCH=""; COUNT=0; fi
             done
-            if [ -n "$BATCH" ]; then
-              BATCHES+=("$BATCH")
-            fi
-            # 压成单行 JSON（关键：-c）
+            if [ -n "$BATCH" ]; then BATCHES+=("$BATCH"); fi
             CHUNKS_JSON=$(printf '%s\n' "${BATCHES[@]}" | jq -R . | jq -s -c .)
           fi
-
-          # 单行输出到 GITHUB_OUTPUT
           echo "chunks=$CHUNKS_JSON" >> "$GITHUB_OUTPUT"
 
   review:
@@ -73,16 +52,17 @@ jobs:
     if: ${{ needs.gather.outputs.chunks != '' && needs.gather.outputs.chunks != '[]' }}
     strategy:
       fail-fast: false
+      max-parallel: 1  # ✅ 只跑一个批次，降低瞬时请求
       matrix:
         files_batch: ${{ fromJSON(needs.gather.outputs.chunks) }}
     steps:
       - name: Run ChatGPT PR review (≤ 10 files)
         uses: agogear/chatgpt-pr-review@0.0.17
+        continue-on-error: true  # ✅ 即使配额报错也不让 CI 失败
         with:
           openai_max_tokens: 8192
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_pr_id: ${{ github.event.number }}
-          # 传入每批文件（逗号分隔，数量 ≤ 10）
-          files: ${{ matrix.files_batch }}
+          files: ${{ matrix.files_batch }}  # 分批后的文件列表（逗号分隔）
           openai_model: gpt-5-mini
