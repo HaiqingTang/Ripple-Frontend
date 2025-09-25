@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Alert } from "react-native";
 import { auth } from "@/firebase";
 import {
   signInWithEmailAndPassword,
@@ -12,6 +13,11 @@ const DEV_EMAIL = "1624701945@qq.com";
 const DEV_PASSWORD = "Password123";
 
 export default function AutoEmailLogin() {
+  // Ensure that the production environment does not run
+  if (!__DEV__) {
+    return null;
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -45,11 +51,13 @@ export default function AutoEmailLogin() {
           if (code === "auth/user-not-found" || code === "auth/invalid-credential") {
             await createUserWithEmailAndPassword(auth, DEV_EMAIL, DEV_PASSWORD);
           } else {
-            console.log("AutoEmailLogin sign-in error:", err);
+            console.error("AutoEmailLogin sign-in error:", err);
+            Alert.alert("Dev Login Error", err?.message || "Unknown error during dev sign-in");
           }
         }
-      } catch (e) {
-        console.log("AutoEmailLogin error:", e);
+      } catch (e: any) {
+        console.error("AutoEmailLogin error:", e);
+        Alert.alert("AutoEmailLogin Error", e?.message || "Unexpected error");
       }
     };
 
