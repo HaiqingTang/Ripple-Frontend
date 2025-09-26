@@ -17,7 +17,7 @@ import CustomButton from '@/components/CustomButton';
 import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from 'firebase/auth';
 import {auth, db} from '@/lib/firebase';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {addDoc, collection, doc, setDoc} from "@firebase/firestore";
+import { doc, setDoc} from "@firebase/firestore";
 import {useAppContext} from "@/context/AppContext";
 
 
@@ -98,7 +98,9 @@ export default function SignUpPage() {
         displayName: `${firstName} ${lastName}`.trim(),
       });
 
-	    await addDoc(collection(db, "users"), {
+	    // Create user document with the Firebase Auth UID as the document ID
+	    const userDocRef = doc(db, "users", userCredential.user.uid);
+	    await setDoc(userDocRef, {
 		    userId: userCredential.user.uid,
 		    name: `${firstName} ${lastName}`.trim(),
 		    email: email,

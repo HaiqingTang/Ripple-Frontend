@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { createDataUri } from '@/lib/imageService';
 import { auth, db } from '@/lib/firebase';
 
@@ -25,22 +25,34 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
 
   const loadUserProfile = async (uid: string) => {
     try {
-      const userDocRef = doc(db, 'users', uid);
-      const userDoc = await getDoc(userDocRef);
+      // Query for document where userId field matches the Firebase Auth UID
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('userId', '==', uid));
+      const querySnapshot = await getDocs(q);
 
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        if (userData.profilePictureBase64) {
-          // Convert Base64 data to data URI for display
-          const dataUri = createDataUri(userData.profilePictureBase64);
-          setProfilePictureUrl(dataUri);
-        } else {
-          // Clear profile picture if no Base64 data
-          setProfilePictureUrl('');
-        }
+      if (querySnapshot.empty) {
+        setProfilePictureUrl('');
+        return;
+      }
+
+      if (querySnapshot.docs.length > 1) {
+        console.warn('Multiple user documents found for userId:', uid);
+      }
+
+      const userDoc = querySnapshot.docs[0];
+      const userData = userDoc.data();
+
+      if (userData.profilePictureBase64) {
+        // Convert Base64 data to data URI for display
+        const dataUri = createDataUri(userData.profilePictureBase64);
+        setProfilePictureUrl(dataUri);
+      } else {
+        // Clear profile picture if no Base64 data
+        setProfilePictureUrl('');
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
+      setProfilePictureUrl('');
     }
   };
 

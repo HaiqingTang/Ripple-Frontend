@@ -44,6 +44,13 @@ export default function ProfilePicture({
     setUploading(true);
 
     try {
+      // Validate userId before proceeding
+      if (!userId || userId.trim() === '') {
+        Alert.alert('Error', 'User not authenticated. Please try logging out and back in.');
+        setUploading(false);
+        return;
+      }
+
       const result = await uploadProfilePicture(imageUri, userId);
 
       if (result.success && result.base64Data) {
