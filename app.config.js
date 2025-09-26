@@ -1,6 +1,7 @@
 import 'dotenv/config';
 
 export default {
+    scheme: "ripple",
     extra: {
         firebaseApiKey: process.env.REACT_APP_FIREBASE_API_KEY,
         authDomain: process.env.REACT_APP_AUTH_DOMAIN,
