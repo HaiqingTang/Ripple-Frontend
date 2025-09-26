@@ -39,7 +39,7 @@ export default function ProfilePicture({
     setModalVisible(false);
   };
 
-  const handleImageSelected = async (imageUri: string) => {
+  const handleImageSelected = async (base64Data: string) => {
     setModalVisible(false);
     setUploading(true);
 
@@ -51,7 +51,7 @@ export default function ProfilePicture({
         return;
       }
 
-      const result = await uploadProfilePicture(imageUri, userId);
+      const result = await uploadProfilePicture(base64Data);
 
       if (result.success && result.base64Data) {
         // Update the profile picture in context with Base64 data
@@ -77,10 +77,10 @@ export default function ProfilePicture({
 
   const handleTakePhoto = async () => {
     const result = await takePicture();
-    if (result.success && result.imageUri) {
-      await handleImageSelected(result.imageUri);
+    if (result.success && result.base64) {
+      await handleImageSelected(result.base64);
     } else if (result.cancelled) {
-      // User cancelled camera - just close modal without error message
+      // User cancelled camera
       setModalVisible(false);
     } else if (result.error) {
       // Actual error occurred - show error message
@@ -91,10 +91,10 @@ export default function ProfilePicture({
 
   const handleChooseFromGallery = async () => {
     const result = await pickImageFromGallery();
-    if (result.success && result.imageUri) {
-      await handleImageSelected(result.imageUri);
+    if (result.success && result.base64) {
+      await handleImageSelected(result.base64);
     } else if (result.cancelled) {
-      // User cancelled gallery selection - just close modal without error message
+      // User cancelled gallery selection
       setModalVisible(false);
     } else if (result.error) {
       // Actual error occurred - show error message
