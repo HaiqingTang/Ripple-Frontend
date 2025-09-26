@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import CustomButton from '@/components/CustomButton';
 import {signInWithEmailAndPassword} from 'firebase/auth';
 import {auth} from '@/lib/firebase';
+import {useMemo} from 'react';
 
 const { width, height } = Dimensions.get('window');
 
@@ -22,11 +23,10 @@ export default function LoginPage() {
 		const re = /\S+@\S+\.\S+/;
 		return re.test(email);
 	};
+	const trimmedEmail = useMemo(() => email.trim(), [email]);
+	const trimmedPassword = useMemo(() => password.trim(), [password]);
 
   const handleLogin = async () => {
-	  const trimmedEmail = email.trim();
-	  const trimmedPassword = password.trim();
-
 	  // Clear previous error and reset error on new attempt
 	  setErrorMessage('');
 
@@ -164,7 +164,7 @@ export default function LoginPage() {
           variant="primary"
           size="large"
           style={styles.loginButton}
-          disabled={loading || !email.trim() || !password.trim()}
+          disabled={loading || !trimmedEmail || !trimmedPassword}
         />
       </View>
     </View>
