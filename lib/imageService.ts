@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 export interface ImagePickerResult {
@@ -18,6 +18,28 @@ export interface ImageUploadResult {
 
 const MAX_IMAGE_SIZE = 600;
 const MAX_BASE64_SIZE = 700 * 1024; // ~700KB to account for Base64 overhead and stay under 1MB Firestore limit
+
+// Helper function to find user document by userId field
+const findUserDocument = async (userId: string): Promise<string | null> => {
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('userId', '==', userId));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    if (querySnapshot.docs.length > 1) {
+      console.warn('Multiple user documents found for userId:', userId);
+    }
+
+    return querySnapshot.docs[0].id;
+  } catch (error) {
+    console.error('Error finding user document:', error);
+    return null;
+  }
+};
 
 export const requestPermissions = async (): Promise<boolean> => {
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -135,6 +157,14 @@ export const uploadProfilePicture = async (
       return { success: false, error: 'User not authenticated' };
     }
 
+    // Use the actual authenticated user ID instead of the passed parameter
+    const authenticatedUserId = auth.currentUser.uid;
+
+    // Validate the authenticated user ID
+    if (!authenticatedUserId || authenticatedUserId.trim() === '') {
+      return { success: false, error: 'Invalid user authentication' };
+    }
+
     // Convert image to Base64
     const base64Data = await convertToBase64(imageUri);
 
@@ -144,8 +174,14 @@ export const uploadProfilePicture = async (
       return { success: false, error: sizeValidation.error };
     }
 
-    // Save Base64 data to Firestore user document
-    const userDocRef = doc(db, 'users', userId);
+    // Find the actual document ID for this user
+    const documentId = await findUserDocument(authenticatedUserId);
+    if (!documentId) {
+      return { success: false, error: 'User profile not found. Please contact support.' };
+    }
+
+    // Save Base64 data to the correct user document
+    const userDocRef = doc(db, 'users', documentId);
     await setDoc(
       userDocRef,
       {
@@ -162,14 +198,28 @@ export const uploadProfilePicture = async (
   }
 };
 
-export const deleteProfilePicture = async (userId: string): Promise<boolean> => {
+export const deleteProfilePicture = async (): Promise<boolean> => {
   try {
     if (!auth.currentUser) {
       return false;
     }
 
-    // Remove Base64 data from Firestore user document
-    const userDocRef = doc(db, 'users', userId);
+    // Use the actual authenticated user ID instead of the passed parameter
+    const authenticatedUserId = auth.currentUser.uid;
+
+    // Validate the authenticated user ID
+    if (!authenticatedUserId || authenticatedUserId.trim() === '') {
+      return false;
+    }
+
+    // Find the actual document ID for this user
+    const documentId = await findUserDocument(authenticatedUserId);
+    if (!documentId) {
+      return false;
+    }
+
+    // Remove Base64 data from the correct user document
+    const userDocRef = doc(db, 'users', documentId);
     await setDoc(
       userDocRef,
       {
