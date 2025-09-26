@@ -7,8 +7,10 @@ import {
 	Image,
 	Dimensions,
 	KeyboardAvoidingView,
-	Platform, Alert,
+	Platform, 
+	Alert,
 	InteractionManager,
+	StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -84,10 +86,10 @@ export default function PersonalLog() {
 	  };
 
 	  try {
-		  const docRef = await addDoc(collection(db, 'personalLogs'), {
+		  await addDoc(collection(db, 'personalLogs'), {
 			  userId,
 			  ...logData,
-		  })
+		  });
 	  } catch (error) {
 			console.error(error); // TODO: debug purposes, remove from prod
 		  Alert.alert('Error', 'Failed to save your log. Please try again.');
@@ -127,25 +129,13 @@ export default function PersonalLog() {
   };
 
   const Card = ({ children, style = {} }: { children: React.ReactNode; style?: any }) => (
-    <View style={{
-      backgroundColor: WHITE,
-      borderRadius: 16,
-      padding: 20,
-      marginHorizontal: 16,
-      marginVertical: 8,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
-      ...style
-    }}>
+    <View style={[styles.card, style]}>
       {children}
     </View>
   );
 
   const Slider = ({ value, onValueChange, min = 1, max = 10, step = 1, labels = null }: { value: number; onValueChange: (value: number) => void; min?: number; max?: number; step?: number; labels?: string[] | null }) => {
-    const handlePress = (event) => {
+    const handlePress = (event: any) => {
       const { locationX } = event.nativeEvent;
       const sliderWidth = width - 64; // Account for margins
       const percentage = locationX / sliderWidth;
@@ -155,45 +145,28 @@ export default function PersonalLog() {
     };
 
     return (
-      <View style={{ marginTop: 12 }}>
+      <View style={styles.sliderContainer}>
         <TouchableOpacity 
-          style={{ 
-            height: 6, 
-            backgroundColor: '#E0E0E0', 
-            borderRadius: 3,
-            position: 'relative'
-          }}
+          style={styles.sliderTrack}
           onPress={handlePress}
           activeOpacity={1}
         >
-          <View style={{
-            height: 6,
-            backgroundColor: BLUE,
-            borderRadius: 3,
-            width: `${((value - min) / (max - min)) * 100}%`
-          }} />
-          <View style={{
-            position: 'absolute',
-            top: -8,
-            left: `${((value - min) / (max - min)) * 100}%`,
-            width: 20,
-            height: 20,
-            backgroundColor: BLUE,
-            borderRadius: 10,
-            marginLeft: -10
-          }} />
+          <View style={[
+            styles.sliderFill,
+            { width: `${((value - min) / (max - min)) * 100}%` }
+          ]} />
+          <View style={[
+            styles.sliderThumb,
+            { left: `${((value - min) / (max - min)) * 100}%` }
+          ]} />
         </TouchableOpacity>
-        <View style={{ 
-          flexDirection: 'row', 
-          justifyContent: 'space-between', 
-          marginTop: 8 
-        }}>
+        <View style={styles.sliderLabels}>
           {labels ? labels.map((label, index) => (
-            <Text key={index} style={{ fontSize: 12, color: '#666' }}>{label}</Text>
+            <Text key={index} style={styles.sliderLabel}>{label}</Text>
           )) : (
             <>
-              <Text style={{ fontSize: 12, color: '#666' }}>{min}</Text>
-              <Text style={{ fontSize: 12, color: '#666' }}>{max}</Text>
+              <Text style={styles.sliderLabel}>{min}</Text>
+              <Text style={styles.sliderLabel}>{max}</Text>
             </>
           )}
         </View>
@@ -201,70 +174,46 @@ export default function PersonalLog() {
     );
   };
 
-  // const ProgressBar = ({ progress, max = 10 }) => (
-  //   <View style={{ 
-  //     height: 8, 
-  //     backgroundColor: '#E0E0E0', 
-  //     borderRadius: 4,
-  //     marginTop: 4
-  //   }}>
-  //     <View style={{
-  //       height: 8,
-  //       backgroundColor: BLUE,
-  //       borderRadius: 4,
-  //       width: `${(progress / max) * 100}%`
-  //     }} />
-  //   </View>
-  // );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: BLUE_BG }}>
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
+        style={styles.keyboardAvoidingView} 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <ScrollView 
           ref={scrollViewRef}
-          style={{ flex: 1 }} 
+          style={styles.scrollView} 
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={styles.scrollViewContent}
         >
                 {/* Header Section */}
                 <Card>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 28, fontWeight: '700', color: '#333' }}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.welcomeText}>
                 Welcome {fullName}!
               </Text>
-              <Text style={{ fontSize: 16, color: '#666', marginTop: 4 }}>
-                It's {dayOfWeek}!
+              <Text style={styles.dayText}>
+                It&apos;s {dayOfWeek}!
               </Text>
-              <Text style={{ fontSize: 14, color: '#666' }}>
+              <Text style={styles.dateText}>
                 {formattedDate}
               </Text>
-              <Text style={{ fontSize: 14, color: '#666', marginTop: 8 }}>
+              <Text style={styles.encouragementText}>
                 You&apos;ve been doing an awesome job with logging! Awesome work!
               </Text>
             </View>
-            <Image source={JournalIcon} style={{ width: 145, height: 145, marginLeft: -10 }} />
+            <Image source={JournalIcon} style={styles.journalIcon} />
           </View>
           <TouchableOpacity 
-            style={{
-              backgroundColor: BLUE_BG,
-              paddingVertical: 12,
-              paddingHorizontal: 16,
-              borderRadius: 8,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginTop: 16
-            }}
+            style={styles.viewEntriesButton}
             onPress={handleViewPreviousEntries}
           >
             <Ionicons name="folder-outline" size={16} color="#333" />
-            <Text style={{ marginLeft: 8, color: '#333', fontWeight: '500' }}>
+            <Text style={styles.viewEntriesText}>
               View Previous Entries
             </Text>
           </TouchableOpacity>
@@ -272,19 +221,12 @@ export default function PersonalLog() {
 
         {/* Day Rating Section */}
         <Card>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontSize: 15, fontWeight: '600', color: '#333' }}>
+          <View style={styles.ratingRow}>
+            <Text style={styles.ratingText}>
               How would you rate your day overall?
             </Text>
-            <View style={{
-              width: 50,
-              height: 50,
-              backgroundColor: BLUE,
-              borderRadius: 25,
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Text style={{ color: WHITE, fontSize: 25, fontWeight: '700' }}>
+            <View style={styles.ratingCircle}>
+              <Text style={styles.ratingNumber}>
                 {dayRating}
               </Text>
             </View>
@@ -299,7 +241,7 @@ export default function PersonalLog() {
 
         {/* Mood Section */}
         <Card>
-          <Text style={{ fontSize: 15, fontWeight: '600', color: '#333' }}>
+          <Text style={styles.moodText}>
             How are you feeling?
           </Text>
           <Slider 
@@ -312,28 +254,20 @@ export default function PersonalLog() {
 
         {/* Emotion Section */}
         <Card>
-        <Text style={{ fontSize: 16, fontWeight: '500', color: '#333', marginTop: 16 }}>
+        <Text style={styles.emotionText}>
             What are you feeling?
           </Text>
-          <View style={{ 
-            flexDirection: 'row', 
-            justifyContent: 'space-between', 
-            marginTop: 12 
-          }}>
+          <View style={styles.emojiRow}>
             {emojis.map((emoji, index) => (
               <TouchableOpacity
                 key={index}
                 onPress={() => setSelectedEmoji(index)}
-                style={{
-                  width: 50,
-                  height: 50,
-                  backgroundColor: selectedEmoji === index ? BLUE : '#F0F0F0',
-                  borderRadius: 8,
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
+                style={[
+                  styles.emojiButton,
+                  selectedEmoji === index ? styles.emojiSelected : styles.emojiUnselected
+                ]}
               >
-                <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                <Text style={styles.emojiText}>{emoji}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -342,41 +276,26 @@ export default function PersonalLog() {
         {/* Journaling Section */}
         <View ref={journalingCardRef} onLayout={handleJournalingCardLayout}>
           <Card>
-            <Text style={{ fontSize: 18, fontWeight: '600', color: '#333' }}>Want to journal?</Text>
-          <Text style={{ fontSize: 14, color: '#666', marginTop: 8 }}>
+            <Text style={styles.journalTitle}>Want to journal?</Text>
+          <Text style={styles.journalSubtitle}>
             How was your day? What are you grateful for? Any challenges you faced?
           </Text>
           <TouchableOpacity
-            style={{
-              backgroundColor: '#F8F8F8',
-              borderRadius: 8,
-              padding: 16,
-              marginTop: 12,
-              minHeight: 120,
-              justifyContent: 'flex-start',
-              alignItems: 'flex-start'
-            }}
+            style={styles.journalTextArea}
             onPress={openJournal}
           >
               {journalText ? (
-                <Text style={{ fontSize: 16, color: '#333', lineHeight: 22 }}>{journalText}</Text>
+                <Text style={styles.journalText}>{journalText}</Text>
               ) : (
-                <Text style={{ fontSize: 16, color: '#999' }}>Write your thoughts here...</Text>
+                <Text style={styles.journalPlaceholder}>Write your thoughts here...</Text>
               )}
           </TouchableOpacity>
 
           {selectedTags.length > 0 && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
+            <View style={styles.tagsContainer}>
               {selectedTags.map((tag, idx) => (
-                <View key={`${tag}-${idx}`} style={{
-                  backgroundColor: '#EAF2FF',
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 14,
-                  marginRight: 8,
-                  marginTop: 6,
-                }}>
-                  <Text style={{ color: '#1E63E9', fontWeight: '600' }}>{tag}</Text>
+                <View key={`${tag}-${idx}`} style={styles.tag}>
+                  <Text style={styles.tagText}>{tag}</Text>
                 </View>
               ))}
             </View>
@@ -386,14 +305,14 @@ export default function PersonalLog() {
 
         {/* Sleep Section */}
         <Card>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: '#333' }}>
+          <Text style={styles.sleepTitle}>
             What about your sleep?
           </Text>
           
-          <View style={{ marginTop: 16 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 16, color: '#333' }}>Duration?</Text>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: '#333' }}>
+          <View style={styles.sleepSection}>
+            <View style={styles.sleepRow}>
+              <Text style={styles.sleepLabel}>Duration?</Text>
+              <Text style={styles.sleepValue}>
                 {sleepDuration}h
               </Text>
             </View>
@@ -406,10 +325,10 @@ export default function PersonalLog() {
             />
           </View>
 
-          <View style={{ marginTop: 20 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 16, color: '#333' }}>Quality?</Text>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: '#333' }}>
+          <View style={styles.sleepQualitySection}>
+            <View style={styles.sleepRow}>
+              <Text style={styles.sleepLabel}>Quality?</Text>
+              <Text style={styles.sleepValue}>
                 {sleepQuality}/10
               </Text>
             </View>
@@ -422,56 +341,12 @@ export default function PersonalLog() {
           </View>
         </Card>
 
-        {/* Weekly Progress Section */}
-        {/* <Card>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: '#333' }}>
-            This Week's Progress
-          </Text>
-          
-          <View style={{ marginTop: 16 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 14, color: '#333' }}>Daily Check-ins</Text>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#333' }}>5/7 days</Text>
-            </View>
-            <ProgressBar progress={5} max={7} />
-          </View>
-
-          <View style={{ marginTop: 16 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 14, color: '#333' }}>Average Mood</Text>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#333' }}>7.2/10</Text>
-            </View>
-            <ProgressBar progress={7.2} max={10} />
-          </View>
-
-          <View style={{ marginTop: 16 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 14, color: '#333' }}>Sleep Quality</Text>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#333' }}>8.1/10</Text>
-            </View>
-            <ProgressBar progress={8.1} max={10} />
-          </View>
-        </Card> */}
-
         {/* Save Button */}
         <TouchableOpacity 
-          style={{
-            backgroundColor: BLUE,
-            marginHorizontal: 16,
-            marginTop: 20,
-            marginBottom: 100, // Extra padding to account for tab bar
-            paddingVertical: 16,
-            borderRadius: 12,
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
+          style={styles.saveButton}
           onPress={handleSave}
         >
-          <Text style={{ 
-            color: WHITE, 
-            fontSize: 18, 
-            fontWeight: '600' 
-          }}>
+          <Text style={styles.saveButtonText}>
             Save Today&apos;s Log
           </Text>
         </TouchableOpacity>
@@ -480,3 +355,250 @@ export default function PersonalLog() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: BLUE_BG,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    paddingBottom: 20,
+  },
+  card: {
+    backgroundColor: WHITE,
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  welcomeText: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#333',
+  },
+  dayText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 4,
+  },
+  dateText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  encouragementText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+  },
+  journalIcon: {
+    width: 145,
+    height: 145,
+    marginLeft: -10,
+  },
+  viewEntriesButton: {
+    backgroundColor: BLUE_BG,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  viewEntriesText: {
+    marginLeft: 8,
+    color: '#333',
+    fontWeight: '500',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  ratingText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  ratingCircle: {
+    width: 50,
+    height: 50,
+    backgroundColor: BLUE,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ratingNumber: {
+    color: WHITE,
+    fontSize: 25,
+    fontWeight: '700',
+  },
+  moodText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  emotionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+    marginTop: 16,
+  },
+  emojiRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  emojiButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiSelected: {
+    backgroundColor: BLUE,
+  },
+  emojiUnselected: {
+    backgroundColor: '#F0F0F0',
+  },
+  emojiText: {
+    fontSize: 24,
+  },
+  journalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  journalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+  },
+  journalTextArea: {
+    backgroundColor: '#F8F8F8',
+    borderRadius: 8,
+    padding: 16,
+    marginTop: 12,
+    minHeight: 120,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+  },
+  journalText: {
+    fontSize: 16,
+    color: '#333',
+    lineHeight: 22,
+  },
+  journalPlaceholder: {
+    fontSize: 16,
+    color: '#999',
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10,
+  },
+  tag: {
+    backgroundColor: '#EAF2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    marginRight: 8,
+    marginTop: 6,
+  },
+  tagText: {
+    color: '#1E63E9',
+    fontWeight: '600',
+  },
+  sleepTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  sleepSection: {
+    marginTop: 16,
+  },
+  sleepRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sleepLabel: {
+    fontSize: 16,
+    color: '#333',
+  },
+  sleepValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  sleepQualitySection: {
+    marginTop: 20,
+  },
+  saveButton: {
+    backgroundColor: BLUE,
+    marginHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 100,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonText: {
+    color: WHITE,
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  sliderContainer: {
+    marginTop: 12,
+  },
+  sliderTrack: {
+    height: 6,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 3,
+    position: 'relative',
+  },
+  sliderFill: {
+    height: 6,
+    backgroundColor: BLUE,
+    borderRadius: 3,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    top: -8,
+    width: 20,
+    height: 20,
+    backgroundColor: BLUE,
+    borderRadius: 10,
+    marginLeft: -10,
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  sliderLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
+});
