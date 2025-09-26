@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Dimensions,
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
@@ -26,8 +25,7 @@ import {
   verifyBeforeUpdateEmail
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-
-const { width } = Dimensions.get('window');
+import ProfilePicture from '@/components/ProfilePicture';
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -220,14 +218,9 @@ export default function EditProfilePage() {
               <Text style={styles.subtitle}>Customize your RIPPLE profile.</Text>
             </View>
 
-            {/* Profile Picture Placeholder */}
+            {/* Profile Picture Section */}
             <View style={styles.profilePictureSection}>
-              <View style={styles.profilePicture}>
-                <Ionicons name="person" size={60} color="#8B4513" />
-              </View>
-              <View style={styles.editIconContainer}>
-                <Ionicons name="camera" size={16} color="#4A90E2" />
-              </View>
+              <ProfilePicture size={120} showEditButton={true} />
             </View>
 
             {/* Form Section */}
@@ -402,27 +395,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
     position: 'relative',
-  },
-  profilePicture: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#FFD4B3',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editIconContainer: {
-    position: 'absolute',
-    bottom: 5,
-    right: width/2 - 45,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'white',
-    borderWidth: 2,
-    borderColor: '#4A90E2',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   form: {
     flex: 1,
