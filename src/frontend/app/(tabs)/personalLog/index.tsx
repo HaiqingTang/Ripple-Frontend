@@ -41,9 +41,9 @@ export default function PersonalLog() {
   const {userId, fullName, dayOfWeek, formattedDate } = useAppContext();
 
   const emojis = ['😢', '😠', '😐', '😊', '😄'];
+  const emojiLabels = ['sad', 'Angry', 'Neutral', 'Happy', 'Very happy'];
 
 
-  //TODO: fix the scrolling to the journal section when returning from the journal page
   useEffect(() => {
     let shouldScrollToJournal = false;
     
@@ -99,13 +99,7 @@ export default function PersonalLog() {
     // Redirect to success page
     router.push('/journal/success');
     
-    // Optional: Reset form after saving
-    // setDayRating(5);
-    // setMoodRating(6);
-    // setSelectedEmoji(2);
-    // setJournalText('');
-    // setSleepDuration(7);
-    // setSleepQuality(8);
+ 
   };
 
   const handleViewPreviousEntries = () => {
@@ -134,7 +128,15 @@ export default function PersonalLog() {
     </View>
   );
 
-  const Slider = ({ value, onValueChange, min = 1, max = 10, step = 1, labels = null }: { value: number; onValueChange: (value: number) => void; min?: number; max?: number; step?: number; labels?: string[] | null }) => {
+  const Slider = ({ value, onValueChange, min = 1, max = 10, step = 1, labels = null, accessibilityLabel = 'Slider' }: { 
+    value: number; 
+    onValueChange: (value: number) => void; 
+    min?: number; 
+    max?: number; 
+    step?: number; 
+    labels?: string[] | null;
+    accessibilityLabel?: string;
+  }) => {
     const handlePress = (event: any) => {
       const { locationX } = event.nativeEvent;
       const sliderWidth = width - 64; // Account for margins
@@ -144,12 +146,40 @@ export default function PersonalLog() {
       onValueChange(clampedValue);
     };
 
+    const handleAccessibilityAction = (event: any) => {
+      switch (event.nativeEvent.actionName) {
+        case 'increment':
+          const incrementedValue = Math.min(value + step, max);
+          onValueChange(incrementedValue);
+          break;
+        case 'decrement':
+          const decrementedValue = Math.max(value - step, min);
+          onValueChange(decrementedValue);
+          break;
+      }
+    };
+
     return (
       <View style={styles.sliderContainer}>
         <TouchableOpacity 
           style={styles.sliderTrack}
           onPress={handlePress}
           activeOpacity={1}
+          accessible={true}
+          accessibilityLabel={`${accessibilityLabel}: ${value} out of ${max}`}
+          accessibilityHint={`Tap to adjust value between ${min} and ${max}. Use increment and decrement actions to adjust by keyboard.`}
+          accessibilityRole="adjustable"
+          accessibilityValue={{
+            min: min,
+            max: max,
+            now: value,
+            text: `${value} out of ${max}`
+          }}
+          accessibilityActions={[
+            { name: 'increment', label: 'Increase value' },
+            { name: 'decrement', label: 'Decrease value' }
+          ]}
+          onAccessibilityAction={handleAccessibilityAction}
         >
           <View style={[
             styles.sliderFill,
@@ -188,6 +218,9 @@ export default function PersonalLog() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.scrollViewContent}
+          accessible={true}
+          accessibilityLabel="Personal log form"
+          accessibilityHint="Scroll to navigate through different sections of your daily log"
         >
                 {/* Header Section */}
                 <Card>
@@ -206,11 +239,21 @@ export default function PersonalLog() {
                 You&apos;ve been doing an awesome job with logging! Awesome work!
               </Text>
             </View>
-            <Image source={JournalIcon} style={styles.journalIcon} />
+            <Image 
+              source={JournalIcon} 
+              style={styles.journalIcon}
+              accessible={true}
+              accessibilityLabel="Journal illustration"
+              accessibilityRole="image"
+            />
           </View>
           <TouchableOpacity 
             style={styles.viewEntriesButton}
             onPress={handleViewPreviousEntries}
+            accessible={true}
+            accessibilityLabel="View previous entries"
+            accessibilityHint="Navigate to your previous journal entries"
+            accessibilityRole="button"
           >
             <Ionicons name="folder-outline" size={16} color="#333" />
             <Text style={styles.viewEntriesText}>
@@ -222,11 +265,23 @@ export default function PersonalLog() {
         {/* Day Rating Section */}
         <Card>
           <View style={styles.ratingRow}>
-            <Text style={styles.ratingText}>
+            <Text 
+              style={styles.ratingText}
+              accessible={true}
+              accessibilityRole="header"
+            >
               How would you rate your day overall?
             </Text>
-            <View style={styles.ratingCircle}>
-              <Text style={styles.ratingNumber}>
+            <View 
+              style={styles.ratingCircle}
+              accessible={true}
+              accessibilityLabel={`Day rating: ${dayRating} out of 10`}
+              accessibilityRole="text"
+            >
+              <Text 
+                style={styles.ratingNumber}
+                accessible={false}
+              >
                 {dayRating}
               </Text>
             </View>
@@ -236,12 +291,17 @@ export default function PersonalLog() {
             onValueChange={setDayRating}
             min={1}
             max={10}
+            accessibilityLabel="Day rating"
           />
         </Card>
 
         {/* Mood Section */}
         <Card>
-          <Text style={styles.moodText}>
+          <Text 
+            style={styles.moodText}
+            accessible={true}
+            accessibilityRole="header"
+          >
             How are you feeling?
           </Text>
           <Slider 
@@ -249,15 +309,24 @@ export default function PersonalLog() {
             onValueChange={setMoodRating}
             min={1}
             max={10}
+            accessibilityLabel="Mood rating"
           />
         </Card>
 
         {/* Emotion Section */}
         <Card>
-        <Text style={styles.emotionText}>
+        <Text 
+          style={styles.emotionText}
+          accessible={true}
+          accessibilityRole="header"
+        >
             What are you feeling?
           </Text>
-          <View style={styles.emojiRow}>
+          <View 
+            style={styles.emojiRow}
+            accessible={true}
+            accessibilityLabel="Emotion selection"
+          >
             {emojis.map((emoji, index) => (
               <TouchableOpacity
                 key={index}
@@ -266,8 +335,18 @@ export default function PersonalLog() {
                   styles.emojiButton,
                   selectedEmoji === index ? styles.emojiSelected : styles.emojiUnselected
                 ]}
+                accessible={true}
+                accessibilityLabel={`${emojiLabels[index]} emotion`}
+                accessibilityHint={`Select ${emojiLabels[index]} as your current emotion`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedEmoji === index }}
               >
-                <Text style={styles.emojiText}>{emoji}</Text>
+                <Text 
+                  style={styles.emojiText}
+                  accessible={false}
+                >
+                  {emoji}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -276,26 +355,61 @@ export default function PersonalLog() {
         {/* Journaling Section */}
         <View ref={journalingCardRef} onLayout={handleJournalingCardLayout}>
           <Card>
-            <Text style={styles.journalTitle}>Want to journal?</Text>
+            <Text 
+              style={styles.journalTitle}
+              accessible={true}
+              accessibilityRole="header"
+            >
+              Want to journal?
+            </Text>
           <Text style={styles.journalSubtitle}>
             How was your day? What are you grateful for? Any challenges you faced?
           </Text>
           <TouchableOpacity
             style={styles.journalTextArea}
             onPress={openJournal}
+            accessible={true}
+            accessibilityLabel={journalText ? `Journal entry: ${journalText.substring(0, 100)}${journalText.length > 100 ? '...' : ''}` : "Journal entry area"}
+            accessibilityHint="Tap to open journal editor to write your thoughts"
+            accessibilityRole="button"
           >
               {journalText ? (
-                <Text style={styles.journalText}>{journalText}</Text>
+                <Text 
+                  style={styles.journalText}
+                  accessible={false}
+                >
+                  {journalText}
+                </Text>
               ) : (
-                <Text style={styles.journalPlaceholder}>Write your thoughts here...</Text>
+                <Text 
+                  style={styles.journalPlaceholder}
+                  accessible={false}
+                >
+                  Write your thoughts here...
+                </Text>
               )}
           </TouchableOpacity>
 
           {selectedTags.length > 0 && (
-            <View style={styles.tagsContainer}>
+            <View 
+              style={styles.tagsContainer}
+              accessible={true}
+              accessibilityLabel={`Selected tags: ${selectedTags.join(', ')}`}
+            >
               {selectedTags.map((tag, idx) => (
-                <View key={`${tag}-${idx}`} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
+                <View 
+                  key={`${tag}-${idx}`} 
+                  style={styles.tag}
+                  accessible={true}
+                  accessibilityLabel={`Tag: ${tag}`}
+                  accessibilityRole="text"
+                >
+                  <Text 
+                    style={styles.tagText}
+                    accessible={false}
+                  >
+                    {tag}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -305,14 +419,22 @@ export default function PersonalLog() {
 
         {/* Sleep Section */}
         <Card>
-          <Text style={styles.sleepTitle}>
+          <Text 
+            style={styles.sleepTitle}
+            accessible={true}
+            accessibilityRole="header"
+          >
             What about your sleep?
           </Text>
           
           <View style={styles.sleepSection}>
             <View style={styles.sleepRow}>
               <Text style={styles.sleepLabel}>Duration?</Text>
-              <Text style={styles.sleepValue}>
+              <Text 
+                style={styles.sleepValue}
+                accessible={true}
+                accessibilityLabel={`Sleep duration: ${sleepDuration} hours`}
+              >
                 {sleepDuration}h
               </Text>
             </View>
@@ -322,13 +444,18 @@ export default function PersonalLog() {
               min={1}
               max={12}
               labels={['1h', '12h']}
+              accessibilityLabel="Sleep duration in hours"
             />
           </View>
 
           <View style={styles.sleepQualitySection}>
             <View style={styles.sleepRow}>
               <Text style={styles.sleepLabel}>Quality?</Text>
-              <Text style={styles.sleepValue}>
+              <Text 
+                style={styles.sleepValue}
+                accessible={true}
+                accessibilityLabel={`Sleep quality: ${sleepQuality} out of 10`}
+              >
                 {sleepQuality}/10
               </Text>
             </View>
@@ -337,6 +464,7 @@ export default function PersonalLog() {
               onValueChange={setSleepQuality}
               min={1}
               max={10}
+              accessibilityLabel="Sleep quality rating"
             />
           </View>
         </Card>
@@ -345,6 +473,10 @@ export default function PersonalLog() {
         <TouchableOpacity 
           style={styles.saveButton}
           onPress={handleSave}
+          accessible={true}
+          accessibilityLabel="Save today's log"
+          accessibilityHint="Save all your daily log entries including ratings, mood, journal, and sleep data"
+          accessibilityRole="button"
         >
           <Text style={styles.saveButtonText}>
             Save Today&apos;s Log
