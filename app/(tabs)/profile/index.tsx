@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import pic1 from '@/assets/images/profile-post-1.png';
 import pic2 from '@/assets/images/profile-post-2.png';
 import pic3 from '@/assets/images/profile-post-3.png';
+import ProfilePicture from '@/components/ProfilePicture';
 
 const { width } = Dimensions.get("window");
 
@@ -59,13 +60,7 @@ export default function ProfilePage() {
 
 			{/* Profile Picture */}
 			<View style={styles.profileSection}>
-				{/* TODO: placeholder for profile pic (do we need profile pic?)*/}
-				<Ionicons name="person-circle-outline" size={150} color="#333" />
-				{/*TODO: add this back when BE is implemented*/}
-				{/*<Image*/}
-				{/*	source={{ uri: "https://placehold.co/150x150/FFDAB9/000" }} // profile avatar (do we need this?)*/}
-				{/*	style={styles.avatar}*/}
-				{/*/>*/}
+				<ProfilePicture size={150} showEditButton={false} />
 				<Text style={styles.name}>{fullName}</Text>
 				<Text style={styles.handle}>{userName}</Text>
 
