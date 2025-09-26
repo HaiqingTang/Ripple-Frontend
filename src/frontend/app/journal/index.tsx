@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Modal, SafeAreaView, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,31 +38,39 @@ export default function JournalPage() {
 	const [journalText, setJournalText] = useState('');
 	const [selectedTags, setSelectedTags] = useState<string[]>(['Work', 'Goals', 'Growth']);
 	const [isTagModalVisible, setIsTagModalVisible] = useState(false);
-	const [hasInitialized, setHasInitialized] = useState(false);
 
+	// Initialize from params on mount
 	useEffect(() => {
-		if (!hasInitialized) {
+		if (params.journal) {
+			setJournalText(params.journal as string);
+		}
+		if (params.tags) {
 			try {
-				if (params.journal) {
-					setJournalText(params.journal as string);
-				}
-				if (params.tags) {
-					const parsedTags = JSON.parse(params.tags as string);
-					if (Array.isArray(parsedTags)) {
-						setSelectedTags(parsedTags);
-					}
+				const parsedTags = JSON.parse(params.tags as string);
+				if (Array.isArray(parsedTags)) {
+					setSelectedTags(parsedTags);
 				}
 			} catch (error) {
 				console.warn('Error parsing tags from params:', error);
 			}
-			setHasInitialized(true);
 		}
-	}, [params.journal, params.tags, hasInitialized]);
+	}, []); // Run once on mount
 
-	const addTag = (tag: string) => {
-		if (!selectedTags.includes(tag)) {
-			setSelectedTags([...selectedTags, tag]);
-		}
+	// Memoize tag colors to avoid recalculating on every render
+	const tagColors = useMemo(() => {
+		return selectedTags.reduce((acc, tag) => {
+			acc[tag] = getTagColor(tag);
+			return acc;
+		}, {} as Record<string, { bg: string; text: string }>);
+	}, [selectedTags]);
+
+	// Toggle tag selection - add if not present, remove if present
+	const toggleTag = (tag: string) => {
+		setSelectedTags(prev =>
+			prev.includes(tag)
+				? prev.filter(t => t !== tag)
+				: [...prev, tag]
+		);
 	};
 
 	const removeTag = (tagToRemove: string) => {
@@ -70,9 +78,14 @@ export default function JournalPage() {
 	};
 
 	const handleAddToLog = () => {
+		if (!journalText.trim()) {
+			return; // Button will be disabled anyway
+		}
 		const tagsString = JSON.stringify(selectedTags);
-		router.push(`/(tabs)/personalLog?journal=${encodeURIComponent(journalText)}&tags=${encodeURIComponent(tagsString)}`);
+		router.push(`/(tabs)/personalLog?journal=${encodeURIComponent(journalText.trim())}&tags=${encodeURIComponent(tagsString)}`);
 	};
+
+	const isSubmitDisabled = !journalText.trim();
 
 	return (
 		<SafeAreaView style={styles.container}>
@@ -87,11 +100,13 @@ export default function JournalPage() {
 			<KeyboardAvoidingView
 				style={styles.keyboardContainer}
 				behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+				keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
 			>
 				<ScrollView
 					style={styles.scrollView}
 					showsVerticalScrollIndicator={false}
 					contentContainerStyle={styles.scrollContent}
+					keyboardShouldPersistTaps="handled"
 				>
 					{/* Journal Prompts Card */}
 					<View style={styles.card}>
@@ -112,6 +127,9 @@ export default function JournalPage() {
 							onChangeText={setJournalText}
 							autoCorrect={true}
 							autoCapitalize="sentences"
+							maxLength={5000}
+							accessibilityLabel="Journal text input"
+							accessibilityHint="Enter your journal thoughts and reflections"
 						/>
 					</View>
 
@@ -120,12 +138,16 @@ export default function JournalPage() {
 						<Text style={styles.cardTitle}>Tag a topic</Text>
 
 						<View style={styles.tagsContainer}>
-							{selectedTags.map((tag, index) => {
-								const colors = getTagColor(tag);
+							{selectedTags.map((tag) => {
+								const colors = tagColors[tag];
 								return (
 									<View key={tag} style={[styles.selectedTag, { backgroundColor: colors.bg }]}>
 										<Text style={[styles.selectedTagText, { color: colors.text }]}>{tag}</Text>
-										<TouchableOpacity onPress={() => removeTag(tag)}>
+										<TouchableOpacity
+											onPress={() => removeTag(tag)}
+											accessibilityLabel={`Remove ${tag} tag`}
+											accessibilityRole="button"
+										>
 											<Ionicons name="close" size={16} color={colors.text} />
 										</TouchableOpacity>
 									</View>
@@ -135,6 +157,9 @@ export default function JournalPage() {
 							<TouchableOpacity
 								onPress={() => setIsTagModalVisible(true)}
 								style={styles.addTagButton}
+								accessibilityLabel="Add more tags"
+								accessibilityRole="button"
+								accessibilityHint="Opens tag selection modal"
 							>
 								<Ionicons name="chevron-down" size={16} color="#666" />
 							</TouchableOpacity>
@@ -142,8 +167,18 @@ export default function JournalPage() {
 					</View>
 
 					{/* Add to Log Button */}
-					<TouchableOpacity style={styles.submitButton} onPress={handleAddToLog}>
-						<Text style={styles.submitButtonText}>Add to Personal Log</Text>
+					<TouchableOpacity
+						style={[styles.submitButton, isSubmitDisabled && styles.submitButtonDisabled]}
+						onPress={handleAddToLog}
+						disabled={isSubmitDisabled}
+						accessibilityLabel="Add journal entry to personal log"
+						accessibilityRole="button"
+						accessibilityState={{ disabled: isSubmitDisabled }}
+						accessibilityHint={isSubmitDisabled ? "Enter some text first" : "Saves your journal entry"}
+					>
+						<Text style={[styles.submitButtonText, isSubmitDisabled && styles.submitButtonTextDisabled]}>
+							Add to Personal Log
+						</Text>
 					</TouchableOpacity>
 				</ScrollView>
 			</KeyboardAvoidingView>
@@ -157,11 +192,19 @@ export default function JournalPage() {
 			>
 				<SafeAreaView style={styles.modalContainer}>
 					<View style={styles.modalHeader}>
-						<TouchableOpacity onPress={() => setIsTagModalVisible(false)}>
+						<TouchableOpacity
+							onPress={() => setIsTagModalVisible(false)}
+							accessibilityLabel="Cancel tag selection"
+							accessibilityRole="button"
+						>
 							<Text style={styles.modalCancelText}>Cancel</Text>
 						</TouchableOpacity>
 						<Text style={styles.modalTitle}>Select Topics</Text>
-						<TouchableOpacity onPress={() => setIsTagModalVisible(false)}>
+						<TouchableOpacity
+							onPress={() => setIsTagModalVisible(false)}
+							accessibilityLabel="Done selecting tags"
+							accessibilityRole="button"
+						>
 							<Text style={styles.modalDoneText}>Done</Text>
 						</TouchableOpacity>
 					</View>
@@ -174,7 +217,7 @@ export default function JournalPage() {
 								return (
 									<TouchableOpacity
 										key={tag}
-										onPress={() => addTag(tag)}
+										onPress={() => toggleTag(tag)}
 										style={[
 											styles.modalTag,
 											{
@@ -182,6 +225,9 @@ export default function JournalPage() {
 												width: (width - 60) / 2
 											}
 										]}
+										accessibilityLabel={`${isSelected ? 'Remove' : 'Add'} ${tag} tag`}
+										accessibilityRole="button"
+										accessibilityState={{ selected: isSelected }}
 									>
 										<Text style={[
 											styles.modalTagText,
@@ -307,10 +353,16 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
+	submitButtonDisabled: {
+		backgroundColor: '#CCCCCC',
+	},
 	submitButtonText: {
 		color: WHITE,
 		fontSize: 18,
 		fontWeight: '600',
+	},
+	submitButtonTextDisabled: {
+		color: '#888888',
 	},
 	modalContainer: {
 		flex: 1,
