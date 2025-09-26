@@ -1,12 +1,11 @@
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system/legacy';
 import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 export interface ImagePickerResult {
   success: boolean;
   imageUri?: string;
+  base64?: string;
   error?: string;
   cancelled?: boolean;
 }
@@ -17,7 +16,6 @@ export interface ImageUploadResult {
   error?: string;
 }
 
-const MAX_IMAGE_SIZE = 600;
 const MAX_BASE64_SIZE = 700 * 1024; // ~700KB to account for Base64 overhead and stay under 1MB Firestore limit
 
 // Helper function to find user document by userId field
@@ -42,32 +40,16 @@ const findUserDocument = async (userId: string): Promise<string | null> => {
   }
 };
 
-export const requestPermissions = async (): Promise<boolean> => {
-  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (status !== 'granted') {
-    return false;
-  }
 
-  const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
-  if (cameraPermission.status !== 'granted') {
-    return false;
-  }
-
-  return true;
-};
 
 export const pickImageFromGallery = async (): Promise<ImagePickerResult> => {
   try {
-    const hasPermissions = await requestPermissions();
-    if (!hasPermissions) {
-      return { success: false, error: 'Permission denied to access photos' };
-    }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images',
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.6, // Aggressive compression to replace manipulator
+      base64: true,
     });
 
     if (result.canceled) {
@@ -75,9 +57,13 @@ export const pickImageFromGallery = async (): Promise<ImagePickerResult> => {
     }
 
     const imageUri = result.assets[0].uri;
-    const processedUri = await compressImage(imageUri);
+    const base64Data = result.assets[0].base64;
 
-    return { success: true, imageUri: processedUri };
+    return {
+      success: true,
+      imageUri,
+      base64: base64Data || undefined
+    };
   } catch (error) {
     console.error('Error picking image from gallery:', error);
     return { success: false, error: 'Failed to pick image from gallery' };
@@ -86,15 +72,12 @@ export const pickImageFromGallery = async (): Promise<ImagePickerResult> => {
 
 export const takePicture = async (): Promise<ImagePickerResult> => {
   try {
-    const hasPermissions = await requestPermissions();
-    if (!hasPermissions) {
-      return { success: false, error: 'Permission denied to access camera' };
-    }
-
     const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: 'images',
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.6, // Aggressive compression to replace manipulator
+      base64: true,
     });
 
     if (result.canceled) {
@@ -102,44 +85,23 @@ export const takePicture = async (): Promise<ImagePickerResult> => {
     }
 
     const imageUri = result.assets[0].uri;
-    const processedUri = await compressImage(imageUri);
+    const base64Data = result.assets[0].base64;
 
-    return { success: true, imageUri: processedUri };
+    return {
+      success: true,
+      imageUri,
+      base64: base64Data || undefined
+    };
   } catch (error) {
     console.error('Error taking picture:', error);
     return { success: false, error: 'Failed to take picture' };
   }
 };
 
-const compressImage = async (uri: string): Promise<string> => {
-  try {
-    const manipulatedImage = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ resize: { width: MAX_IMAGE_SIZE, height: MAX_IMAGE_SIZE } }],
-      { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
-    );
 
-    return manipulatedImage.uri;
-  } catch (error) {
-    console.error('Error compressing image:', error);
-    return uri;
-  }
-};
-
-const convertToBase64 = async (imageUri: string): Promise<string> => {
-  try {
-    const base64 = await FileSystem.readAsStringAsync(imageUri, {
-      encoding: 'base64',
-    });
-    return base64;
-  } catch (error) {
-    console.error('Error converting image to Base64:', error);
-    throw error;
-  }
-};
 
 const validateBase64Size = (base64String: string): { isValid: boolean; error?: string } => {
-  const sizeInBytes = (base64String.length * 3) / 4; // Approximate Base64 size calculation
+  const sizeInBytes = (base64String.length * 3) / 4; 
   if (sizeInBytes > MAX_BASE64_SIZE) {
     return {
       isValid: false,
@@ -150,8 +112,7 @@ const validateBase64Size = (base64String: string): { isValid: boolean; error?: s
 };
 
 export const uploadProfilePicture = async (
-  imageUri: string,
-  userId: string
+  base64Data: string
 ): Promise<ImageUploadResult> => {
   try {
     if (!auth.currentUser) {
@@ -166,8 +127,7 @@ export const uploadProfilePicture = async (
       return { success: false, error: 'Invalid user authentication' };
     }
 
-    // Convert image to Base64
-    const base64Data = await convertToBase64(imageUri);
+    // Base64 data is already provided from picker
 
     // Validate Base64 size
     const sizeValidation = validateBase64Size(base64Data);
