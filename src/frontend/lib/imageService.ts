@@ -8,6 +8,7 @@ export interface ImagePickerResult {
   success: boolean;
   imageUri?: string;
   error?: string;
+  cancelled?: boolean;
 }
 
 export interface ImageUploadResult {
@@ -70,7 +71,7 @@ export const pickImageFromGallery = async (): Promise<ImagePickerResult> => {
     });
 
     if (result.canceled) {
-      return { success: false, error: 'User cancelled image selection' };
+      return { success: false, cancelled: true };
     }
 
     const imageUri = result.assets[0].uri;
@@ -97,7 +98,7 @@ export const takePicture = async (): Promise<ImagePickerResult> => {
     });
 
     if (result.canceled) {
-      return { success: false, error: 'User cancelled camera' };
+      return { success: false, cancelled: true };
     }
 
     const imageUri = result.assets[0].uri;

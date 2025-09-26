@@ -79,7 +79,11 @@ export default function ProfilePicture({
     const result = await takePicture();
     if (result.success && result.imageUri) {
       await handleImageSelected(result.imageUri);
+    } else if (result.cancelled) {
+      // User cancelled camera - just close modal without error message
+      setModalVisible(false);
     } else if (result.error) {
+      // Actual error occurred - show error message
       Alert.alert('Error', result.error);
       setModalVisible(false);
     }
@@ -89,7 +93,11 @@ export default function ProfilePicture({
     const result = await pickImageFromGallery();
     if (result.success && result.imageUri) {
       await handleImageSelected(result.imageUri);
+    } else if (result.cancelled) {
+      // User cancelled gallery selection - just close modal without error message
+      setModalVisible(false);
     } else if (result.error) {
+      // Actual error occurred - show error message
       Alert.alert('Error', result.error);
       setModalVisible(false);
     }
