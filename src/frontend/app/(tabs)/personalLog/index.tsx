@@ -8,6 +8,7 @@ import {
 	Dimensions,
 	KeyboardAvoidingView,
 	Platform, Alert,
+	InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -26,6 +27,8 @@ export default function PersonalLog() {
   const router = useRouter();
   const params = useLocalSearchParams<{ journal?: string; tags?: string }>();
   const scrollViewRef = useRef<ScrollView>(null);
+  const journalingCardRef = useRef<View>(null);
+  const [journalingCardY, setJournalingCardY] = useState(0);
   const [dayRating, setDayRating] = useState(5);
   const [moodRating, setMoodRating] = useState(6);
   const [selectedEmoji, setSelectedEmoji] = useState(2);
@@ -54,14 +57,18 @@ export default function PersonalLog() {
       } catch {}
     }
     
-    // Scroll to journaling section when returning from journal page, now this does not work
-    if (shouldScrollToJournal) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ y: 800, animated: true });
-      }, 300);
+    // Scroll to journaling section when returning from journal page
+    if (shouldScrollToJournal && journalingCardY > 0) {
+      InteractionManager.runAfterInteractions(() => {
+        scrollViewRef.current?.scrollTo({ 
+          y: journalingCardY - 50, // Slight offset for better positioning
+          animated: true 
+        });
+      });
     }
-  }, [params.journal, params.tags]);
+  }, [params.journal, params.tags, journalingCardY]);
 
+ 
 
   const handleSave = async () => {
 	  const logData = {
@@ -112,6 +119,11 @@ export default function PersonalLog() {
         tags: JSON.stringify(selectedTags),
       },
     });
+  };
+
+  const handleJournalingCardLayout = (event: { nativeEvent: { layout: { y: number } } }) => {
+    const { y } = event.nativeEvent.layout;
+    setJournalingCardY(y);
   };
 
   const Card = ({ children, style = {} }: { children: React.ReactNode; style?: any }) => (
@@ -213,6 +225,7 @@ export default function PersonalLog() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <ScrollView 
+          ref={scrollViewRef}
           style={{ flex: 1 }} 
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -327,8 +340,9 @@ export default function PersonalLog() {
         </Card>
 
         {/* Journaling Section */}
-        <Card>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: '#333' }}>Want to journal?</Text>
+        <View ref={journalingCardRef} onLayout={handleJournalingCardLayout}>
+          <Card>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: '#333' }}>Want to journal?</Text>
           <Text style={{ fontSize: 14, color: '#666', marginTop: 8 }}>
             How was your day? What are you grateful for? Any challenges you faced?
           </Text>
@@ -367,7 +381,8 @@ export default function PersonalLog() {
               ))}
             </View>
           )}
-        </Card>
+          </Card>
+        </View>
 
         {/* Sleep Section */}
         <Card>
