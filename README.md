@@ -69,11 +69,15 @@ After downloading the app, users can:
 - Earn rewards through local business partnerships (e.g., gyms, yoga, dining)  
 
 ## Screenshots
-<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-09-24 at 01 20 33" src="https://github.com/user-attachments/assets/9c3834eb-98b1-48f4-bdbf-5aeae538d5e6" />
-<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-09-24 at 01 21 05" src="https://github.com/user-attachments/assets/c13cedbd-30d7-49c8-92a2-5f1a9d03adeb" />
-<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-09-24 at 01 21 15" src="https://github.com/user-attachments/assets/01bdc8e6-208a-48c4-9ca2-0e44aca535cf" />
-<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-09-24 at 01 21 46" src="https://github.com/user-attachments/assets/23d2ab72-296f-4487-bdac-1db13916c8a6" />
-<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 16 Pro Max - 2025-09-24 at 01 20 46" src="https://github.com/user-attachments/assets/76b0fe0e-d16d-4719-a9b7-b09cb60302b9" />
+<img src="https://github.com/user-attachments/assets/1d85e868-0df3-4109-8f2d-8d2e6341496a" alt="e7a540cc36f57d66336bc591d28f7c81" width="320" loading="lazy"/>
+<img src="https://github.com/user-attachments/assets/7b360508-b38c-4f85-9dac-0fb502841324" alt="8338c09f3097de924e79de1b57486b5c" width="320" loading="lazy" />
+<img src="https://github.com/user-attachments/assets/1a480278-3c52-43a1-9e32-a777c02e96a0" alt="acbe655c20ed0bf4c5c8a310eded334d" width="320" loading="lazy" />
+<img src="https://github.com/user-attachments/assets/1bb1b58e-0c77-4f14-809d-cd55ff400e30" alt="f4a13e4cdb7d1058bb6e657cb03db2b7" width="320" loading="lazy" />
+<img src="https://github.com/user-attachments/assets/f7d05de1-9c5b-437d-9f56-85b9f0d32950" alt="7941ed09236067eea239d7df5d9f2dc7" width="320" loading="lazy" />
+<img src="https://github.com/user-attachments/assets/f3da80af-cf57-4aec-b5f2-1f05c967a9e7" alt="431e394bf6cec3dede64b07e55943bc9" width="320" loading="lazy" />
+<img src="https://github.com/user-attachments/assets/40e934c1-9f4e-4004-8df9-9d3dc4634f60" alt="c4040da60dac310ec563418a0d0a0ec8" width="320" loading="lazy" />
+<img src="https://github.com/user-attachments/assets/83bbf095-25fd-4f34-99d2-b7ec39f1b744" alt="8c117310053d173b86e260840c46d765" width="320" loading="lazy" />
+<img src="https://github.com/user-attachments/assets/32b86ec7-9d79-43ee-9ca7-6f90eaba86a7" alt="98217e915bd2cf22944b74deffb2a4cb" width="320" loading="lazy" />
 
 
 ## Tech Stack
