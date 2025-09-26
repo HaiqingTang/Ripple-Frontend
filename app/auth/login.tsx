@@ -24,17 +24,26 @@ export default function LoginPage() {
 	};
 
   const handleLogin = async () => {
-	  if (!validateEmail(email)) {
-		  setErrorMessage('Please enter a valid email address');
-		  return;
-	  }
-	  if (!email || !password) {
+	  const trimmedEmail = email.trim();
+	  const trimmedPassword = password.trim();
+
+	  // Clear previous error and reset error on new attempt
+	  setErrorMessage('');
+
+	  // Check for empty fields first
+	  if (!trimmedEmail || !trimmedPassword) {
 		  setErrorMessage('Please enter both email and password');
 		  return;
 	  }
 
+	  // Then validate email format
+	  if (!validateEmail(trimmedEmail)) {
+		  setErrorMessage('Please enter a valid email address');
+		  return;
+	  }
+
 	  setLoading(true);
-	  setErrorMessage('');
+
 	  try {
 		  const userCredential = await signInWithEmailAndPassword(auth, email, password);
 			const user = userCredential.user;
@@ -43,12 +52,13 @@ export default function LoginPage() {
 				return;
 			}
 		  console.log('Logged in user:', userCredential.user.uid);
-		  // Navigate to quicknote tab after successful login
-		  router.push('/(tabs)/personalLog');
+		  // Use replace to prevent back navigation to login
+		  router.replace('/(tabs)/personalLog');
 	  } catch (error: any) {
+		  const code = error?.code;
 		  let message = "Login failed. Please try again later";
 
-		  switch (error.code) {
+		  switch (code) {
 			  case "auth/invalid-email":
 			  case "auth/wrong-password":
 			  case "auth/invalid-credential":
@@ -109,6 +119,7 @@ export default function LoginPage() {
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            returnKeyType="next"
           />
         </View>
 
@@ -140,7 +151,9 @@ export default function LoginPage() {
         </View>
 
         {/* Forgot Password */}
-        <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotPassword}>
+        <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotPassword}
+                          accessibilityLabel="Forgot password"
+                          accessibilityRole="button">
           <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
         </TouchableOpacity>
 
@@ -151,7 +164,7 @@ export default function LoginPage() {
           variant="primary"
           size="large"
           style={styles.loginButton}
-          disabled={loading}
+          disabled={loading || !email.trim() || !password.trim()}
         />
       </View>
     </View>
