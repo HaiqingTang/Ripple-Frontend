@@ -45,7 +45,7 @@ export default function LoginPage() {
 	  setLoading(true);
 
 	  try {
-		  const userCredential = await signInWithEmailAndPassword(auth, email, password);
+		  const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
 			const user = userCredential.user;
 			if (!user.emailVerified) {
 				setErrorMessage('Email not verified. Please verify your email before logging in');
