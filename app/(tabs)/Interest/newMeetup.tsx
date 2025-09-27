@@ -10,6 +10,7 @@ import {
   Alert,
   Platform,
   Modal,
+  Image, // image upload - preview
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
@@ -17,14 +18,15 @@ import { useRouter, useNavigation } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import DateTimePicker from "@react-native-community/datetimepicker";
+// image upload - import picker
+import * as ImagePicker from "expo-image-picker";
 
 // Firestore and Auth
 import {
   addDoc,
   collection,
-  serverTimestamp,
   Timestamp,
-} from "firebase/firestore";
+} from "firebase/firestore"; // onPublish default date - time is required; we do not import serverTimestamp
 import { db, auth } from "../../../firebase";
 
 const { width } = Dimensions.get("window");
@@ -98,6 +100,19 @@ export default function NewMeetup() {
   });
   const [isGeocoding, setIsGeocoding] = useState(false);
 
+  // onPublish validation - inline errors for date/time and capacity
+  const [dateError, setDateError] = useState<string | null>(null);
+  const [capError, setCapError] = useState<string | null>(null);
+
+  // geocode retry CTA & debounce - inline error + simple timestamp debounce
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
+  const [lastGeocodeAt, setLastGeocodeAt] = useState<number>(0);
+
+  // image upload - local image selection and upload state
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+
   const toggleTag = (t: string) => {
     setSelectedTags((prev) =>
       prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
@@ -125,12 +140,18 @@ export default function NewMeetup() {
     const q = locationName.trim();
     if (!q) return;
 
+    // geocode retry CTA & debounce - prevent request spam within 1.2s
+    if (Date.now() - lastGeocodeAt < 1200) return;
+    setLastGeocodeAt(Date.now());
+
     try {
       setIsGeocoding(true);
+      setGeocodeError(null); // geocode retry CTA & debounce - reset inline error on new try
       await Location.requestForegroundPermissionsAsync().catch(() => {});
       const results = await Location.geocodeAsync(q);
       if (!results?.length) {
-        Alert.alert("Not found", "Try another keyword or check your network.");
+        // geocode retry CTA & debounce - show inline error (not only Alert)
+        setGeocodeError("Location not found. Try another keyword.");
         return;
       }
       const { latitude, longitude } = results[0];
@@ -140,9 +161,90 @@ export default function NewMeetup() {
         typeof e?.message === "string"
           ? e.message
           : "Geocoding failed, please check your network or try later.";
-      Alert.alert("Geocoding error", msg);
+      // geocode retry CTA & debounce - surface inline error; Retry button next to field
+      setGeocodeError(msg);
     } finally {
       setIsGeocoding(false);
+    }
+  };
+
+  // image upload - request permission & open gallery (record mime type for upload)
+  const [imageMime, setImageMime] = useState<string | null>(null); // keep mime
+  // keep the original File for web to avoid "blob doesn't exist"
+  const [webFile, setWebFile] = useState<File | null>(null);
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "Media library access is needed to select an image.");
+      return;
+    }
+
+    // Use the official constant to avoid platform inconsistencies
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+      base64: false,
+    });
+
+    if (result.canceled) return;
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return;
+
+    setImageUri(asset.uri);
+    setImageMime((asset as any)?.mimeType || "image/jpeg");
+    // On web, expo-image-picker provides the original File at asset.file
+    setWebFile(Platform.OS === "web" ? (asset as any)?.file ?? null : null);
+    setUploadedUrl(null); // reset previously uploaded url if re-selecting
+  };
+
+  // image upload - upload selected image to Cloudinary without using blob() on native and using Blob/File on web
+  const uploadImageAndGetUrl = async (uid: string): Promise<string> => {
+    if (!imageUri) return uploadedUrl || DEFAULT_IMAGE_URL;
+
+    try {
+      setUploading(true);
+
+      const CLOUD_NAME = "dwo2o5q8y";          
+      const UPLOAD_PRESET = "meetup_unsigned";
+      const endpoint = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+
+      const mime = imageMime || "image/jpeg";
+      const filename = `meetup_${uid}_${Date.now()}.jpg`;
+
+      const form = new FormData();
+      form.append("upload_preset", UPLOAD_PRESET);
+      form.append("folder", "meetup_images");
+
+      if (Platform.OS === "web") {
+        // Web: must send a Blob/File. Prefer asset.file; fallback to fetch(uri).blob()
+        let fileToSend: Blob | File | null = webFile;
+        if (!fileToSend) {
+          const resp = await fetch(imageUri);
+          fileToSend = await resp.blob();
+        }
+        form.append("file", fileToSend as any, filename);
+      } else {
+        // Native: send as { uri, name, type }
+        const filePart: any = { uri: imageUri, name: filename, type: mime };
+        form.append("file", filePart);
+      }
+
+      // Do not set Content-Type manually; let fetch set the boundary
+      const res = await fetch(endpoint, { method: "POST", body: form as any });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Cloudinary upload failed: ${text}`);
+      }
+      const data = await res.json();
+      const finalUrl = data.secure_url as string; // Cloudinary public URL
+
+      setUploadedUrl(finalUrl);
+      return finalUrl;
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -158,33 +260,54 @@ export default function NewMeetup() {
       return;
     }
 
-    // Time handling: convert to Firestore Timestamp or use serverTimestamp
-    let dateToSave: any = serverTimestamp();
-    if (dateVal && !Number.isNaN(dateVal.getTime())) {
-      dateToSave = Timestamp.fromDate(dateVal);
+    // onPublish validation - clear previous errors
+    setDateError(null);
+    setCapError(null);
+
+    // onPublish validation - time is required & must be in the future
+    if (!dateVal || Number.isNaN(dateVal.getTime())) {
+      setDateError("Please choose a date & time.");
+      return;
+    }
+    const now = Date.now();
+    if (dateVal.getTime() <= now) {
+      setDateError("Time must be in the future.");
+      return;
     }
 
-    // Parse max capacity
+    // onPublish validation - capacity must be a positive integer (>0)
     const maxCapacity = parseInt(maxCapInput, 10);
+    if (!maxCapInput.trim() || Number.isNaN(maxCapacity) || maxCapacity <= 0) {
+      setCapError("Enter a positive integer.");
+      return;
+    }
 
-    // Build doc body with explicit category and tags
-    const docBody = {
-      title,
-      description: desc,
-      date: dateToSave,
-      creatorId: uid,
-      participants: [uid],
-      maxCapacity: Number.isNaN(maxCapacity) ? null : maxCapacity,
-      category: selectedCategory || "Lifestyle",
-      tags: selectedTags.length ? selectedTags : ["Lifestyle"],
-      location: locationName.trim() || "Unknown",
-      locationGeo: { latitude: region.latitude, longitude: region.longitude },
-      imageUrl: DEFAULT_IMAGE_URL,
-      sponsorName: DEFAULT_SPONSOR_NAME,
-    };
+    // onPublish default date - persist explicit validated Timestamp; no serverTimestamp fallback
+    const dateToSave = Timestamp.fromDate(dateVal);
 
     try {
+      // image upload - upload first if user selected an image
+      const finalImageUrl = await uploadImageAndGetUrl(uid);
+
+      // Build doc body with explicit category and tags
+      const docBody = {
+        title,
+        description: desc,
+        date: dateToSave,
+        creatorId: uid,
+        participants: [uid],
+        maxCapacity, // safe integer after validation above
+        category: selectedCategory || "Lifestyle",
+        tags: selectedTags.length ? selectedTags : ["Lifestyle"],
+        location: locationName.trim() || "Unknown",
+        locationGeo: { latitude: region.latitude, longitude: region.longitude },
+        imageUrl: finalImageUrl || DEFAULT_IMAGE_URL, // image upload - store uploaded link
+        sponsorName: DEFAULT_SPONSOR_NAME,
+      };
+
       await addDoc(collection(db, "meetups"), docBody);
+      // initial participants post-publish feedback - success feedback before navigate
+      Alert.alert("Success", "Your meetup has been published.");
       router.push("/(tabs)/Interest/meetupManageMyMeetup");
     } catch (e: any) {
       Alert.alert("Publish failed", e?.message ?? "Unknown error");
@@ -214,8 +337,7 @@ export default function NewMeetup() {
           contentContainerStyle={{ alignItems: "center", paddingBottom: 28 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* Top decorative search bar removed */}
-          {/* First content card starts here */}
+          {/* First content card */}
           <View style={[styles.card, { width: PANEL_W }]}>
             {/* Title */}
             <View style={{ marginBottom: 12 }}>
@@ -226,6 +348,30 @@ export default function NewMeetup() {
                 onChangeText={setName}
                 placeholder="Value"
               />
+            </View>
+
+            {/* image upload - image preview + select button */}
+            <Text style={styles.subLabel}>Cover image</Text>
+            <View style={{ marginBottom: 12 }}>
+              <View style={styles.imageBox}>
+                <Image
+                  source={{ uri: imageUri || uploadedUrl || DEFAULT_IMAGE_URL }}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="cover"
+                />
+              </View>
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+                <TouchableOpacity onPress={pickImage} style={styles.imageBtn}>
+                  <Text style={styles.imageBtnText}>
+                    {imageUri ? "Change Image" : "Select Image"}
+                  </Text>
+                </TouchableOpacity>
+                {uploading && (
+                  <View style={styles.imageUploadingBadge}>
+                    <Text style={{ color: "white", fontWeight: "700" }}>Uploading…</Text>
+                  </View>
+                )}
+              </View>
             </View>
 
             {/* Time (native picker) */}
@@ -240,6 +386,8 @@ export default function NewMeetup() {
                   {dateVal ? formatDateTime(dateVal) : "Select date & time"}
                 </Text>
               </TouchableOpacity>
+              {/* onPublish validation - inline error for time */}
+              {!!dateError && <Text style={styles.errorText}>{dateError}</Text>}
             </View>
 
             {showPicker && (
@@ -249,7 +397,11 @@ export default function NewMeetup() {
                 display={Platform.OS === "ios" ? "inline" : "default"}
                 onChange={(event, selectedDate) => {
                   if (Platform.OS === "android") setShowPicker(false);
-                  if (selectedDate) setDateVal(selectedDate);
+                  if (selectedDate) {
+                    setDateVal(selectedDate);
+                    // onPublish validation - clear time error on selection
+                    setDateError(null);
+                  }
                 }}
               />
             )}
@@ -260,10 +412,18 @@ export default function NewMeetup() {
               <TextInput
                 style={styles.underlinedInput}
                 value={maxCapInput}
-                onChangeText={setMaxCapInput}
+                onChangeText={(v) => {
+                  setMaxCapInput(v);
+                  // onPublish validation - live clear when value looks valid
+                  if (v.trim() && /^\d+$/.test(v) && parseInt(v, 10) > 0) {
+                    setCapError(null);
+                  }
+                }}
                 placeholder="eg 20"
                 keyboardType="number-pad"
               />
+              {/* onPublish validation - inline error for capacity */}
+              {!!capError && <Text style={styles.errorText}>{capError}</Text>}
             </View>
 
             {/* Category single-select */}
@@ -333,12 +493,28 @@ export default function NewMeetup() {
                 style={styles.searchInput}
                 placeholder="Enter your location"
                 value={locationName}
-                onChangeText={setLocationName}
+                onChangeText={(t) => {
+                  setLocationName(t);
+                  // geocode retry CTA & debounce - clear inline error while typing
+                  if (geocodeError) setGeocodeError(null);
+                }}
                 returnKeyType="search"
                 onSubmitEditing={handleGeocodeSubmit}
                 editable={!isGeocoding}
               />
+              {/* geocode retry CTA & debounce - explicit CTA near the field */}
+              <TouchableOpacity
+                onPress={handleGeocodeSubmit}
+                disabled={isGeocoding}
+                style={{ paddingHorizontal: 8, paddingVertical: 4, opacity: isGeocoding ? 0.5 : 1 }}
+              >
+                <Text style={{ color: "#3b5aa9", fontWeight: "700" }}>
+                  {geocodeError ? "Retry" : "Search"}
+                </Text>
+              </TouchableOpacity>
             </View>
+            {/* geocode retry CTA & debounce - inline geocode error text */}
+            {!!geocodeError && <Text style={[styles.errorText, { marginBottom: 6 }]}>{geocodeError}</Text>}
 
             <View style={styles.mapWrap}>
               <MapView
@@ -353,8 +529,8 @@ export default function NewMeetup() {
           </View>
 
           {/* Publish */}
-          <TouchableOpacity style={styles.publishBtn} onPress={onPublish}>
-            <Text style={styles.publishText}>Publish</Text>
+          <TouchableOpacity style={styles.publishBtn} onPress={onPublish} disabled={uploading}>
+            <Text style={styles.publishText}>{uploading ? "Uploading…" : "Publish"}</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -390,7 +566,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#dfeaff" },
 
   header: {
-    paddingTop: 16, // unified header top padding
+    paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: 10,
     flexDirection: "row",
@@ -401,7 +577,6 @@ const styles = StyleSheet.create({
   viewBtn: { backgroundColor: "#cfe0ff", paddingHorizontal: 14, paddingVertical: 6, borderRadius: 10 },
   viewBtnText: { fontWeight: "600", color: "#3b5aa9" },
 
-  // kept for location input
   searchBox: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: "white", borderRadius: 22, paddingHorizontal: 12, height: 40,
@@ -414,7 +589,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#cfe0ff",
     borderRadius: 16,
     padding: 14,
-    marginTop: 12, // unified first card offset
+    marginTop: 12,
   },
   subLabel: { color: "#3b5aa9", marginBottom: 6, fontWeight: "600" },
   hintText: { color: "#6b7bb5", marginBottom: 8 },
@@ -458,5 +633,31 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: "100%", maxWidth: 420, backgroundColor: "#fff", borderRadius: 12, padding: 16,
+  },
+
+  // onPublish validation & geocode retry CTA - shared error text style
+  errorText: { color: "#d84535", marginTop: 6, fontWeight: "600" },
+
+  // image upload - styles
+  imageBox: {
+    width: "100%",
+    height: 160,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+  },
+  imageBtn: {
+    backgroundColor: "#cfe0ff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  imageBtnText: { color: "#3b5aa9", fontWeight: "700" },
+  imageUploadingBadge: {
+    backgroundColor: "#3b5aa9",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignSelf: "flex-start",
   },
 });
