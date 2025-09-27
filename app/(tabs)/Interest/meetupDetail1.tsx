@@ -12,7 +12,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { doc, getDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import { db, auth } from "../../../firebase";
-
 // Use expo-image for caching + placeholder
 import { Image as ExpoImage } from "expo-image";
 
@@ -226,12 +225,73 @@ export default function MeetupDetailPage() {
               <Text style={styles.meetupTitle} numberOfLines={1}>
                 {meetup.title}
               </Text>
-              <Text style={styles.meta}>Location: {meetup.location ?? "Unknown"}</Text>
+
+              {/* location + arrow in the same row, arrow aligned right */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Text style={styles.meta} numberOfLines={1}>
+                  Location: {meetup.location ?? "Unknown"}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/Interest/meetupLocation1",
+                      params: { id: meetup.id },
+                    })
+                  }
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open location"
+                >
+                  <Ionicons name="chevron-forward" size={16} color="#345BCE" />
+                </Pressable>
+              </View>
+
+              {/* Keep time and sponsor below, same as before */}
               <Text style={styles.meta}>Meetup Time: {meetup.date}</Text>
               <Text style={styles.meta}>
                 Sponsor: {meetup.sponsorName ?? meetup.creatorId ?? "Unknown"}
               </Text>
+
+              {/* Category chip */}
+              <View style={{ marginTop: 6 }}>
+                <View style={styles.catRow}>
+                  <View style={styles.singleTag}>
+                    <Ionicons
+                      name="bookmark"
+                      size={12}
+                      color="white"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={{ color: "white", fontWeight: "700" }}>
+                      {meetup.category && meetup.category.trim() !== ""
+                        ? meetup.category
+                        : "None"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </View>
+          </View>
+
+          {/* Tags row at the bottom of card */}
+          <View style={styles.tagRow}>
+            {(meetup.tags ?? []).length > 0 ? (
+              (meetup.tags as string[]).map((t) => (
+                <View key={t} style={styles.tagChip}>
+                  <Text style={styles.tagText}>{t}</Text>
+                </View>
+              ))
+            ) : (
+              <View style={styles.tagChip}>
+                <Text style={styles.tagText}>General</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -251,7 +311,7 @@ export default function MeetupDetailPage() {
               : ""}
           </Text>
 
-          {/* ✅ Fix 1 + Fix 2: Disable join button if full or already joined */}
+          {/* Disable join button if full or already joined */}
           <Pressable
             style={[
               styles.joinBtn,
@@ -323,6 +383,25 @@ const styles = StyleSheet.create({
   thumb: { width: 72, height: 72, borderRadius: 10, backgroundColor: WHITE },
   meetupTitle: { fontSize: 16, fontWeight: "800", color: "#111827", marginBottom: 4 },
   meta: { color: GREY, fontSize: 12, marginTop: 2 },
+
+  // category + tags styles
+  catRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 6 },
+  singleTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#111827",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  tagRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 10 },
+  tagChip: {
+    backgroundColor: "#111827",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  tagText: { color: "#fff", fontWeight: "700", fontSize: 12 },
 
   section: { marginTop: 12, marginHorizontal: 16 },
   sectionTitle: { color: BLUE_TEXT, fontSize: 16, fontWeight: "800", marginBottom: 8 },
