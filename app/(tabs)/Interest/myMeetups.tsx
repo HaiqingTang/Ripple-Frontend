@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -20,6 +20,8 @@ import {
   doc,
   updateDoc,
   arrayRemove,
+  QuerySnapshot,
+  DocumentData,
 } from "firebase/firestore";
 import { db, auth } from "../../../firebase";
 
@@ -37,7 +39,16 @@ type Meetup = {
 export default function MyMeetupsPage() {
   const router = useRouter();
   const [queryText, setQueryText] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [items, setItems] = useState<Meetup[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const alertedRef = useRef(false);
+
+  // debounce search text (250ms)
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(queryText.trim().toLowerCase()), 250);
+    return () => clearTimeout(t);
+  }, [queryText]);
 
   useEffect(() => {
     // Subscribe to meetups that the current user joined, newest first
@@ -50,37 +61,51 @@ export default function MyMeetupsPage() {
       orderBy("date", "desc")
     );
 
-    const unsub = onSnapshot(q, (snap) => {
-      const next: Meetup[] = snap.docs.map((d) => {
-        const data = d.data() as any;
-        const dateStr =
-          typeof data.date?.toDate === "function"
-            ? toDisplayDate(data.date.toDate())
-            : String(data.date ?? "");
-        return {
-          id: d.id,
-          title: data.title ?? "",
-          date: dateStr,
-          location: data.location,
-          description: data.description,
-          creatorId: data.creatorId,
-          participants: Array.isArray(data.participants) ? data.participants : [],
-          category: data.category,
-        };
-      });
-      setItems(next);
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap: QuerySnapshot<DocumentData>) => {
+        const next: Meetup[] = snap.docs.map((d) => {
+          const data = d.data() as any;
+          const dateStr =
+            typeof data.date?.toDate === "function"
+              ? toDisplayDate(data.date.toDate())
+              : String(data.date ?? "");
+          return {
+            id: d.id,
+            title: data.title ?? "",
+            date: dateStr,
+            location: data.location,
+            description: data.description,
+            creatorId: data.creatorId,
+            participants: Array.isArray(data.participants) ? data.participants : [],
+            category: data.category,
+          };
+        });
+        setItems(next);
+        setLoadError(null);
+      },
+      (err) => {
+        // surface permission/index/composite index errors to user
+        setLoadError(err?.message || "Failed to load meetups.");
+        if (!alertedRef.current) {
+          alertedRef.current = true;
+          Alert.alert(
+            "Couldn't load your meetups",
+            `${err?.message || "Unknown error"}`,
+            [{ text: "OK" }]
+          );
+        }
+      }
+    );
+
     return () => unsub();
   }, []);
 
   const filtered = useMemo(() => {
-    // Simple title filter
-    const q = queryText.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((m) => m.title.toLowerCase().includes(q));
-  }, [queryText, items]);
+    if (!debouncedQuery) return items;
+    return items.filter((m) => m.title.toLowerCase().includes(debouncedQuery));
+  }, [debouncedQuery, items]);
 
-  // Navigate to meetup detail with id in params
   const onOpenDetail = (m: Meetup) => {
     router.push({
       pathname: "/(tabs)/Interest/meetupDetail1",
@@ -88,13 +113,21 @@ export default function MyMeetupsPage() {
     });
   };
 
-  // Confirm and leave the meetup by removing current user from participants
   const onWithdraw = (m: Meetup) => {
     const uid = auth.currentUser?.uid;
     if (!uid) {
       Alert.alert("Not signed in", "Please sign in first.");
       return;
     }
+    // block creator withdrawal to avoid orphaned meetups
+    if (m.creatorId && m.creatorId === uid) {
+      Alert.alert(
+        "Owner cannot withdraw",
+        "You are the creator of this meetup. Transfer ownership or delete it instead."
+      );
+      return;
+    }
+
     Alert.alert(
       "Withdraw",
       `Leave this meetup: "${m.title}"?`,
@@ -108,7 +141,6 @@ export default function MyMeetupsPage() {
               await updateDoc(doc(db, "meetups", m.id), {
                 participants: arrayRemove(uid),
               });
-              // Realtime list is auto-updated by onSnapshot subscription
             } catch (e: any) {
               Alert.alert("Withdraw failed", e?.message ?? "Unknown error");
             }
@@ -119,20 +151,15 @@ export default function MyMeetupsPage() {
     );
   };
 
-  // Navigate to manage page for created meetups
   const onManageCreated = () => {
     router.push("/(tabs)/Interest/meetupManageMyMeetup");
   };
 
-  // header + search moved into FlatList header
   const ListHeader = (
     <View style={{ paddingTop: 0 }}>
       {/* header */}
       <View style={styles.header}>
-        <Pressable
-          hitSlop={8}
-          onPress={() => router.replace("/(tabs)/Interest/meetupMainPage")}
-        >
+        <Pressable hitSlop={8} onPress={() => router.replace("/(tabs)/Interest/meetupMainPage")}>
           <Ionicons name="chevron-back" size={22} color="#2c3e50" />
         </Pressable>
         <Text style={styles.title}>My Meetups</Text>
@@ -140,6 +167,16 @@ export default function MyMeetupsPage() {
           <Ionicons name="add" size={22} color="#3b82f6" />
         </Pressable>
       </View>
+
+      {/* error banner (when onSnapshot fails) */}
+      {loadError ? (
+        <View style={styles.errorBanner}>
+          <Ionicons name="alert-circle" size={16} color="#b91c1c" />
+          <Text style={styles.errorText} numberOfLines={2}>
+            {loadError}
+          </Text>
+        </View>
+      ) : null}
 
       {/* search box */}
       <View style={styles.searchBox}>
@@ -150,43 +187,62 @@ export default function MyMeetupsPage() {
           style={styles.searchInput}
           value={queryText}
           onChangeText={setQueryText}
+          returnKeyType="search"
         />
+        {/* clear button */}
+        {queryText.length > 0 && (
+          <Pressable
+            accessibilityLabel="Clear search"
+            hitSlop={8}
+            onPress={() => setQueryText("")}
+            style={styles.clearBtn}
+          >
+            <Ionicons name="close-circle" size={18} color="#9aa3b2" />
+          </Pressable>
+        )}
       </View>
     </View>
   );
 
-  // footer button moved into FlatList footer
   const ListFooter = (
     <Pressable style={styles.manageBtn} onPress={onManageCreated}>
       <Text style={styles.manageText}>Manage My Created Meetups</Text>
     </Pressable>
   );
 
+  const currentUid = auth.currentUser?.uid;
+
   return (
     <SafeAreaView style={styles.safe}>
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          // Whole row is pressable to open detail
-          <Pressable
-            onPress={() => onOpenDetail(item)}
-            style={[styles.meetupRow, { marginHorizontal: 16 }]}
-          >
-            <Text style={styles.meetupName}>{item.title}</Text>
-            <View style={styles.rowRight}>
-              <Text style={styles.meetupDate}>{item.date}</Text>
-              <Pressable
-                style={styles.withdrawBtn}
-                onPress={() => onWithdraw(item)}
-              >
-                <Text style={styles.withdrawText}>Withdraw</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        )}
+        renderItem={({ item }) => {
+          const isOwner = !!currentUid && item.creatorId === currentUid;
+          return (
+            <Pressable onPress={() => onOpenDetail(item)} style={[styles.meetupRow, { marginHorizontal: 16 }]}>
+              <Text style={styles.meetupName} numberOfLines={1}>
+                {item.title}
+              </Text>
+              <View style={styles.rowRight}>
+                <Text style={styles.meetupDate}>{item.date}</Text>
+                {isOwner ? (
+                  <View style={[styles.withdrawBtn, styles.ownerPill]}>
+                    <Text style={[styles.withdrawText, styles.ownerText]}>Owner</Text>
+                  </View>
+                ) : (
+                  <Pressable style={styles.withdrawBtn} onPress={() => onWithdraw(item)}>
+                    <Text style={styles.withdrawText}>Withdraw</Text>
+                  </Pressable>
+                )}
+              </View>
+            </Pressable>
+          );
+        }}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        ListEmptyComponent={<Text style={styles.empty}>No meetups found.</Text>}
+        ListEmptyComponent={
+          <Text style={styles.empty}>{loadError ? "Unable to load meetups." : "No meetups found."}</Text>
+        }
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         contentContainerStyle={{ paddingBottom: 100, paddingTop: 0, gap: 0 }}
@@ -220,6 +276,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   title: { fontSize: 18, fontWeight: "700", color: "#2c3e50" },
+
+  errorBanner: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "#fee2e2",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  errorText: { color: "#991b1b", flex: 1, fontSize: 12 },
+
   searchBox: {
     marginHorizontal: 16,
     paddingHorizontal: 12,
@@ -232,6 +302,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   searchInput: { flex: 1, fontSize: 14, color: "#111827" },
+  clearBtn: { paddingHorizontal: 6, paddingVertical: 6 },
+
   meetupRow: {
     backgroundColor: CARD_BG,
     borderRadius: 12,
@@ -241,7 +313,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  meetupName: { fontSize: 15, fontWeight: "700", color: "#111827" },
+  meetupName: { fontSize: 15, fontWeight: "700", color: "#111827", maxWidth: "52%" },
   rowRight: { flexDirection: "row", alignItems: "center", gap: 10 },
   meetupDate: { fontSize: 12, fontWeight: "600", color: "#6b7280" },
   withdrawBtn: {
@@ -251,6 +323,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   withdrawText: { fontSize: 12, fontWeight: "700", color: "#345BCE" },
+  ownerPill: { backgroundColor: "#e5f9ed" },
+  ownerText: { color: "#127c3b" },
+
   manageBtn: {
     marginHorizontal: 16,
     marginTop: 8,

@@ -49,8 +49,10 @@ export default function MyClubs() {
   const [data, setData] = useState<Club[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [subVersion, setSubVersion] = useState(0);
 
-  // Listen to auth state changes (set uid or clear when signed out)
+  // Listen to auth state changes
   useEffect(() => {
     const stop = onAuthStateChanged(auth, (user) => {
       setUid(user?.uid ?? null);
@@ -58,10 +60,11 @@ export default function MyClubs() {
     return () => stop();
   }, []);
 
-  // Subscribe to "my clubs". If the composite index is missing, fall back to an unordered query.
+  // Subscribe to "my clubs" with fallback & user-visible error
   useEffect(() => {
     if (!uid) {
       setData([]);
+      setErrorMsg(null);
       return;
     }
 
@@ -79,19 +82,19 @@ export default function MyClubs() {
       unsub = onSnapshot(
         q,
         (snap) => {
-          // console.log(isFallback ? "myClubs (fallback) size:" : "myClubs size:", snap.size);
           const list: Club[] = snap.docs.map((d) => ({
             id: d.id,
             ...(d.data() as any),
           }));
           setData(list);
+          setErrorMsg(null);
         },
         (err) => {
-          // When a composite index is missing, Firestore throws "failed-precondition".
           if (!isFallback && err.code === "failed-precondition") {
-            // Switch to the unordered query automatically so the page still works.
             listen(qPlain, true);
+            setErrorMsg(null);
           } else {
+            setErrorMsg("Failed to load your clubs. Please try again.");
             console.log("myClubs onSnapshot error:", err.code, err.message);
           }
         }
@@ -103,7 +106,7 @@ export default function MyClubs() {
     return () => {
       if (unsub) unsub();
     };
-  }, [uid]);
+  }, [uid, subVersion]);
 
   // Local text filter
   const filtered = useMemo(() => {
@@ -112,7 +115,7 @@ export default function MyClubs() {
     return data.filter((c) => (c.name ?? "").toLowerCase().includes(q));
   }, [queryText, data]);
 
-  // Pull-to-refresh: subscription already keeps things live; this only triggers a read for the UI effect.
+  // Pull-to-refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -124,9 +127,12 @@ export default function MyClubs() {
             orderBy("name", "asc")
           )
         ).catch(() => {
-          // If the index is missing here too, ignore; the live subscription will already have fallen back.
         });
       }
+      setErrorMsg(null);
+    } catch (e: any) {
+      setErrorMsg("Refresh failed. Please try again.");
+      Alert.alert("Refresh failed", "Please try again.");
     } finally {
       setRefreshing(false);
     }
@@ -135,7 +141,7 @@ export default function MyClubs() {
   const openClub = (club: Club) => {
     router.push({
       pathname: "/(tabs)/Interest/clubTopic",
-      params: { name: club.name },
+      params: { id: club.id, name: club.name },
     });
   };
 
@@ -151,38 +157,56 @@ export default function MyClubs() {
   );
 
   /** SearchBar */
-  const SearchBarEl = useMemo(() => (
-    <View style={styles.searchWrap} pointerEvents="box-none">
-      <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
-      <TextInput
-        placeholder="Search clubs..."
-        placeholderTextColor="#99A2C0"
-        value={queryText}
-        onChangeText={setQueryText}
-        returnKeyType="search"
-        style={styles.searchInput}
-        autoCorrect={false}
-        autoCapitalize="none"
-        blurOnSubmit={false}
-        underlineColorAndroid="transparent"
-      />
-      {queryText.length > 0 ? (
-        <Pressable onPress={() => setQueryText("")} hitSlop={10} style={{ paddingHorizontal: 10 }}>
-          <Ionicons name="close-circle" size={18} color="#99A2C0" />
+  const SearchBarEl = useMemo(
+    () => (
+      <View style={styles.searchWrap} pointerEvents="box-none">
+        <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
+        <TextInput
+          placeholder="Search clubs..."
+          placeholderTextColor="#99A2C0"
+          value={queryText}
+          onChangeText={setQueryText}
+          returnKeyType="search"
+          style={styles.searchInput}
+          autoCorrect={false}
+          autoCapitalize="none"
+          blurOnSubmit={false}
+          underlineColorAndroid="transparent"
+        />
+        {queryText.length > 0 ? (
+          <Pressable onPress={() => setQueryText("")} hitSlop={10} style={{ paddingHorizontal: 10 }}>
+            <Ionicons name="close-circle" size={18} color="#99A2C0" />
+          </Pressable>
+        ) : (
+          <View style={{ width: 38 }} />
+        )}
+      </View>
+    ),
+    [queryText]
+  );
+
+  /** Error banner + retry */
+  const ErrorBanner =
+    errorMsg ? (
+      <View style={styles.errorBar}>
+        <Text style={styles.errorText} numberOfLines={2}>{errorMsg}</Text>
+        <Pressable
+          style={styles.retryBtn}
+          onPress={() => {
+            setErrorMsg(null);
+            setSubVersion((v) => v + 1);
+          }}
+          hitSlop={8}
+        >
+          <Text style={styles.retryText}>Retry</Text>
         </Pressable>
-      ) : (
-        <View style={{ width: 38 }} />
-      )}
-    </View>
-  ), [queryText]);
+      </View>
+    ) : null;
 
   /** Single card */
   const renderItem = ({ item }: { item: Club }) => (
     <Pressable style={styles.card} onPress={() => openClub(item)}>
-      <Image
-        source={{ uri: item.coverImageUrl || PLACEHOLDER }}
-        style={styles.cardImage}
-      />
+      <Image source={{ uri: item.coverImageUrl || PLACEHOLDER }} style={styles.cardImage} />
       <Text style={styles.cardLabel} numberOfLines={1}>
         {item.name}
       </Text>
@@ -193,6 +217,7 @@ export default function MyClubs() {
     <View style={styles.container}>
       <Header />
       {SearchBarEl}
+      {ErrorBanner}
 
       <FlatList
         data={filtered}
@@ -276,6 +301,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#223",
   },
+
+  errorBar: {
+    marginHorizontal: H_PADDING,
+    marginTop: 10,
+    borderRadius: 12,
+    backgroundColor: "#FFE8E8",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#FFC6C6",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  errorText: { flex: 1, color: "#8C2F2F" },
+  retryBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: "#FFD1D1",
+    marginLeft: 10,
+  },
+  retryText: { fontWeight: "700", color: "#8C2F2F" },
 
   card: {
     width: CARD_W,
