@@ -162,7 +162,6 @@ export default function SignUpPage() {
 			await updateProfile(user, {
 				displayName: fullName,
 			});
-			await refreshUserData();
 
 			// Send email verification
 			await sendEmailVerification(user);
