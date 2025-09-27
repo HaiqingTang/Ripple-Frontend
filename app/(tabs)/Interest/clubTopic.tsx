@@ -43,14 +43,15 @@ type Club = {
 };
 
 type Post = {
-  name: string; // post is linked to club by club name in your schema
+  id?: string;
+  name: string;
   authorName?: string;
   authorAvatarUrl?: string;
   title?: string;
   text?: string;
   imageUrl?: string;
-  createdAt?: any; // Firestore Timestamp | ISO | Date
-  creatAt?: any; // some of your docs use this field name
+  createdAt?: any;
+  creatAt?: any;
   supportCount?: number;
 };
 
@@ -83,7 +84,7 @@ const CARD_RADIUS = 16;
 /* ========= Page ========= */
 export default function ClubTopic() {
   const router = useRouter();
-  const { name: routeName } = useLocalSearchParams<{ name?: string }>();
+  const { id: routeId, name: legacyName } = useLocalSearchParams<{ id?: string; name?: string }>();
 
   // search keyword (local filter on loaded posts)
   const [q, setQ] = useState("");
@@ -104,39 +105,41 @@ export default function ClubTopic() {
 
   /** 1) Subscribe to club by exact name */
   useEffect(() => {
-    const name = (routeName || "").trim();
-    if (!name) {
-      Alert.alert("Missing params", "No club name provided.");
+  let unsubscribe: (() => void) | undefined;
+
+  if (!routeId) {
+    const n = (legacyName || "").trim();
+    if (!n) {
+      Alert.alert("Missing params", "No club id.");
       return;
     }
-    const qClub = query(collection(db, "clubs"), where("name", "==", name), limit(1));
-    const unsub = onSnapshot(
+    const qClub = query(collection(db, "clubs"), where("name", "==", n), limit(1));
+    unsubscribe = onSnapshot(
       qClub,
       (snap) => {
         const d = snap.docs[0];
-        if (!d) {
-          setClub(null);
-          return;
-        }
-        const raw = d.data() as any;
-        setClub({
-          id: d.id,
-          name: String(raw.name ?? ""),
-          coverImageUrl: raw.coverImageUrl,
-          description: raw.description,
-          members: Array.isArray(raw.members) ? raw.members.map(String) : [],
-          membersCount:
-            typeof raw.membersCount === "number"
-              ? raw.membersCount
-              : Array.isArray(raw.members)
-              ? raw.members.length
-              : 0,
-        });
+        if (d) setClub({ id: d.id, ...(d.data() as any) });
+        else setClub(null);
       },
-      (err) => console.log("club query error:", err.code, err.message)
+      (err) => console.log("club by name error:", err)
     );
-    return () => unsub();
-  }, [routeName]);
+  } else {
+    const ref = doc(db, "clubs", String(routeId));
+    unsubscribe = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) { setClub(null); return; }
+        const raw = snap.data() as any;
+        setClub({ id: snap.id, name: String(raw.name ?? ""), ...raw });
+      },
+      (err) => console.log("club by id error:", err)
+    );
+  }
+
+  return () => {
+    if (unsubscribe) unsubscribe();
+  };
+}, [routeId, legacyName]);
 
   /** 2) Load first page of posts for this club */
   const fetchFirstPage = useCallback(async () => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,10 +10,19 @@ import {
   Dimensions,
   Platform,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { collection, onSnapshot, orderBy, query, getDocs } from "firebase/firestore";
+import {
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  getDocs,
+  QuerySnapshot,
+  DocumentData,
+} from "firebase/firestore";
 import { db } from "../../../firebase";
 
 type Club = {
@@ -35,7 +44,7 @@ const TAG_TO_CATEGORY: Record<Tag, string | null> = {
   Food: "Food",
   Lifestyle: "Lifestyle",
   Music: "Music",
-  Sports: "Sport",
+  Sports: "Sports",
   Study: "Study",
   Travel: "Travel",
 };
@@ -48,6 +57,53 @@ const IMAGE_H = 92;
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=800&auto=format&fit=crop";
 
+const CANON_CATEGORY: Record<string, string> = {
+  sport: "Sports",
+  sports: "Sports",
+  Sport: "Sports",
+  Sports: "Sports",
+  arts: "Arts",
+  Arts: "Arts",
+  food: "Food",
+  Food: "Food",
+  lifestyle: "Lifestyle",
+  Lifestyle: "Lifestyle",
+  music: "Music",
+  Music: "Music",
+  study: "Study",
+  Study: "Study",
+  travel: "Travel",
+  Travel: "Travel",
+};
+
+function normalizeCategory(s: unknown): string | null {
+  if (typeof s !== "string") return null;
+  const hit = CANON_CATEGORY[s] ?? CANON_CATEGORY[s.toLowerCase()];
+  return hit ?? s;
+}
+
+function normalizeCategories(arr: unknown): string[] {
+  if (!Array.isArray(arr)) return [];
+  const out = new Set<string>();
+  for (const x of arr) {
+    const n = normalizeCategory(x);
+    if (n) out.add(n);
+  }
+  return Array.from(out);
+}
+
+function snapshotToClubs(snap: QuerySnapshot<DocumentData>): Club[] {
+  return snap.docs.map((d) => {
+    const raw = d.data() as any;
+    return {
+      id: d.id,
+      name: String(raw.name ?? ""),
+      coverImageUrl: raw.coverImageUrl || PLACEHOLDER,
+      categories: normalizeCategories(raw.categories),
+    } as Club;
+  });
+}
+
 export default function AllClubs() {
   const router = useRouter();
 
@@ -55,30 +111,74 @@ export default function AllClubs() {
   const [tag, setTag] = useState<Tag>("All");
   const [data, setData] = useState<Club[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const unsubRef = useRef<null | (() => void)>(null);
+
+  const qClubs = useMemo(
+    () => query(collection(db, "clubs"), orderBy("name", "asc")),
+    []
+  );
+
+  const startSubscription = useCallback(() => {
+    setLoading(true);
+    setErrorMsg(null);
+
+    if (unsubRef.current) {
+      try { unsubRef.current(); } catch {}
+      unsubRef.current = null;
+    }
+
+    const unsub = onSnapshot(
+      qClubs,
+      (snap) => {
+        setData(snapshotToClubs(snap));
+        setLoading(false);
+        setRefreshing(false);
+      },
+      (err) => {
+        setLoading(false);
+        setRefreshing(false);
+        setErrorMsg(err?.message || "Failed to load clubs.");
+        Alert.alert("error", err?.message || "Failed to load clubs.");
+      }
+    );
+
+    unsubRef.current = unsub;
+    return unsub;
+  }, [qClubs]);
 
   useEffect(() => {
-    const qClubs = query(collection(db, "clubs"), orderBy("name", "asc"));
-    const unsub = onSnapshot(qClubs, (snap) => {
-      const list: Club[] = snap.docs.map((d) => {
-        const raw = d.data() as any;
-        return {
-          id: d.id,
-          name: String(raw.name ?? ""),
-          coverImageUrl: raw.coverImageUrl || PLACEHOLDER,
-          categories: Array.isArray(raw.categories) ? raw.categories.map(String) : [],
-        };
-      });
-      setData(list);
-    });
-    return () => unsub();
-  }, []);
+    const unsub = startSubscription();
+    return () => {
+      try { unsub && unsub(); } catch {}
+    };
+  }, [startSubscription]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setErrorMsg(null);
+
+    try {
+      const snap = await getDocs(qClubs);
+      setData(snapshotToClubs(snap));
+    } catch (e: any) {
+      setErrorMsg(e?.message || "Refresh failed.");
+      Alert.alert("error", e?.message || "Refresh failed.");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [qClubs, startSubscription]);
+
 
   const filtered: Club[] = useMemo(() => {
     const q = queryText.trim().toLowerCase();
     const wanted = TAG_TO_CATEGORY[tag];
     return data.filter((c) => {
       const matchText = q ? (c.name || "").toLowerCase().includes(q) : true;
-      const matchTag = wanted ? (c.categories || []).includes(wanted) : true;
+      const cats = c.categories || [];
+      const matchTag = wanted ? cats.includes(wanted) : true;
       return matchText && matchTag;
     });
   }, [queryText, tag, data]);
@@ -93,30 +193,10 @@ export default function AllClubs() {
     return arr;
   }, [filtered]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const qClubs = query(collection(db, "clubs"), orderBy("name", "asc"));
-      const snap = await getDocs(qClubs);
-      const list: Club[] = snap.docs.map((d) => {
-        const raw = d.data() as any;
-        return {
-          id: d.id,
-          name: String(raw.name ?? ""),
-          coverImageUrl: raw.coverImageUrl || PLACEHOLDER,
-          categories: Array.isArray(raw.categories) ? raw.categories.map(String) : [],
-        };
-      });
-      setData(list);
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
-
   const openClub = (club: Club) => {
     router.push({
       pathname: "/(tabs)/Interest/clubTopic",
-      params: { name: club.name },
+      params: { id: club.id },
     });
   };
 
@@ -130,26 +210,29 @@ export default function AllClubs() {
     </View>
   );
 
-  const SearchBarEl = useMemo(() => (
-    <View style={styles.searchWrap} pointerEvents="box-none">
-      <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
-      <TextInput
-        placeholder="Search clubs..."
-        placeholderTextColor="#99A2C0"
-        value={queryText}
-        onChangeText={setQueryText}
-        returnKeyType="search"
-        style={styles.searchInput}
-        autoCorrect={false}
-        autoCapitalize="none"
-        blurOnSubmit={false}
-        underlineColorAndroid="transparent"
-      />
-      <Pressable onPress={() => setQueryText("")} hitSlop={10} style={{ paddingHorizontal: 10 }}>
-        <Ionicons name="close" size={18} color="#99A2C0" />
-      </Pressable>
-    </View>
-  ), [queryText]);
+  const SearchBarEl = useMemo(
+    () => (
+      <View style={styles.searchWrap} pointerEvents="box-none">
+        <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
+        <TextInput
+          placeholder="Search clubs..."
+          placeholderTextColor="#99A2C0"
+          value={queryText}
+          onChangeText={setQueryText}
+          returnKeyType="search"
+          style={styles.searchInput}
+          autoCorrect={false}
+          autoCapitalize="none"
+          blurOnSubmit={false}
+          underlineColorAndroid="transparent"
+        />
+        <Pressable onPress={() => setQueryText("")} hitSlop={10} style={{ paddingHorizontal: 10 }}>
+          <Ionicons name="close" size={18} color="#99A2C0" />
+        </Pressable>
+      </View>
+    ),
+    [queryText]
+  );
 
   const TagChips = () => (
     <View style={styles.tagsWrap}>
@@ -161,7 +244,9 @@ export default function AllClubs() {
             onPress={() => setTag(t)}
             style={[styles.tagChip, selected ? styles.tagChipActive : styles.tagChipIdle]}
           >
-            <Text style={[styles.tagText, selected ? styles.tagTextActive : styles.tagTextIdle]}>{t}</Text>
+            <Text style={[styles.tagText, selected ? styles.tagTextActive : styles.tagTextIdle]}>
+              {t}
+            </Text>
           </Pressable>
         );
       })}
@@ -183,6 +268,8 @@ export default function AllClubs() {
     );
   };
 
+  const showEmpty = !loading && !errorMsg && filtered.length === 0;
+
   return (
     <View style={styles.container}>
       <Header />
@@ -196,8 +283,25 @@ export default function AllClubs() {
         numColumns={3}
         columnWrapperStyle={{ justifyContent: "space-between", paddingHorizontal: H_PADDING }}
         contentContainerStyle={{ paddingTop: 10, paddingBottom: 20 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />}
-        ListEmptyComponent={<Text style={{ textAlign: "center", color: "#6b7280", marginTop: 16 }}>No clubs</Text>}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />
+        }
+        ListEmptyComponent={
+          <View style={{ marginTop: 16, alignItems: "center" }}>
+            {loading ? (
+              <Text style={{ color: "#6b7280" }}>Loading…</Text>
+            ) : errorMsg ? (
+              <Pressable
+                onPress={startSubscription}
+                style={{ paddingHorizontal: 14, paddingVertical: 8, backgroundColor: "#2B2B2B", borderRadius: 8 }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700" }}>加载失败，点此重试</Text>
+              </Pressable>
+            ) : showEmpty ? (
+              <Text style={{ color: "#6b7280" }}>No clubs</Text>
+            ) : null}
+          </View>
+        }
         ListFooterComponent={<View style={{ height: 24 }} />}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
