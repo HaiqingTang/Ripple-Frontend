@@ -7,6 +7,7 @@ import {
   Pressable,
   TextInput,
   FlatList,
+  ActivityIndicator, // add activity indicator for search feedback
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -58,43 +59,69 @@ export default function AllMeetupsPage() {
   const [active, setActive] = useState<Category>("All");
   const [items, setItems] = useState<Meetup[]>([]);
 
+  const [subError, setSubError] = useState<string | null>(null); // add subscription error state
+
+  const [debouncedQuery, setDebouncedQuery] = useState(""); // add debounced query state
+  const [isSearching, setIsSearching] = useState(false); // add small loading indicator state
+
+  useEffect(() => {
+    // add debounce for search input
+    setIsSearching(true);
+    const t = setTimeout(() => {
+      setDebouncedQuery(queryText);
+      setIsSearching(false);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [queryText]);
+
   useEffect(() => {
     const q = query(collection(db, "meetups"), orderBy("date", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      const next: Meetup[] = snap.docs.map((d) => {
-        const data = d.data() as any;
-        const dateStr =
-          typeof data.date?.toDate === "function"
-            ? toDisplayDate(data.date.toDate())
-            : String(data.date ?? "");
-        const cat = String(data.category ?? "");
-        return {
-          id: d.id,
-          title: data.title ?? "",
-          date: dateStr,
-          category: (CATEGORIES.includes(cat as Category)
-            ? (cat as Category)
-            : undefined) as Category | undefined,
-          location: data.location,
-          description: data.description,
-          creatorId: data.creatorId,
-          participants: Array.isArray(data.participants) ? data.participants : [],
-        };
-      });
-      setItems(next);
-    });
+    // add error callback for onSnapshot subscription
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const next: Meetup[] = snap.docs.map((d) => {
+          const data = d.data() as any;
+          const dateStr =
+            typeof data.date?.toDate === "function"
+              ? toDisplayDate(data.date.toDate())
+              : String(data.date ?? "");
+          const cat = String(data.category ?? "");
+          const mapped =
+            CATEGORIES.includes(cat as Category) && cat !== "All"
+              ? (cat as Category)
+              : undefined; // if unknown keep undefined
+          return {
+            id: d.id,
+            title: data.title ?? "",
+            date: dateStr,
+            category: mapped,
+            location: data.location,
+            description: data.description,
+            creatorId: data.creatorId,
+            participants: Array.isArray(data.participants) ? data.participants : [],
+          };
+        });
+        setItems(next);
+        setSubError(null); // clear error on successful receive
+      },
+      (err) => {
+        setSubError(typeof err?.message === "string" ? err.message : "Subscription failed"); // show user feedback on error
+      }
+    );
     return () => unsub();
   }, []);
 
   const filtered = useMemo(() => {
+    // keep category filter same without uncategorised bucket
     let arr =
       active === "All"
         ? items
-        : items.filter((m) => (m.category || "All") === active);
-    const q = queryText.trim().toLowerCase();
+        : items.filter((m) => m.category === active);
+    const q = debouncedQuery.trim().toLowerCase(); // use debounced query
     if (!q) return arr;
     return arr.filter((m) => m.title.toLowerCase().includes(q));
-  }, [active, queryText, items]);
+  }, [active, debouncedQuery, items]);
 
   const onView = (m: Meetup) => {
     router.push({
@@ -107,7 +134,6 @@ export default function AllMeetupsPage() {
     router.push("/(tabs)/Interest/newMeetup");
   };
 
-  // header (title + search + chips) moved into FlatList header
   const ListHeader = (
     <View style={{ paddingTop: 0 }}>
       <View style={styles.header}>
@@ -123,6 +149,13 @@ export default function AllMeetupsPage() {
         </Pressable>
       </View>
 
+      {/* add subscription error banner */}
+      {subError ? (
+        <Text style={{ color: "#b91c1c", marginHorizontal: 16, marginBottom: 6, fontWeight: "700" }}>
+          {subError}
+        </Text>
+      ) : null}
+
       <View style={styles.searchBox}>
         <Ionicons name="search" size={18} color="#6b7280" />
         <TextInput
@@ -132,6 +165,14 @@ export default function AllMeetupsPage() {
           value={queryText}
           onChangeText={setQueryText}
         />
+        {/* add clear button for search */}
+        {queryText.length > 0 ? (
+          <Pressable hitSlop={8} onPress={() => setQueryText("")}>
+            <Ionicons name="close-circle" size={18} color="#9aa3b2" />
+          </Pressable>
+        ) : null}
+        {/* add small loading indicator during debounce */}
+        {isSearching ? <ActivityIndicator size="small" /> : null}
       </View>
 
       <View style={styles.chipsWrap}>
