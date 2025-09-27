@@ -44,7 +44,7 @@ export default function MyMeetupsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const alertedRef = useRef(false);
 
-  // debounce search text (250ms)
+  // debounce search text 250ms
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(queryText.trim().toLowerCase()), 250);
     return () => clearTimeout(t);
@@ -85,7 +85,7 @@ export default function MyMeetupsPage() {
         setLoadError(null);
       },
       (err) => {
-        // surface permission/index/composite index errors to user
+        // surface permission index composite index errors to user
         setLoadError(err?.message || "Failed to load meetups.");
         if (!alertedRef.current) {
           alertedRef.current = true;
@@ -119,15 +119,7 @@ export default function MyMeetupsPage() {
       Alert.alert("Not signed in", "Please sign in first.");
       return;
     }
-    // block creator withdrawal to avoid orphaned meetups
-    if (m.creatorId && m.creatorId === uid) {
-      Alert.alert(
-        "Owner cannot withdraw",
-        "You are the creator of this meetup. Transfer ownership or delete it instead."
-      );
-      return;
-    }
-
+    // allow creator to withdraw
     Alert.alert(
       "Withdraw",
       `Leave this meetup: "${m.title}"?`,
@@ -168,7 +160,7 @@ export default function MyMeetupsPage() {
         </Pressable>
       </View>
 
-      {/* error banner (when onSnapshot fails) */}
+      {/* error banner when onSnapshot fails */}
       {loadError ? (
         <View style={styles.errorBanner}>
           <Ionicons name="alert-circle" size={16} color="#b91c1c" />
@@ -218,7 +210,7 @@ export default function MyMeetupsPage() {
         data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
-          const isOwner = !!currentUid && item.creatorId === currentUid;
+          // always show withdraw button
           return (
             <Pressable onPress={() => onOpenDetail(item)} style={[styles.meetupRow, { marginHorizontal: 16 }]}>
               <Text style={styles.meetupName} numberOfLines={1}>
@@ -226,15 +218,9 @@ export default function MyMeetupsPage() {
               </Text>
               <View style={styles.rowRight}>
                 <Text style={styles.meetupDate}>{item.date}</Text>
-                {isOwner ? (
-                  <View style={[styles.withdrawBtn, styles.ownerPill]}>
-                    <Text style={[styles.withdrawText, styles.ownerText]}>Owner</Text>
-                  </View>
-                ) : (
-                  <Pressable style={styles.withdrawBtn} onPress={() => onWithdraw(item)}>
-                    <Text style={styles.withdrawText}>Withdraw</Text>
-                  </Pressable>
-                )}
+                <Pressable style={styles.withdrawBtn} onPress={() => onWithdraw(item)}>
+                  <Text style={styles.withdrawText}>Withdraw</Text>
+                </Pressable>
               </View>
             </Pressable>
           );
@@ -323,8 +309,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   withdrawText: { fontSize: 12, fontWeight: "700", color: "#345BCE" },
-  ownerPill: { backgroundColor: "#e5f9ed" },
-  ownerText: { color: "#127c3b" },
 
   manageBtn: {
     marginHorizontal: 16,
