@@ -2,13 +2,22 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 
+const Routes = {
+  Interest: {
+    clubMain: '/(tabs)/Interest/clubMainPage' as const,
+    meetupMain: '/(tabs)/Interest/meetupMainPage' as const,
+  },
+} as const;
+
 export default function Interest() {
   const router = useRouter();
+  const goClubMain = () => router.push(Routes.Interest.clubMain);
+  const goMeetupMain = () => router.push(Routes.Interest.meetupMain);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
       <View style={styles.hero}>
-        <Text style={styles.heroTitle}>Welcome to the community hub{'\n'}Ellie!</Text>
+        <Text style={styles.heroTitle}>Welcome to the community hub!</Text>
         <Text style={styles.heroSub}>
           Here you can find discussion boards, events, and clubs to participate in!
         </Text>
@@ -18,7 +27,7 @@ export default function Interest() {
         style={styles.card}
         accessibilityRole="button"
         hitSlop={8}
-        onPress={() => router.push('/(tabs)/Interest/clubMainPage')}
+        onPress={goClubMain}
       >
         <Image
           style={styles.imagePlaceholder}
@@ -37,7 +46,7 @@ export default function Interest() {
         style={styles.card}
         accessibilityRole="button"
         hitSlop={8}
-        onPress={() => router.push('/(tabs)/Interest/meetupMainPage')}
+        onPress={goMeetupMain}
       >
         <Image
           style={styles.imagePlaceholder}
@@ -57,10 +66,10 @@ export default function Interest() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#DDE7FF' },
-  hero: { paddingHorizontal: 16, paddingTop: 60, paddingBottom: 12 }, // moved down
+  hero: { paddingHorizontal: 16, paddingTop: 60, paddingBottom: 12 },
   heroTitle: { fontSize: 28, fontWeight: '800', color: '#4A66C2', lineHeight: 34, marginBottom: 8 },
   heroSub: { fontSize: 14, color: '#6F7EA6' },
-  card: { marginHorizontal: 12, marginTop: 20, backgroundColor: '#C9D7FF', borderRadius: 18, padding: 12 }, // moved down
+  card: { marginHorizontal: 12, marginTop: 20, backgroundColor: '#C9D7FF', borderRadius: 18, padding: 12 },
   imagePlaceholder: { height: 150, borderRadius: 14, backgroundColor: '#EAF0FF', marginBottom: 10 },
   cardTitle: { textAlign: 'center', fontSize: 20, fontWeight: '800', color: '#4A66C2' },
   cardDesc: { textAlign: 'left', marginTop: 6, color: '#536082' },
