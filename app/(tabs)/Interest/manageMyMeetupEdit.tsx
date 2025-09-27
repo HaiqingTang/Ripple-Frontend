@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions,
-  Alert, Platform, ActivityIndicator, Modal,
+  Alert, Platform, ActivityIndicator, Modal, Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
@@ -9,6 +9,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import * as ImagePicker from "expo-image-picker"; // cover image change add picker
 
 // Firestore
 import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
@@ -80,6 +81,22 @@ export default function ManageMyMeetupEdit() {
   // Read-only derived info
   const [participantsCount, setParticipantsCount] = useState(0);
 
+  // inline validation add states for errors
+  const [dateError, setDateError] = useState<string | null>(null); // show inline error for time
+  const [capError, setCapError] = useState<string | null>(null);   // show inline error for capacity
+
+  // geocoding debounce add state
+  const [isGeocoding, setIsGeocoding] = useState(false);           // small loading indicator near field
+  const [lastGeocodeAt, setLastGeocodeAt] = useState(0);           // debounce enter spam
+
+  // cover image change add states
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null); // loaded image url
+  const [imageUri, setImageUri] = useState<string | null>(null);                 // local picked image
+  const [imageMime, setImageMime] = useState<string | null>(null);               // picked mime
+  const [webFile, setWebFile] = useState<File | null>(null);                     // web blob
+  const [uploading, setUploading] = useState(false);                             // uploading badge
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);           // uploaded url
+
   // Initial fetch of meetup data
   useEffect(() => {
     (async () => {
@@ -92,11 +109,20 @@ export default function ManageMyMeetupEdit() {
         const ref = doc(db, "meetups", String(id));
         const snap = await getDoc(ref);
         if (!snap.exists()) {
-          Alert.alert("Not found", "Meetup not found.");
-          router.back();
+          Alert.alert(
+            "Not found",
+            "Meetup not found",
+            [
+              { text: "Back", style: "cancel", onPress: () => router.back() },
+              { text: "Retry", onPress: () => reloadDoc() },
+              { text: "Stay", onPress: () => {} }
+            ]
+          );
           return;
         }
         const data = snap.data() as any;
+
+        setExistingImageUrl(typeof data.imageUrl === "string" ? data.imageUrl : null); // load existing cover image
 
         setTitle(String(data.title ?? ""));
 
@@ -137,13 +163,62 @@ export default function ManageMyMeetupEdit() {
           Array.isArray(data.participants) ? data.participants.length : 0
         );
       } catch (e: any) {
-        Alert.alert("Load failed", e?.message ?? "Unknown error");
-        router.back();
+        Alert.alert(
+          "Load failed",
+          e?.message ?? "Unknown error",
+          [
+            { text: "Back", style: "cancel", onPress: () => router.back() },
+            { text: "Retry", onPress: () => reloadDoc() },
+            { text: "Stay", onPress: () => {} }
+          ]
+        );
       } finally {
         setLoading(false);
       }
     })();
   }, [id]);
+
+  // retry loader add helper
+  const reloadDoc = async () => {
+    if (!id) return;
+    try {
+      const ref = doc(db, "meetups", String(id));
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        Alert.alert("Not found", "Meetup not found");
+        return;
+      }
+      const data = snap.data() as any;
+      setExistingImageUrl(typeof data.imageUrl === "string" ? data.imageUrl : null);
+      setTitle(String(data.title ?? ""));
+      let initDate: Date | null = null;
+      if (data.date?.seconds) initDate = new Date(data.date.seconds * 1000);
+      else if (typeof data.date === "string") {
+        const d = new Date(data.date);
+        initDate = Number.isNaN(d.getTime()) ? null : d;
+      } else if (data.date instanceof Date) {
+        initDate = data.date;
+      }
+      setDateVal(initDate);
+      setMaxCapInput(typeof data.maxCapacity === "number" ? String(data.maxCapacity) : "");
+      setDesc(String(data.description ?? "activity content"));
+      const initialTags =
+        Array.isArray(data.tags) && data.tags.length ? data.tags.map(String) : ["Lifestyle"];
+      setSelectedTags(initialTags);
+      setSelectedCategory(
+        typeof data.category === "string" && data.category ? data.category : "Lifestyle"
+      );
+      setLocationName(String(data.location ?? ""));
+      setRegion((r) => ({
+        ...r,
+        latitude: data.locationGeo?.latitude ?? r.latitude,
+        longitude: data.locationGeo?.longitude ?? r.longitude,
+      }));
+      setParticipantsCount(Array.isArray(data.participants) ? data.participants.length : 0);
+    } catch (e: any) {
+      Alert.alert("Load failed", e?.message ?? "Unknown error");
+    }
+  };
 
   // Toggle a tag (multi-select) with stable chip size
   const toggleTag = (t: string) => {
@@ -170,11 +245,12 @@ export default function ManageMyMeetupEdit() {
     setShowAddTag(false);
   };
 
-  // Geocode location name (dynamic import to avoid native crash if module absent)
-  const [isGeocoding, setIsGeocoding] = useState(false);
+  // Geocode location name dynamic import with debounce
   const handleGeocodeSubmit = async () => {
     const q = locationName.trim();
     if (!q) return;
+    if (Date.now() - lastGeocodeAt < 1200) return; // add debounce to prevent enter spam
+    setLastGeocodeAt(Date.now());
     try {
       setIsGeocoding(true);
       const Location = await import("expo-location");
@@ -195,6 +271,67 @@ export default function ManageMyMeetupEdit() {
     }
   };
 
+  // cover image select add picker
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "Media library access is needed to select an image");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+      base64: false,
+    });
+    if ((result as any).canceled) return;
+    const asset = (result as any).assets?.[0];
+    if (!asset?.uri) return;
+    setImageUri(asset.uri);
+    setImageMime((asset as any)?.mimeType || "image/jpeg");
+    setWebFile(Platform.OS === "web" ? (asset as any)?.file ?? null : null);
+    setUploadedUrl(null);
+  };
+
+  // cover image upload to cloudinary add uploader
+  const uploadImageAndGetUrl = async (uid: string): Promise<string> => {
+    if (!imageUri) return uploadedUrl || existingImageUrl || DEFAULT_IMAGE_URL;
+    try {
+      setUploading(true);
+      const CLOUD_NAME = "dwo2o5q8y";
+      const UPLOAD_PRESET = "meetup_unsigned";
+      const endpoint = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+      const mime = imageMime || "image/jpeg";
+      const filename = `meetup_${uid}_${Date.now()}.jpg`;
+      const form = new FormData();
+      form.append("upload_preset", UPLOAD_PRESET);
+      form.append("folder", "meetup_images");
+      if (Platform.OS === "web") {
+        let fileToSend: Blob | File | null = webFile;
+        if (!fileToSend) {
+          const resp = await fetch(imageUri);
+          fileToSend = await resp.blob();
+        }
+        (form as any).append("file", fileToSend as any, filename);
+      } else {
+        const filePart: any = { uri: imageUri, name: filename, type: mime };
+        (form as any).append("file", filePart);
+      }
+      const res = await fetch(endpoint, { method: "POST", body: form as any });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Cloudinary upload failed ${text}`);
+      }
+      const data = await res.json();
+      const finalUrl = data.secure_url as string;
+      setUploadedUrl(finalUrl);
+      return finalUrl;
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // Submit updates to Firestore
   const onSubmit = async () => {
     if (!id) return;
@@ -203,28 +340,45 @@ export default function ManageMyMeetupEdit() {
       Alert.alert("Missing title", "Please enter a meetup name.");
       return;
     }
-    // Convert date to Firestore Timestamp if provided
-    let dateToSave: Timestamp | undefined = undefined;
-    if (dateVal && !Number.isNaN(dateVal.getTime())) {
-      dateToSave = Timestamp.fromDate(dateVal);
+
+    // validate date must be future
+    setDateError(null);
+    if (!dateVal || Number.isNaN(dateVal.getTime())) {
+      setDateError("Please choose a date and time");
+      return;
+    }
+    if (dateVal.getTime() <= Date.now()) {
+      setDateError("Time must be in the future");
+      return;
+    }
+    const dateToSave = Timestamp.fromDate(dateVal);
+
+    // validate capacity must be positive integer
+    setCapError(null);
+    const maxCap = parseInt(maxCapInput, 10);
+    if (!maxCapInput.trim() || Number.isNaN(maxCap) || maxCap <= 0) {
+      setCapError("Enter a positive integer");
+      return;
     }
 
-    // Parse max capacity
-    const maxCap = parseInt(maxCapInput, 10);
+    // upload cover image if changed
+    const uid = "anonymous"; // no auth in this screen keep anonymous
+    const finalImageUrl = await uploadImageAndGetUrl(uid);
+
     const updates: any = {
       title: titleTrim,
       description: desc,
-      maxCapacity: Number.isNaN(maxCap) ? null : maxCap,
+      maxCapacity: maxCap,
       // Category comes from single-select category chips
       category: selectedCategory || "Lifestyle",
       // Tags come from multi-select (base + custom)
       tags: selectedTags.length ? selectedTags : ["Lifestyle"],
       location: locationName.trim() || "Unknown",
       locationGeo: { latitude: region.latitude, longitude: region.longitude },
-      imageUrl: DEFAULT_IMAGE_URL,
+      imageUrl: finalImageUrl,
       sponsorName: DEFAULT_SPONSOR_NAME,
+      date: dateToSave,
     };
-    if (dateToSave) updates.date = dateToSave;
 
     setSaving(true);
     try {
@@ -268,6 +422,33 @@ export default function ManageMyMeetupEdit() {
         {/* Top decorative search bar removed */}
         {/* First content card starts here */}
         <View style={[styles.card, { width: PANEL_W }]}>
+
+          {/* Cover image change section keep old ui style */}
+          <Text style={styles.subLabel}>Cover</Text>
+          <View style={styles.imageBox}>
+            <Image
+              source={{ uri: imageUri || uploadedUrl || existingImageUrl || DEFAULT_IMAGE_URL }}
+              style={{ width: "100%", height: "100%" }}
+              resizeMode="cover"
+            />
+          </View>
+          <View style={{ flexDirection: "row", gap: 12, marginBottom: 8 }}>
+            <TouchableOpacity onPress={pickImage} style={styles.tag}>
+              <View style={styles.iconBox}>
+                <Ionicons name="image" size={12} color="white" />
+              </View>
+              <Text style={[styles.tagText, styles.tagTextActive]}>
+                {imageUri ? "Change Image" : "Select Image"}
+              </Text>
+            </TouchableOpacity>
+            {uploading && (
+              <View style={styles.singleTagRow}>
+                <ActivityIndicator size="small" />
+                <Text style={{ color: "#3b5aa9", fontWeight: "700", marginLeft: 6 }}>Uploading</Text>
+              </View>
+            )}
+          </View>
+
           <LinedRow label="Title" value={title} onChange={setTitle} placeholder="Value" />
 
           {/* Time (native picker) */}
@@ -283,6 +464,7 @@ export default function ManageMyMeetupEdit() {
               </Text>
             </TouchableOpacity>
           </View>
+          {!!dateError && <Text style={styles.errorText}>{dateError}</Text>}
           {showPicker && (
             <DateTimePicker
               value={dateVal ?? new Date()}
@@ -302,6 +484,7 @@ export default function ManageMyMeetupEdit() {
             placeholder="eg 20"
             keyboardType="number-pad"
           />
+          {!!capError && <Text style={styles.errorText}>{capError}</Text>}
 
           {/* Category single-select */}
           <Text style={[styles.subLabel, { marginTop: 6 }]}>Category</Text>
@@ -377,6 +560,7 @@ export default function ManageMyMeetupEdit() {
               onSubmitEditing={handleGeocodeSubmit}
               editable={!isGeocoding}
             />
+            {isGeocoding ? <ActivityIndicator size="small" style={{ marginLeft: 8 }} /> : null}
           </View>
 
           <View style={styles.mapWrap}>
@@ -638,4 +822,22 @@ const styles = StyleSheet.create({
     padding: 16,
   },
 
+  // inline error text add
+  errorText: { color: "#d84535", marginBottom: 8, fontWeight: "700" },
+
+  // cover image box add
+  imageBox: {
+    width: "100%",
+    height: 160,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "white",
+    marginBottom: 8,
+  },
+
+  // small row for uploading badge add
+  singleTagRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
 });
