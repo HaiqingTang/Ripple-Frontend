@@ -17,13 +17,17 @@ export default function TabsLayout() {
           height: 64,
           backgroundColor: BLUE_BG,
           borderTopWidth: 0,
-          elevation: 0,
+          elevation: 10,
           shadowOpacity: 0,
           paddingTop: 8,
           paddingBottom: Platform.OS === "ios" ? 14 : 10,
-          position: "absolute", left: 0, right: 0, bottom: 0,
-          borderTopLeftRadius: 24, borderTopRightRadius: 24,
-        },
+          position: "absolute",
+          left: 0, right: 0, bottom: 0,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          zIndex: 10,
+          overflow: "hidden",
+        }
       }}
     >
       <Tabs.Screen
@@ -35,11 +39,11 @@ export default function TabsLayout() {
         options={{ tabBarIcon: ({ color }) => <Ionicons name="clipboard-outline" size={28} color={color} /> }}
       />
       <Tabs.Screen
-        name="Interest"  // 这里用 “Interest”
+        name="Interest"
         options={{ tabBarIcon: ({ color }) => <Ionicons name="chatbubble-ellipses-outline" size={28} color={color} /> }}
       />
       <Tabs.Screen
-        name="Challenge/index"
+        name="Challenge"
         options={{ tabBarIcon: ({ color }) => <Ionicons name="trophy-outline" size={28} color={color} /> }}
       />
       <Tabs.Screen
