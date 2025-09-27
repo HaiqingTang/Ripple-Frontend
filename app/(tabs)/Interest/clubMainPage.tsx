@@ -38,6 +38,9 @@ const PLACEHOLDER =
   "https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=1200&auto=format&fit=crop";
 const AVATAR_PH =
   "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=400&auto=format&fit=crop";
+const debug      = __DEV__ ? (...a: any[]) => console.log(...a)   : (..._a: any[]) => {};
+const debugWarn  = __DEV__ ? (...a: any[]) => console.warn(...a)  : (..._a: any[]) => {};
+const debugError = __DEV__ ? (...a: any[]) => console.error(...a) : (..._a: any[]) => {};
 
 export default function ClubMainPage() {
   const router = useRouter();
@@ -50,9 +53,10 @@ export default function ClubMainPage() {
   const [refreshing, setRefreshing] = useState(false);
 
   const hotUnsubRef = useRef<Unsubscribe | null>(null);
+  const myClubsUnsubRef = useRef<Unsubscribe | null>(null);
 
   useEffect(() => {
-    // 先尝试：where(hot) + orderBy(createdAt) + limit(1)
+    // where(hot) + orderBy(createdAt) + limit(1)
     const qWithOrder: Query = query(
       collection(db, "posts"),
       where("hot", "==", true),
@@ -60,7 +64,7 @@ export default function ClubMainPage() {
       limit(1)
     );
 
-    // 降级方案：where(hot) + limit(1)
+    // where(hot) + limit(1)
     const qFallback: Query = query(
       collection(db, "posts"),
       where("hot", "==", true),
@@ -72,13 +76,13 @@ export default function ClubMainPage() {
       hotUnsubRef.current = onSnapshot(
         q,
         (snap) => {
-          console.log(isFallback ? "hot (fallback) size:" : "hot size:", snap.size);
+          debug(isFallback ? "hot (fallback) size:" : "hot size:", snap.size);
           const d = snap.docs[0];
           setHotPost(d ? ({ id: d.id, ...(d.data() as any) } as Post) : null);
         },
         (err) => {
-          console.log("qHot error:", err.code, err.message);
-          // 缺少复合索引：failed-precondition / requires an index
+          debugError("qHot error:", err.code, err.message);
+          // failed-precondition / requires an index
           if (!isFallback && err.code === "failed-precondition") {
             // Automatically switch to unsorted query
             listen(qFallback, true);
@@ -97,18 +101,18 @@ export default function ClubMainPage() {
     };
   }, []);
 
-/** ===== All clubs: real-time subscription (local search and filtering) */
+/** All clubs: real-time subscription (local search and filtering) */
   useEffect(() => {
     const qAll = query(collection(db, "clubs"), orderBy("name", "asc"));
     const unsub = onSnapshot(
       qAll,
       (snap) => {
-        console.log("all clubs size:", snap.size);
+        debug("all clubs size:", snap.size);
         const list: Club[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
         setAllClubs(list);
         setLoading(false);
       },
-      (err) => console.log("qAll error:", err.code, err.message)
+      (err) => debugError("qAll error:", err.code, err.message)
     );
     return () => unsub();
   }, []);
@@ -116,25 +120,40 @@ export default function ClubMainPage() {
   /** My clubs: wait for login before subscribing (members array contains uid) */
   useEffect(() => {
     const stopAuth = onAuthStateChanged(auth, (user) => {
+      if (myClubsUnsubRef.current) {
+        myClubsUnsubRef.current();
+        myClubsUnsubRef.current = null;
+      }
+
       if (!user) {
-        console.log("auth: not signed in");
+        debug("auth: not signed in");
         setMyClubs([]);
         return;
       }
-      const qMine = query(collection(db, "clubs"), where("members", "array-contains", user.uid));
-      const unsub = onSnapshot(
+
+      const qMine = query(
+        collection(db, "clubs"),
+        where("members", "array-contains", user.uid)
+      );
+
+      myClubsUnsubRef.current = onSnapshot(
         qMine,
         (snap) => {
-          console.log("my clubs size:", snap.size);
+          debug("my clubs size:", snap.size);
           const list: Club[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
           setMyClubs(list);
         },
-        (err) => console.log("qMine error:", err.code, err.message)
-      );      
-    // Unsubscribe when the login state changes or the page is unloaded
-      return () => unsub();
+        (err) => debugError("qMine error:", err.code, err.message)
+      );
     });
-    return () => stopAuth();
+
+    return () => {
+      stopAuth();
+      if (myClubsUnsubRef.current) {
+        myClubsUnsubRef.current();
+        myClubsUnsubRef.current = null;
+      }
+    };
   }, []);
 
 
@@ -150,7 +169,7 @@ export default function ClubMainPage() {
             orderBy("createdAt", "desc"),
             limit(1)
           )
-        ).catch(() => getDocs(query(collection(db, "posts"), where("hot", "==", true), limit(1)))), // 索引缺失时降级
+        ).catch(() => getDocs(query(collection(db, "posts"), where("hot", "==", true), limit(1)))),
         getDocs(query(collection(db, "clubs"), orderBy("name", "asc"))),
       ]);
     } finally {
@@ -243,7 +262,7 @@ export default function ClubMainPage() {
     <Pressable
       onPress={() =>
         router.push({
-          pathname: "/(tabs)/Interest/clubTopic",
+          pathname: "/Interest/clubTopic",
           params: { name: item.name },
         })
       }
@@ -258,7 +277,7 @@ export default function ClubMainPage() {
     <Pressable
       onPress={() =>
         router.push({
-          pathname: "/(tabs)/Interest/clubTopic",
+          pathname: "/Interest/clubTopic",
           params: { name: item.name },
         })
       }
