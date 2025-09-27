@@ -43,7 +43,7 @@ type Club = {
 };
 
 type Post = {
-  id?: string;
+  id: string;
   name: string;
   authorName?: string;
   authorAvatarUrl?: string;
@@ -55,9 +55,9 @@ type Post = {
   supportCount?: number;
 };
 
-/* ========= Helpers ========= */
 const AVATAR_FALLBACK =
   "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=400&auto=format&fit=crop";
+
 
 function toMillis(v: any): number {
   if (v && typeof v === "object" && typeof v.seconds === "number") {
@@ -85,6 +85,10 @@ const CARD_RADIUS = 16;
 export default function ClubTopic() {
   const router = useRouter();
   const { id: routeId, name: legacyName } = useLocalSearchParams<{ id?: string; name?: string }>();
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [clubMissing, setClubMissing] = useState(false);
+  const [subFailed, setSubFailed] = useState(false);
+  const clearErr = useCallback(() => setErrMsg(null), []);
 
   // search keyword (local filter on loaded posts)
   const [q, setQ] = useState("");
@@ -105,41 +109,65 @@ export default function ClubTopic() {
 
   /** 1) Subscribe to club by exact name */
   useEffect(() => {
-  let unsubscribe: (() => void) | undefined;
+    let unsubscribe: (() => void) | undefined;
+    setClubMissing(false);
+    setSubFailed(false);
+    setErrMsg(null);
 
-  if (!routeId) {
-    const n = (legacyName || "").trim();
-    if (!n) {
-      Alert.alert("Missing params", "No club id.");
-      return;
+    const handleError = (err: any, where: string) => {
+      console.log(`${where} error:`, err);
+      setSubFailed(true);
+      setErrMsg("Failed to load the club. Please check your connection and try again.");
+    };
+
+    if (!routeId) {
+      const n = (legacyName || "").trim();
+      if (!n) {
+        setClubMissing(true);
+        setErrMsg("Missing club parameters.");
+        return;
+      }
+      const qClub = query(collection(db, "clubs"), where("name", "==", n), limit(1));
+      unsubscribe = onSnapshot(
+        qClub,
+        (snap) => {
+          const d = snap.docs[0];
+          if (d) {
+            setClub({ id: d.id, ...(d.data() as any) });
+            setClubMissing(false);
+            setSubFailed(false);
+            setErrMsg(null);
+          } else {
+            setClub(null);
+            setClubMissing(true);
+            setErrMsg("This club no longer exists.");
+          }
+        },
+        (err) => handleError(err, "club by name")
+      );
+    } else {
+      const ref = doc(db, "clubs", String(routeId));
+      unsubscribe = onSnapshot(
+        ref,
+        (snap) => {
+          if (!snap.exists()) {
+            setClub(null);
+            setClubMissing(true);
+            setErrMsg("This club no longer exists.");
+            return;
+          }
+          const raw = snap.data() as any;
+          setClub({ id: snap.id, name: String(raw.name ?? ""), ...raw });
+          setClubMissing(false);
+          setSubFailed(false);
+          setErrMsg(null);
+        },
+        (err) => handleError(err, "club by id")
+      );
     }
-    const qClub = query(collection(db, "clubs"), where("name", "==", n), limit(1));
-    unsubscribe = onSnapshot(
-      qClub,
-      (snap) => {
-        const d = snap.docs[0];
-        if (d) setClub({ id: d.id, ...(d.data() as any) });
-        else setClub(null);
-      },
-      (err) => console.log("club by name error:", err)
-    );
-  } else {
-    const ref = doc(db, "clubs", String(routeId));
-    unsubscribe = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) { setClub(null); return; }
-        const raw = snap.data() as any;
-        setClub({ id: snap.id, name: String(raw.name ?? ""), ...raw });
-      },
-      (err) => console.log("club by id error:", err)
-    );
-  }
 
-  return () => {
-    if (unsubscribe) unsubscribe();
-  };
-}, [routeId, legacyName]);
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, [routeId, legacyName]);
 
   /** 2) Load first page of posts for this club */
   const fetchFirstPage = useCallback(async () => {
@@ -261,7 +289,7 @@ export default function ClubTopic() {
           <Ionicons name="chevron-back" size={22} color="#6B7AFF" />
         </Pressable>
         <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color="#96A0C6" style={{ marginHorizontal: 10 }} />
+          <Ionicons name="search" size={18} color="#96A0C6" style={styles.searchIcon} />
           <TextInput
             placeholder="Search topics..."
             placeholderTextColor="#96A0C6"
@@ -269,8 +297,20 @@ export default function ClubTopic() {
             onChangeText={setQ}
             style={styles.searchInput}
             returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
           />
-          <Ionicons name="search" size={18} color="#96A0C6" style={{ marginHorizontal: 10 }} />
+          {q.length > 0 ? (
+            <Pressable
+              onPress={() => setQ("")}
+              hitSlop={10}
+              style={styles.clearBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+            >
+              <Ionicons name="close-circle" size={18} color="#B8C0E0" />
+            </Pressable>
+          ) : null}
         </View>
       </View>
 
@@ -368,21 +408,106 @@ export default function ClubTopic() {
     );
   };
 
-  const dataForList = useMemo(() => [{ id: "__composer__" } as any].concat(filteredPosts), [filteredPosts]);
-  const renderItem = ({ item }: { item: any }) =>
-    item.id === "__composer__" ? <ComposerCard /> : <PostItem item={item as Post} />;
+  const dataForList = useMemo(() => {
+    const base = [{ id: "__composer__" } as any].concat(filteredPosts);
+    if (filteredPosts.length === 0) {
+      base.push({ id: "__empty__", keyword: q.trim() });
+    }
+    return base;
+  }, [filteredPosts, q]);
+
+  const renderItem = ({ item }: { item: any }) => {
+    if (item.id === "__composer__") return <ComposerCard />;
+    if (item.id === "__empty__") return <EmptyPostsCard keyword={item.keyword} />;
+    return <PostItem item={item as Post} />;
+  };
+
+  const ErrorBanner = ({ msg, onClose }: { msg: string; onClose?: () => void }) => (
+    <View style={{
+      backgroundColor: "#FFE8E8",
+      borderColor: "#FFBDBD",
+      borderWidth: 1,
+      marginHorizontal: H_PADDING,
+      marginTop: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      flexDirection: "row",
+      alignItems: "center"
+    }}>
+      <Ionicons name="warning-outline" size={18} color="#B3261E" />
+      <Text style={{ color: "#8C1D18", marginLeft: 8, flex: 1 }}>{msg}</Text>
+      <Pressable onPress={onClose} hitSlop={10}>
+        <Ionicons name="close" size={18} color="#8C1D18" />
+      </Pressable>
+    </View>
+  );
+
+  const EmptyPostsCard = ({ keyword }: { keyword?: string }) => (
+    <View style={{
+      marginTop: 12,
+      marginHorizontal: H_PADDING,
+      backgroundColor: "white",
+      borderRadius: 16,
+      padding: 16,
+      alignItems: "center",
+      justifyContent: "center"
+    }}>
+      <Ionicons name="images-outline" size={28} color="#8EA0FF" />
+      <Text style={{ marginTop: 8, fontWeight: "800", color: "#1B243D" }}>
+        {keyword ? "No results" : "No posts yet"}
+      </Text>
+      <Text style={{ marginTop: 6, color: "#5D678A", textAlign: "center" }}>
+        {keyword ? `We couldn't find posts matching "${keyword}".` : "Be the first to post something!"}
+      </Text>
+    </View>
+  );
+
+  const MissingClubState = ({ onRetry }: { onRetry: () => void }) => (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <Ionicons name="alert-circle-outline" size={40} color="#6B7AFF" />
+      <Text style={{ marginTop: 12, fontSize: 18, fontWeight: "800", color: "#1B243D" }}>
+        Club not available
+      </Text>
+      <Text style={{ marginTop: 6, color: "#5D678A", textAlign: "center" }}>
+        The club could not be found or failed to load. Pull to refresh, or try again.
+      </Text>
+      <Pressable
+        onPress={onRetry}
+        style={{ marginTop: 16, backgroundColor: "#6B7AFF", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 }}
+      >
+        <Text style={{ color: "#fff", fontWeight: "800" }}>Retry</Text>
+      </Pressable>
+    </View>
+  );
+
+  // Failed to read or could not find club
+  if (clubMissing || subFailed) {
+    return (
+      <View style={styles.container}>
+        <MissingClubState onRetry={fetchFirstPage} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <FlatList
         data={dataForList}
-        keyExtractor={(it, idx) => it.id ?? `k${idx}` }
+        keyExtractor={(it) => String(it.id)}
         renderItem={renderItem}
-        ListHeaderComponent={<StickyTop />}
+        ListHeaderComponent={
+          <>
+            {errMsg ? <ErrorBanner msg={errMsg} onClose={clearErr} /> : null}
+            <StickyTop />
+          </>
+        }
         stickyHeaderIndices={[0]}
         onEndReachedThreshold={0.2}
         onEndReached={fetchNextPage}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />
+        }
         ListFooterComponent={
           <View style={{ paddingVertical: 18, alignItems: "center" }}>
             {hasMore ? (
@@ -657,4 +782,8 @@ const styles = StyleSheet.create({
     borderTopColor: "#cfd8ff",
     backgroundColor: "#DDE7FF",
   },
+
+  searchIcon: { marginHorizontal: 10 },
+  clearBtn: { paddingHorizontal: 10 },
+
 });
