@@ -19,6 +19,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 const { width } = Dimensions.get("window");
 const PANEL_W = Math.min(640, width - 28);
 
+// Default cover image fallback to keep visual style unified
+const DEFAULT_IMAGE_URL =
+  "https://images.unsplash.com/photo-1556816723-1ce827b9cfbb?q=80&w=1584&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
+
 type Meetup = {
   title?: string;
   description?: string;
@@ -69,8 +73,10 @@ export default function ManageMyMeetupView() {
 
   const [loading, setLoading] = useState(true);
   const [meetup, setMeetup] = useState<Meetup | null>(null);
+
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [profilesPartialFailed, setProfilesPartialFailed] = useState(false); // show non-blocking hint if some failed
 
   // load meetup
   useEffect(() => {
@@ -98,14 +104,16 @@ export default function ManageMyMeetupView() {
     })();
   }, [id]);
 
-  // load participant profiles (best-effort)
+  // load participant profiles (best-effort) with partial-failure hint
   useEffect(() => {
     (async () => {
       if (!meetup?.participants || meetup.participants.length === 0) {
         setProfiles([]);
+        setProfilesPartialFailed(false);
         return;
       }
       setLoadingProfiles(true);
+      let partial = false; // track if any profile fetch failed
       try {
         const uids = meetup.participants.slice(0, 12);
         const results = await Promise.all(
@@ -119,15 +127,24 @@ export default function ManageMyMeetupView() {
                   name: String(d.displayName ?? uid),
                   avatarUrl: d.avatarUrl,
                 } as Profile;
+              } else {
+                // mark partial failure when user doc not found
+                partial = true;
               }
-            } catch {}
-            return { id: uid, name: uid } as Profile;
+            } catch {
+              // swallow and mark partial failure but still return placeholder
+              partial = true;
+            }
+            return { id: uid, name: uid } as Profile; // placeholder if failed
           })
         );
         setProfiles(results);
       } catch {
+        // in case of a global failure, show empty list and hint
         setProfiles([]);
+        partial = true;
       } finally {
+        setProfilesPartialFailed(partial);
         setLoadingProfiles(false);
       }
     })();
@@ -155,17 +172,23 @@ export default function ManageMyMeetupView() {
           <Ionicons name="chevron-back" size={22} />
         </TouchableOpacity>
         <Text style={styles.title}>Manage Meetups</Text>
-        <TouchableOpacity
-          style={styles.plusBtn}
-          onPress={() => router.push("/(tabs)/Interest/newMeetup")}
-        >
-          <Ionicons name="add" size={20} color="#3b5aa9" />
-        </TouchableOpacity>
+        {/* Removed the plus button to avoid confusing route from manage screen */}
+        <View style={{ width: 32, height: 32 }} />
       </View>
 
       <ScrollView contentContainerStyle={{ alignItems: "center", paddingBottom: 28 }}>
         {/* First card */}
         <View style={[styles.card, { width: PANEL_W }]}>
+          {/* Cover image block (unified style) */}
+          <Text style={styles.subLabel}>Cover</Text>
+          <View style={styles.imageBox}>
+            <Image
+              source={{ uri: meetup?.imageUrl || DEFAULT_IMAGE_URL }}
+              style={{ width: "100%", height: "100%" }}
+              resizeMode="cover"
+            />
+          </View>
+
           <RowDisplay label="Name" value={meetup?.title || "-"} />
           <RowDisplay label="Time" value={formatDate(meetup?.date)} />
           <RowDisplay
@@ -218,6 +241,15 @@ export default function ManageMyMeetupView() {
         {/* Participant list */}
         <View style={[styles.card, { width: PANEL_W }]}>
           <Text style={[styles.subLabel, { marginBottom: 8 }]}>Participant List:</Text>
+
+          {/* Non-blocking partial-failure hint */}
+          {profilesPartialFailed && (
+            <View style={styles.warnRow}>
+              <Ionicons name="alert-circle-outline" size={16} color="#d84535" />
+              <Text style={styles.warnText}>Couldn't load some profiles.</Text>
+            </View>
+          )}
+
           {loadingProfiles ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <ActivityIndicator size="small" />
@@ -277,6 +309,7 @@ function RowDisplay({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#dfeaff" },
+
   header: {
     paddingTop: 8,
     paddingHorizontal: 16,
@@ -292,15 +325,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: "#2c3e50",
-  },
-
-  plusBtn: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#cfe0ff",
-    borderRadius: 10,
   },
 
   card: {
@@ -333,4 +357,27 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
   },
+
+  // Cover image visual style (unified with other pages)
+  imageBox: {
+    width: "100%",
+    height: 160,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+    marginBottom: 12,
+  },
+
+  // Non-blocking warning row for partial profile failures
+  warnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#ffeceb",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 10,
+  },
+  warnText: { color: "#d84535", fontWeight: "700" },
 });

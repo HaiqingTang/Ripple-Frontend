@@ -18,6 +18,7 @@ import {
   limit,
   where,
 } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth"; // subscribe auth changes
 import { db, auth } from "../../../firebase";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -34,53 +35,39 @@ type Meetup = {
 
 export default function MeetupMainPage() {
   const router = useRouter();
+
+  // top hero meetup states
   const [top, setTop] = useState<Meetup | null>(null);
+  const [loadingTop, setLoadingTop] = useState(true); // loading for top subscription
+  const [topError, setTopError] = useState<string | null>(null); // non-blocking error banner
+
+  // my meetups states
   const [myMeetups, setMyMeetups] = useState<Meetup[]>([]);
+  const [loadingMy, setLoadingMy] = useState(true); // loading for my meetups list
+  const [myError, setMyError] = useState<string | null>(null); // non-blocking error banner
 
+  // subscribe TOP hero (latest meetup) with error callback
   useEffect(() => {
+    setLoadingTop(true);
+    setTopError(null);
     const q1 = query(collection(db, "meetups"), orderBy("date", "desc"), limit(1));
-    const unsub = onSnapshot(q1, (snap) => {
-      const d = snap.docs[0];
-      if (!d) {
-        setTop(null);
-        return;
-      }
-      const data = d.data() as any;
-      const dateStr =
-        typeof data.date?.toDate === "function"
-          ? toDisplayDate(data.date.toDate())
-          : String(data.date ?? "");
-      setTop({
-        id: d.id,
-        title: data.title ?? "",
-        date: dateStr,
-        location: data.location,
-        description: data.description,
-        category: data.category,
-        creatorId: data.creatorId,
-        participants: Array.isArray(data.participants) ? data.participants : [],
-      });
-    });
-    return () => unsub();
-  }, []);
 
-  useEffect(() => {
-    if (!auth.currentUser) return;
-    const q2 = query(
-      collection(db, "meetups"),
-      where("participants", "array-contains", auth.currentUser.uid),
-      orderBy("date", "desc"),
-      limit(4)
-    );
-    const unsub = onSnapshot(q2, (snap) => {
-      const list: Meetup[] = [];
-      snap.forEach((d) => {
+    // use onSnapshot(next, error) to surface issues instead of silent failures
+    const unsub = onSnapshot(
+      q1,
+      (snap) => {
+        const d = snap.docs[0];
+        if (!d) {
+          setTop(null);
+          setLoadingTop(false);
+          return;
+        }
         const data = d.data() as any;
         const dateStr =
           typeof data.date?.toDate === "function"
             ? toDisplayDate(data.date.toDate())
             : String(data.date ?? "");
-        list.push({
+        setTop({
           id: d.id,
           title: data.title ?? "",
           date: dateStr,
@@ -90,10 +77,87 @@ export default function MeetupMainPage() {
           creatorId: data.creatorId,
           participants: Array.isArray(data.participants) ? data.participants : [],
         });
-      });
-      setMyMeetups(list);
-    });
+        setLoadingTop(false);
+      },
+      (err) => {
+        // non-blocking banner; keep page usable
+        setTopError("Failed to load featured meetup.");
+        setTop(null);
+        setLoadingTop(false);
+      }
+    );
     return () => unsub();
+  }, []);
+
+  // subscribe MY meetups; resubscribe on auth changes, not just on mount
+  useEffect(() => {
+    // keep reference to the current meetups unsubscribe
+    let meetupsUnsub: (() => void) | null = null;
+
+    // ensure proper lifecycle: subscribe/unsubscribe when auth user changes
+    const authUnsub = onAuthStateChanged(auth, (user) => {
+      // clear previous listener when user switches
+      if (meetupsUnsub) {
+        meetupsUnsub();
+        meetupsUnsub = null;
+      }
+
+      setLoadingMy(true);
+      setMyError(null);
+      setMyMeetups([]);
+
+      if (!user) {
+        // no user: nothing to subscribe; show empty state quickly
+        setLoadingMy(false);
+        return;
+      }
+
+      const q2 = query(
+        collection(db, "meetups"),
+        where("participants", "array-contains", user.uid),
+        orderBy("date", "desc"),
+        limit(4)
+      );
+
+      // use onSnapshot(next, error) to handle failures explicitly
+      meetupsUnsub = onSnapshot(
+        q2,
+        (snap) => {
+          const list: Meetup[] = [];
+          snap.forEach((d) => {
+            const data = d.data() as any;
+            const dateStr =
+              typeof data.date?.toDate === "function"
+                ? toDisplayDate(data.date.toDate())
+                : String(data.date ?? "");
+            list.push({
+              id: d.id,
+              title: data.title ?? "",
+              date: dateStr,
+              location: data.location,
+              description: data.description,
+              category: data.category,
+              creatorId: data.creatorId,
+              participants: Array.isArray(data.participants) ? data.participants : [],
+            });
+          });
+          setMyMeetups(list);
+          setLoadingMy(false);
+        },
+        (err) => {
+          // non-blocking banner; keep page usable
+          setMyError("Failed to load your meetups.");
+          setMyMeetups([]);
+          setLoadingMy(false);
+        }
+      );
+    });
+
+    // cleanup both listeners
+    return () => {
+      if (meetupsUnsub) meetupsUnsub();
+      authUnsub();
+    };
   }, []);
 
   const onAdd = () => router.push("/(tabs)/Interest/newMeetup");
@@ -122,7 +186,15 @@ export default function MeetupMainPage() {
           </Pressable>
         </View>
 
-        {/* Hero card */}
+        {/* Optional non-blocking error banner for TOP */}
+        {topError && (
+          <View style={styles.warnRow}>
+            <Ionicons name="alert-circle-outline" size={16} color="#d84535" />
+            <Text style={styles.warnText}>{topError}</Text>
+          </View>
+        )}
+
+        {/* Hero card (show loading/placeholder if needed) */}
         <Pressable onPress={onOpenTop} disabled={!top} style={{ paddingHorizontal: 16 }}>
           <ImageBackground
             source={{
@@ -137,8 +209,12 @@ export default function MeetupMainPage() {
             </View>
             <View style={styles.heroOverlay} />
             <View style={styles.heroTextWrap}>
-              <Text style={styles.heroDate}>{top ? top.date : "—"}</Text>
-              <Text style={styles.heroTitle}>{top ? top.title : "No Meetup"}</Text>
+              <Text style={styles.heroDate}>
+                {loadingTop ? "Loading…" : top ? top.date : "—"}
+              </Text>
+              <Text style={styles.heroTitle}>
+                {loadingTop ? "Loading meetup…" : top ? top.title : "No Meetup"}
+              </Text>
             </View>
           </ImageBackground>
         </Pressable>
@@ -155,19 +231,52 @@ export default function MeetupMainPage() {
               <Feather name="chevron-right" size={16} color="#6b7280" />
             </Pressable>
           </View>
-          <FlatList
-            data={myMeetups}
-            keyExtractor={(i) => i.id}
-            scrollEnabled={false}
-            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-            renderItem={({ item }) => (
-              <Pressable onPress={() => onOpenMeetup(item)} style={styles.meetupRow}>
-                <Text style={styles.meetupName}>{item.title}</Text>
-                <Text style={styles.meetupDate}>{item.date}</Text>
+
+          {/* Optional non-blocking error banner for MY meetups */}
+          {myError && (
+            <View style={[styles.warnRow, { marginHorizontal: 6, marginTop: 8 }]}>
+              <Ionicons name="alert-circle-outline" size={16} color="#d84535" />
+              <Text style={styles.warnText}>{myError}</Text>
+            </View>
+          )}
+
+          {/* Loading state for my meetups */}
+          {loadingMy ? (
+            <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
+              {/* very light skeletons: keep UI simple without extra libs */}
+              <View style={styles.skeletonRow} />
+              <View style={[styles.skeletonRow, { marginTop: 8, width: "78%" }]} />
+              <View style={[styles.skeletonRow, { marginTop: 8, width: "88%" }]} />
+            </View>
+          ) : myMeetups.length === 0 ? (
+            // Empty state with CTA to explore
+            <View style={{ paddingHorizontal: 12, paddingVertical: 14 }}>
+              <Text style={styles.emptyTitle}>No meetups yet</Text>
+              <Text style={styles.emptyText}>
+                Join or create your first meetup. You can explore popular events now.
+              </Text>
+              <Pressable
+                style={styles.moreBtn}
+                onPress={() => router.push("/(tabs)/Interest/allMeetups")}
+              >
+                <Text style={styles.moreText}>Explore more meetups</Text>
               </Pressable>
-            )}
-            contentContainerStyle={{ paddingTop: 6, paddingBottom: 6 }}
-          />
+            </View>
+          ) : (
+            <FlatList
+              data={myMeetups}
+              keyExtractor={(i) => i.id}
+              scrollEnabled={false}
+              ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+              renderItem={({ item }) => (
+                <Pressable onPress={() => onOpenMeetup(item)} style={styles.meetupRow}>
+                  <Text style={styles.meetupName}>{item.title}</Text>
+                  <Text style={styles.meetupDate}>{item.date}</Text>
+                </Pressable>
+              )}
+              contentContainerStyle={{ paddingTop: 6, paddingBottom: 6 }}
+            />
+          )}
         </View>
 
         <View style={{ height: 16 }} />
@@ -205,6 +314,20 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: "800", color: "#1f2937" },
 
+  // non-blocking inline warning banner
+  warnRow: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#ffeceb",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  warnText: { color: "#d84535", fontWeight: "700" },
+
   hero: { height: 220, borderRadius: 16, overflow: "hidden", marginTop: 12 },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.25)" },
   heroTextWrap: { position: "absolute", bottom: 16, left: 16, right: 16 },
@@ -236,6 +359,14 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 16, fontWeight: "800", color: BLUE_TEXT },
   allBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   allText: { color: "#6b7280", fontSize: 12, fontWeight: "600" },
+
+  // simple skeleton block (no external libs)
+  skeletonRow: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#f0f4ff",
+  },
+
   meetupRow: {
     marginTop: 10,
     paddingHorizontal: 12,
@@ -248,6 +379,7 @@ const styles = StyleSheet.create({
   },
   meetupName: { fontSize: 14, fontWeight: "700", color: "#111827" },
   meetupDate: { fontSize: 12, fontWeight: "700", color: "#6b7280" },
+
   moreBtn: {
     marginHorizontal: 16,
     height: 48,
@@ -257,4 +389,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   moreText: { fontSize: 16, fontWeight: "800", color: "#345BCE" },
+
+  // empty state copy + CTA
+  emptyTitle: { fontSize: 16, fontWeight: "800", color: "#1f2937", marginBottom: 6 },
+  emptyText: { fontSize: 13, color: "#42566b", marginBottom: 10 },
 });
