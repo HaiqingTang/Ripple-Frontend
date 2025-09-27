@@ -89,7 +89,8 @@ After downloading the app, users can:
 - **Storage & Data**: Firebase, AsyncStorage  
 - **Maps & Location**: react-native-maps, expo-location  
 - **Animations & Gestures**: react-native-reanimated, react-native-gesture-handler  
-- **Date/Time**: @react-native-community/datetimepicker  
+- **Images & Uploads**: expo-image-picker (gallery & permissions), FormData upload
+- **Image Hosting/CDN**: Cloudinary (unsigned preset → secure_url saved to Firestore)
 
 ### Versions (from `package.json`)
 | Package                   | Version |
@@ -137,6 +138,7 @@ After downloading the app, users can:
 - Designed an extensible data model, including Firestore collections for clubs, meetups, and posts.
 - Integrated Expo Location to geocode user-entered addresses into Firestore coordinates.
 - Connected Firebase Auth to identify the current user for event creation, participation, and access control.
+- Integrated Cloudinary image upload in Meetup creation, allowing users to select images via expo-image-picker, upload through an unsigned preset, and store the returned secure_url into Firestore.
 
 **Tooling**
 - Configured GitHub Actions for ChatGPT PR Review  
