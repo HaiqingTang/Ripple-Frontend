@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { createDataUri } from '@/lib/imageService';
 import { auth, db } from '@/lib/firebase';
 
@@ -12,7 +12,7 @@ type AppContextValue = {
   formattedDate: string;
   profilePictureUrl: string;
   refreshUserData: () => void;
-  updateProfilePicture: (url: string) => void;
+  updateProfilePicture: (dataUri: string) => void;
 };
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
@@ -42,10 +42,15 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
       const userDoc = querySnapshot.docs[0];
       const userData = userDoc.data();
 
-      if (userData.profilePictureBase64) {
-        // Convert Base64 data to data URI for display
-        const dataUri = createDataUri(userData.profilePictureBase64);
-        setProfilePictureUrl(dataUri);
+      if (userData.profilePictureBase64 && typeof userData.profilePictureBase64 === 'string' && userData.profilePictureBase64.trim() !== '') {
+        // Validate and convert Base64 data to data URI for display
+        try {
+          const dataUri = createDataUri(userData.profilePictureBase64);
+          setProfilePictureUrl(dataUri);
+        } catch (error) {
+          console.error('Error creating data URI from base64:', error);
+          setProfilePictureUrl('');
+        }
       } else {
         // Clear profile picture if no Base64 data
         setProfilePictureUrl('');
@@ -56,16 +61,21 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const updateProfilePicture = async (base64Data: string) => {
+  const updateProfilePicture = (dataUri: string) => {
     try {
-      // Convert Base64 data to data URI for immediate display
-      const dataUri = createDataUri(base64Data);
-      setProfilePictureUrl(dataUri);
+      // Accept data URI directly for immediate display
+      if (dataUri && typeof dataUri === 'string' && dataUri.trim() !== '') {
+        setProfilePictureUrl(dataUri);
+      } else {
+        console.error('Invalid data URI provided to updateProfilePicture');
+        setProfilePictureUrl('');
+      }
 
       // Note: The actual Firestore update is handled in imageService.ts
       // This function just updates the local state for immediate UI feedback
     } catch (error) {
       console.error('Error updating profile picture:', error);
+      setProfilePictureUrl('');
     }
   };
 
@@ -74,8 +84,8 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     if (user) {
       const name = user.email?.split('@')[0] || 'user';
       setUserName(name);
-      const fullName = user.displayName || 'User';
-      setFullName(fullName);
+      const userDisplayName = user.displayName || 'User';
+      setFullName(userDisplayName);
       loadUserProfile(user.uid);
     }
   };
@@ -85,8 +95,8 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
       if (user) {
         const name = user.email?.split('@')[0] || 'user';
         setUserName(name);
-				const fullName = user.displayName || 'User';
-				setFullName(fullName);
+				const userDisplayName = user.displayName || 'User';
+				setFullName(userDisplayName);
 				setUserId(user.uid);
         await loadUserProfile(user.uid);
       } else {

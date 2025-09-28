@@ -8,6 +8,13 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+/**
+ * Bottom-sheet modal for profile picture selection
+ * Allows taking photos or choosing from gallery
+ * Modal closes when tapping outside or using close button
+ */
 
 interface ImagePickerModalProps {
   visible: boolean;
@@ -22,21 +29,30 @@ export default function ImagePickerModal({
   onTakePhoto,
   onChooseFromGallery,
 }: ImagePickerModalProps) {
+  const insets = useSafeAreaInsets();
   return (
     <Modal
       animationType="fade"
       transparent={true}
       visible={visible}
       onRequestClose={onClose}
+      accessibilityViewIsModal={true}
     >
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback>
-            <View style={styles.modal}>
+            <View style={[styles.modal, { paddingBottom: insets.bottom || 20 }]}>
               {/* Header */}
               <View style={styles.header}>
                 <Text style={styles.title}>Change Profile Picture</Text>
-                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <TouchableOpacity
+                  onPress={onClose}
+                  style={styles.closeButton}
+                  accessibilityLabel="Close modal"
+                  accessibilityHint="Closes the photo selection options"
+                  accessibilityRole="button"
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
                   <Ionicons name="close" size={24} color="#666" />
                 </TouchableOpacity>
               </View>
@@ -47,6 +63,7 @@ export default function ImagePickerModal({
                   style={styles.option}
                   onPress={onTakePhoto}
                   accessibilityLabel="Take photo with camera"
+                  accessibilityHint="Opens camera to take a new photo"
                   accessibilityRole="button"
                 >
                   <View style={styles.optionIcon}>
@@ -59,6 +76,7 @@ export default function ImagePickerModal({
                   style={styles.option}
                   onPress={onChooseFromGallery}
                   accessibilityLabel="Choose photo from gallery"
+                  accessibilityHint="Opens photo gallery to select an existing photo"
                   accessibilityRole="button"
                 >
                   <View style={styles.optionIcon}>
@@ -85,7 +103,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 34, // Safe area padding for home indicator
     minHeight: 200,
   },
   header: {

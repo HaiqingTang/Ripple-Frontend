@@ -14,12 +14,14 @@ import {
   pickImageFromGallery,
   takePicture,
   uploadProfilePicture,
+  createDataUri,
+  validateImageFile,
 } from '@/lib/imageService';
 
 interface ProfilePictureProps {
   size?: number;
   showEditButton?: boolean;
-  onImageChange?: (imageUrl: string) => void;
+  onImageChange?: (dataUri: string) => void;
 }
 
 export default function ProfilePicture({
@@ -51,15 +53,33 @@ export default function ProfilePicture({
         return;
       }
 
+      // Validate base64 data before upload
+      if (!base64Data || base64Data.trim() === '') {
+        Alert.alert('Error', 'Invalid image data. Please try again.');
+        setUploading(false);
+        return;
+      }
+
+      // Validate file size before upload
+      const sizeInBytes = (base64Data.length * 3) / 4;
+      const validation = validateImageFile(sizeInBytes);
+      if (!validation.isValid) {
+        Alert.alert('Error', validation.error || 'Image file is too large');
+        setUploading(false);
+        return;
+      }
+
       const result = await uploadProfilePicture(base64Data);
 
       if (result.success && result.base64Data) {
-        // Update the profile picture in context with Base64 data
-        updateProfilePicture(result.base64Data);
+        // Create consistent data URI format
+        const dataUri = createDataUri(result.base64Data);
 
-        // Call the callback if provided (now with data URI)
+        // Update the profile picture in context with data URI
+        updateProfilePicture(dataUri);
+
+        // Call the callback if provided
         if (onImageChange) {
-          const dataUri = `data:image/jpeg;base64,${result.base64Data}`;
           onImageChange(dataUri);
         }
 
@@ -79,8 +99,8 @@ export default function ProfilePicture({
     const result = await takePicture();
     if (result.success && result.base64) {
       await handleImageSelected(result.base64);
-    } else if (result.cancelled) {
-      // User cancelled camera
+    } else if (result.canceled) {
+      // User canceled camera
       setModalVisible(false);
     } else if (result.error) {
       // Actual error occurred - show error message
@@ -93,8 +113,8 @@ export default function ProfilePicture({
     const result = await pickImageFromGallery();
     if (result.success && result.base64) {
       await handleImageSelected(result.base64);
-    } else if (result.cancelled) {
-      // User cancelled gallery selection
+    } else if (result.canceled) {
+      // User canceled gallery selection
       setModalVisible(false);
     } else if (result.error) {
       // Actual error occurred - show error message
