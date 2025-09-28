@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import rippleLogo from '@/assets/images/ripple-logo.png';
 import CustomButton from '../components/CustomButton';
 
-const { width, height } = Dimensions.get('window');
 
 export default function LandingPage() {
   const router = useRouter();

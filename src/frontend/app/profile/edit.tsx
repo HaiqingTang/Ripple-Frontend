@@ -52,7 +52,7 @@ export default function EditProfilePage() {
       setFirstName(nameParts[0] || '');
       setLastName(nameParts.slice(1).join(' ') || '');
       setCurrentEmail(user.email || '');
-      setNewEmail(''); // Keep new email empty initially
+      setNewEmail(''); 
     }
   }, []);
 

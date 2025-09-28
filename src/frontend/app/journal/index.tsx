@@ -118,6 +118,13 @@ export default function JournalPage() {
 							<Text style={styles.promptText}>• What's something you're proud of recently?</Text>
 						</View>
 
+
+  const addTag = (tag: string) => {
+    if (!selectedTags.includes(tag)) {
+      setSelectedTags([...selectedTags, tag]);
+    }
+  };
+
 						<TextInput
 							style={styles.journalInput}
 							placeholder="Start writing your thoughts here..."
@@ -132,6 +139,7 @@ export default function JournalPage() {
 							accessibilityHint="Enter your journal thoughts and reflections"
 						/>
 					</View>
+
 
 					{/* Topic Tagging Card */}
 					<View style={[styles.card, styles.tagCard]}>

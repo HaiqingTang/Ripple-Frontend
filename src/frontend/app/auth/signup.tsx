@@ -6,7 +6,6 @@ import {
 	StyleSheet,
 	TextInput,
 	TouchableOpacity,
-	Dimensions,
 	KeyboardAvoidingView,
 	Platform,
 	TouchableWithoutFeedback,
@@ -21,7 +20,6 @@ import { auth, db } from '@/lib/firebase';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { setDoc, doc } from "@firebase/firestore";
 
-const { width, height } = Dimensions.get('window');
 
 // Reusable Password Input Component
 interface PasswordInputProps {
