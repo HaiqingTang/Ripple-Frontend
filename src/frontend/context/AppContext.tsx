@@ -18,9 +18,11 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const [userName, setUserName] = useState<string>('user');
 	const [userId, setUserId] = useState<string>('');
 
-  const refreshUserData = () => {
+  const refreshUserData = async () => {
     const user = auth.currentUser;
     if (user) {
+	    // Fetch the latest data from Firebase
+	    await user.reload();
       const name = user.email?.split('@')[0] || 'user';
       setUserName(name);
       const fullName = user.displayName || 'User';
