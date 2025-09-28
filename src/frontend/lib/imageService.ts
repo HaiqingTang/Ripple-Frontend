@@ -7,7 +7,7 @@ export interface ImagePickerResult {
   imageUri?: string;
   base64?: string;
   error?: string;
-  cancelled?: boolean;
+  canceled?: boolean;
 }
 
 export interface ImageUploadResult {
@@ -16,7 +16,7 @@ export interface ImageUploadResult {
   error?: string;
 }
 
-const MAX_BASE64_SIZE = 700 * 1024; // ~700KB to account for Base64 overhead and stay under 1MB Firestore limit
+const MAX_BASE64_BYTES = 700 * 1024; // ~700KB to account for Base64 overhead and stay under 1MB Firestore limit
 
 // Helper function to find user document by userId field
 const findUserDocument = async (userId: string): Promise<string | null> => {
@@ -44,16 +44,22 @@ const findUserDocument = async (userId: string): Promise<string | null> => {
 
 export const pickImageFromGallery = async (): Promise<ImagePickerResult> => {
   try {
+    // Check media library permissions first
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      return { success: false, error: 'Media library permission is required to select photos' };
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images',
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.6, // Aggressive compression to replace manipulator
+      quality: 0.6, // Aggressive compression to reduce file size
       base64: true,
     });
 
     if (result.canceled) {
-      return { success: false, cancelled: true };
+      return { success: false, canceled: true };
     }
 
     const imageUri = result.assets[0].uri;
@@ -72,16 +78,22 @@ export const pickImageFromGallery = async (): Promise<ImagePickerResult> => {
 
 export const takePicture = async (): Promise<ImagePickerResult> => {
   try {
+    // Check camera permissions first
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      return { success: false, error: 'Camera permission is required to take photos' };
+    }
+
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: 'images',
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.6, // Aggressive compression to replace manipulator
+      quality: 0.6, // Aggressive compression to reduce file size
       base64: true,
     });
 
     if (result.canceled) {
-      return { success: false, cancelled: true };
+      return { success: false, canceled: true };
     }
 
     const imageUri = result.assets[0].uri;
@@ -101,8 +113,8 @@ export const takePicture = async (): Promise<ImagePickerResult> => {
 
 
 const validateBase64Size = (base64String: string): { isValid: boolean; error?: string } => {
-  const sizeInBytes = (base64String.length * 3) / 4; 
-  if (sizeInBytes > MAX_BASE64_SIZE) {
+  const sizeInBytes = (base64String.length * 3) / 4;
+  if (sizeInBytes > MAX_BASE64_BYTES) {
     return {
       isValid: false,
       error: 'Image is too large. Please choose a smaller image or reduce quality.',
@@ -115,11 +127,16 @@ export const uploadProfilePicture = async (
   base64Data: string
 ): Promise<ImageUploadResult> => {
   try {
+    // Validate input parameters
+    if (!base64Data || typeof base64Data !== 'string' || base64Data.trim() === '') {
+      return { success: false, error: 'Invalid image data provided' };
+    }
+
     if (!auth.currentUser) {
       return { success: false, error: 'User not authenticated' };
     }
 
-    // Use the actual authenticated user ID instead of the passed parameter
+    // Use the actual authenticated user ID
     const authenticatedUserId = auth.currentUser.uid;
 
     // Validate the authenticated user ID
@@ -127,9 +144,7 @@ export const uploadProfilePicture = async (
       return { success: false, error: 'Invalid user authentication' };
     }
 
-    // Base64 data is already provided from picker
-
-    // Validate Base64 size
+    // Validate Base64 size before processing
     const sizeValidation = validateBase64Size(base64Data);
     if (!sizeValidation.isValid) {
       return { success: false, error: sizeValidation.error };
@@ -201,8 +216,8 @@ export const createDataUri = (base64String: string): string => {
   return `data:image/jpeg;base64,${base64String}`;
 };
 
-export const validateImageFile = (fileSize: number): { isValid: boolean; error?: string } => {
-  if (fileSize > MAX_BASE64_SIZE) {
+export const validateImageFile = (fileSizeInBytes: number): { isValid: boolean; error?: string } => {
+  if (fileSizeInBytes > MAX_BASE64_BYTES) {
     return { isValid: false, error: 'Image file too large. Please choose a smaller image.' };
   }
   return { isValid: true };
