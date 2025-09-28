@@ -76,20 +76,8 @@ Before you begin, ensure you have the following installed:
    npm install
    ```
 
-4. **Firebase Setup**:
-   ```bash
-   # Login to Firebase (if not already logged in)
-   firebase login
-   
-   # Navigate to project root and connect to existing Firebase project
-   cd ../../..
-   firebase use comp90018-rp-koala-277f0
-   
-   # Initialize Firebase features (if not already done)
-   firebase init
-   ```
 
-5. **Environment Configuration**:
+4. **Environment Configuration**:
    - Create a `.env` file in `src/frontend/` with your Firebase configuration
    - Get Firebase config from [Firebase Console](https://console.firebase.google.com/u/0/project/comp90018-rp-koala-277f0/settings/general/)
    - Contact the team for the required environment variables
