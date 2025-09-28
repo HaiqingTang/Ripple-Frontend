@@ -18,6 +18,8 @@ jobs:
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_pr_id: ${{ github.event.number }}
-          files: "*.js, *.tsx, *.py, *.cpp, *.java"
+          files: "src/frontend/components/ProfilePicture.tsx, src/frontend/components/ImagePickerModal.tsx, src/frontend/lib/imageService.ts, src/frontend/app/profile/edit.tsx, src/frontend/context/AppContext.tsx"
           openai_model: gpt-5-mini
           logging: debug
+
+          # files: "*.js, *.tsx, *.py, *.cpp, *.java"
