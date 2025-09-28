@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
 	View,
 	Text,
@@ -7,9 +7,12 @@ import {
 	TouchableOpacity,
 	ScrollView,
 	Dimensions,
+	FlatList,
+	ImageSourcePropType,
+	ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import {useAppContext} from "@/context/AppContext";
+import { useAppContext } from "@/context/AppContext";
 import { useRouter } from 'expo-router';
 import pic1 from '@/assets/images/profile-post-1.png';
 import pic2 from '@/assets/images/profile-post-2.png';
@@ -17,61 +20,232 @@ import pic3 from '@/assets/images/profile-post-3.png';
 
 const { width } = Dimensions.get("window");
 
+type TabType = "Posts" | "Liked Posts";
+
+interface Post {
+	id: string;
+	image: ImageSourcePropType;
+	imageUrl?: string; // For backend URLs
+	createdAt?: string;
+	likeCount?: number;
+}
+
+// Reusable Grid Component for Posts
+interface PostGridProps {
+	data: Post[];
+	loading: boolean;
+	numColumns?: number;
+	onPostPress?: (post: Post) => void;
+}
+
+const PostGrid: React.FC<PostGridProps> = ({
+	                                           data,
+	                                           loading,
+	                                           numColumns = 2,
+	                                           onPostPress
+                                           }) => {
+	const renderPostItem = ({ item }: { item: Post }) => (
+		<TouchableOpacity
+			style={styles.gridImageContainer}
+			onPress={() => onPostPress?.(item)}
+			accessibilityRole="button"
+			accessibilityLabel={`View post ${item.id}`}
+		>
+			<Image
+				source={item.imageUrl ? { uri: item.imageUrl } : item.image}
+				style={styles.gridImage}
+			/>
+		</TouchableOpacity>
+	);
+
+	if (loading) {
+		return (
+			<View style={styles.loadingState}>
+				<ActivityIndicator size="large" color="#333" />
+				<Text style={styles.loadingText}>Loading posts...</Text>
+			</View>
+		);
+	}
+
+	if (data.length === 0) {
+		return (
+			<View style={styles.emptyState}>
+				<Ionicons name="images-outline" size={48} color="#999" />
+				<Text style={styles.emptyStateText}>No posts yet</Text>
+			</View>
+		);
+	}
+
+	return (
+		<FlatList
+			data={data}
+			renderItem={renderPostItem}
+			numColumns={numColumns}
+			keyExtractor={(item) => item.id}
+			contentContainerStyle={styles.grid}
+			columnWrapperStyle={numColumns > 1 ? styles.gridRow : undefined}
+			showsVerticalScrollIndicator={false}
+			scrollEnabled={false} // Disable scrolling since we're inside ScrollView
+		/>
+	);
+};
+
 export default function ProfilePage() {
 	const router = useRouter();
-	// Get username details from global context
-	const {userName, fullName} = useAppContext();
-	// TODO: get post count from db
-	const [postCount] = useState(120);
-	const [posts] = useState([
-		// TODO: fetch posts from backend
-		// insert static images for now
-		{ id: "1", image: pic1 },
-		{ id: "2", image: pic2 },
-		{ id: "3", image: pic3 },
-		{ id: "4", image: pic1 },
-		{ id: "5", image: pic2 },
-		{ id: "6", image: pic3 },
-		{ id: "7", image: pic1 },
-		{ id: "8", image: pic2 },
-		{ id: "9", image: pic3 },
-	]);
-	const [likedposts] = useState([
-		// TODO: fetch liked posts from backend
-		{ id: "1", image: pic1 },
-	]);
-	// Post tab is selected by default
-	const [selectedTab, setSelectedTab] = useState<"Posts" | "Liked Posts">("Posts");
+
+	// Get user details from global context with fallbacks
+	const { userName, fullName, userId } = useAppContext();
+	const displayName = fullName || 'User Name';
+	const displayHandle = userName || '@username';
+
+	// State for data that will come from backend
+	const [posts, setPosts] = useState<Post[]>([]);
+	const [likedPosts, setLikedPosts] = useState<Post[]>([]);
+	const [postCount, setPostCount] = useState(0);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+
+	// Tab selection state
+	const [selectedTab, setSelectedTab] = useState<TabType>("Posts");
+
+	// API Functions (replace with your actual API endpoints)
+	const fetchUserPosts = async (): Promise<Post[]> => {
+		try {
+			// TODO: Replace with actual API endpoint
+			// const response = await fetch(`/api/users/${userId}/posts`);
+			// const data = await response.json();
+			// return data;
+
+			// Temporary static data for development
+			await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
+			return [
+				{ id: "1", image: pic1 },
+				{ id: "2", image: pic2 },
+				{ id: "3", image: pic3 },
+				{ id: "4", image: pic1 },
+				{ id: "5", image: pic2 },
+				{ id: "6", image: pic3 },
+				{ id: "7", image: pic1 },
+				{ id: "8", image: pic2 },
+				{ id: "9", image: pic3 },
+			];
+		} catch (error) {
+			console.error('Error fetching user posts:', error);
+			throw error;
+		}
+	};
+
+	const fetchLikedPosts = async (): Promise<Post[]> => {
+		try {
+			// TODO: Replace with actual API endpoint
+			// const response = await fetch(`/api/users/${userId}/liked-posts`);
+			// const data = await response.json();
+			// return data;
+
+			// Temporary static data for development
+			await new Promise(resolve => setTimeout(resolve, 800)); // Simulate network delay
+			return [
+				{ id: "liked-1", image: pic1 },
+			];
+		} catch (error) {
+			console.error('Error fetching liked posts:', error);
+			throw error;
+		}
+	};
+
+	const fetchUserData = async () => {
+		try {
+			setLoading(true);
+			setError(null);
+
+			// Fetch both posts and liked posts concurrently
+			const [userPosts, userLikedPosts] = await Promise.all([
+				fetchUserPosts(),
+				fetchLikedPosts()
+			]);
+
+			setPosts(userPosts);
+			setLikedPosts(userLikedPosts);
+			setPostCount(userPosts.length);
+		} catch (error) {
+			setError('Failed to load posts. Please try again.');
+			console.error('Error fetching user data:', error);
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	// Fetch data on component mount
+	useEffect(() => {
+		if (userId) { // Only fetch if user is logged in
+			fetchUserData();
+		}
+	}, [userId]);
+
+	// Get current tab data
+	const currentTabData = useMemo(() => {
+		return selectedTab === "Posts" ? posts : likedPosts;
+	}, [selectedTab, posts, likedPosts]);
+
+	// Refresh function for pull-to-refresh (if needed)
+	const handleRefresh = () => {
+		fetchUserData();
+	};
+
+	const handleEditProfile = () => {
+		router.push({ pathname: '/profile/edit' });
+	};
+
+	const handlePostPress = (post: Post) => {
+		// TODO: Navigate to post detail page
+		router.push({ pathname: `/posts/${post.id}` });
+	};
+
+	const handleTabPress = (tab: TabType) => {
+		setSelectedTab(tab);
+	};
 
 	return (
 		<ScrollView
 			style={styles.container}
-			stickyHeaderIndices={[2]} // index of the tab bar inside ScrollView
+			stickyHeaderIndices={[2]} // Tab bar is the third child (index 2)
 			showsVerticalScrollIndicator={false}
-			keyboardShouldPersistTaps="handled">
-
+			keyboardShouldPersistTaps="handled"
+		>
 			{/* Header */}
 			<View style={styles.header}>
 				<Text style={styles.headerTitle}>Profile</Text>
-				{/*Todo: maybe remove settings icon?*/}
-				<Ionicons name="settings-outline" size={22} color="#333" />
+				<TouchableOpacity
+					accessibilityRole="button"
+					accessibilityLabel="Settings"
+					hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+				>
+					<Ionicons name="settings-outline" size={22} color="#333" />
+				</TouchableOpacity>
 			</View>
 
-			{/* Profile Picture */}
+			{/* Profile Section */}
 			<View style={styles.profileSection}>
-				{/* TODO: placeholder for profile pic (do we need profile pic?)*/}
-				<Ionicons name="person-circle-outline" size={150} color="#333" />
-				{/*TODO: add this back when BE is implemented*/}
-				{/*<Image*/}
-				{/*	source={{ uri: "https://placehold.co/150x150/FFDAB9/000" }} // profile avatar (do we need this?)*/}
-				{/*	style={styles.avatar}*/}
-				{/*/>*/}
-				<Text style={styles.name}>{fullName}</Text>
-				<Text style={styles.handle}>{userName}</Text>
+				{/* Profile Picture Placeholder */}
+				<View style={styles.avatarContainer}>
+					<Ionicons
+						name="person-circle-outline"
+						size={150}
+						color="#333"
+						accessibilityLabel="Profile picture placeholder"
+					/>
+					{/* TODO: Implement profile picture when backend supports avatar URLs */}
+				</View>
+
+				<Text style={styles.name}>{displayName}</Text>
+				<Text style={styles.handle}>{displayHandle}</Text>
 
 				<TouchableOpacity
 					style={styles.editButton}
-					onPress={() => router.push('/profile/edit')}
+					onPress={handleEditProfile}
+					accessibilityRole="button"
+					accessibilityLabel="Edit profile"
+					hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
 				>
 					<Text style={styles.editButtonText}>Edit Profile</Text>
 				</TouchableOpacity>
@@ -83,44 +257,59 @@ export default function ProfilePage() {
 			</View>
 
 			{/* Tabs */}
-			<View>
+			<View style={styles.tabContainer}>
 				<View style={styles.tabRow}>
-					<TouchableOpacity onPress={() => setSelectedTab("Posts")}>
-						<Text style={[styles.tabText, selectedTab === "Posts" && styles.activeTab]}>
+					<TouchableOpacity
+						onPress={() => handleTabPress("Posts")}
+						accessibilityRole="tab"
+						accessibilityLabel="Posts tab"
+						accessibilityState={{ selected: selectedTab === "Posts" }}
+						hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+					>
+						<Text style={[
+							styles.tabText,
+							selectedTab === "Posts" && styles.activeTab
+						]}>
 							Posts
 						</Text>
+						{selectedTab === "Posts" && <View style={styles.tabIndicator} />}
 					</TouchableOpacity>
 
-					<TouchableOpacity onPress={() => setSelectedTab("Liked Posts")}>
-						<Text style={[styles.tabText, selectedTab === "Liked Posts" && styles.activeTab]}>
+					<TouchableOpacity
+						onPress={() => handleTabPress("Liked Posts")}
+						accessibilityRole="tab"
+						accessibilityLabel="Liked posts tab"
+						accessibilityState={{ selected: selectedTab === "Liked Posts" }}
+						hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+					>
+						<Text style={[
+							styles.tabText,
+							selectedTab === "Liked Posts" && styles.activeTab
+						]}>
 							Liked Posts
 						</Text>
+						{selectedTab === "Liked Posts" && <View style={styles.tabIndicator} />}
 					</TouchableOpacity>
 				</View>
 			</View>
 
-			{/* Tab Content */}
-			<View style={styles.tabContainer}>
-				{/* Posts Tab */}
-				<View style={[
-					styles.grid,
-					selectedTab !== "Posts" && styles.hiddenTab
-				]}>
-					{posts.map((post) => (
-						<Image key={post.id} source={post.image} style={styles.gridImage} />
-					))}
-				</View>
-
-				{/* Liked Posts Tab */}
-				<View style={[
-					styles.grid,
-					selectedTab !== "Liked Posts" && styles.hiddenTab,
-					selectedTab === "Liked Posts" && styles.absolutePosition
-				]}>
-					{likedposts.map((post) => (
-						<Image key={post.id} source={post.image } style={styles.gridImage} />
-					))}
-				</View>
+			{/* Tab Content - Conditional Rendering */}
+			<View style={styles.contentContainer}>
+				{error ? (
+					<View style={styles.errorState}>
+						<Ionicons name="alert-circle-outline" size={48} color="#ff4444" />
+						<Text style={styles.errorText}>{error}</Text>
+						<TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+							<Text style={styles.retryButtonText}>Try Again</Text>
+						</TouchableOpacity>
+					</View>
+				) : (
+					<PostGrid
+						data={currentTabData}
+						loading={loading}
+						onPostPress={handlePostPress}
+					/>
+				)}
 			</View>
 		</ScrollView>
 	);
@@ -147,10 +336,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		paddingVertical: 20,
 	},
-	avatar: {
-		width: 100,
-		height: 100,
-		borderRadius: 50,
+	avatarContainer: {
 		marginBottom: 12,
 	},
 	name: {
@@ -158,6 +344,7 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 		color: "#333",
 		textAlign: "center",
+		marginBottom: 4,
 	},
 	handle: {
 		fontSize: 14,
@@ -190,47 +377,99 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 		color: "#666",
 	},
+	tabContainer: {
+		backgroundColor: "#DDE7FF",
+	},
 	tabRow: {
 		flexDirection: "row",
 		borderBottomWidth: 1,
 		borderBottomColor: "#E0E0E0",
 		paddingVertical: 10,
 		backgroundColor: "#DDE7FF",
-		width: "100%",
 	},
 	tabText: {
 		fontSize: 16,
 		color: "#666",
 		marginHorizontal: 20,
+		paddingBottom: 8,
 	},
 	activeTab: {
 		fontWeight: "700",
 		color: "#333",
 	},
+	tabIndicator: {
+		height: 2,
+		backgroundColor: "#333",
+		marginHorizontal: 20,
+		borderRadius: 1,
+	},
+	contentContainer: {
+		flex: 1,
+		minHeight: 200, // Ensure minimum height for content
+	},
 	grid: {
-		flexDirection: "row",
-		flexWrap: "wrap",
 		padding: 10,
+	},
+	gridRow: {
 		justifyContent: "space-between",
+		paddingHorizontal: 5,
+	},
+	gridImageContainer: {
+		flex: 1,
+		maxWidth: '48%', // Ensures 2 columns with proper spacing
+		marginBottom: 12,
+		marginHorizontal: 5,
 	},
 	gridImage: {
-		width: (width - 40) / 2, // 2 per row
-		height: (width - 40) / 2,
+		width: '100%',
+		aspectRatio: 1, // Square images
 		borderRadius: 12,
-		marginBottom: 12,
 	},
-	tabContainer: {
-		position: 'relative',
+	emptyState: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 60,
 	},
-	hiddenTab: {
-		opacity: 0,
-		position: 'absolute',
-		top: 0,
-		left: 0,
-		right: 0,
+	emptyStateText: {
+		fontSize: 16,
+		color: '#999',
+		marginTop: 12,
 	},
-	absolutePosition: {
-		position: 'relative',
-		opacity: 1,
+	loadingState: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 60,
+	},
+	loadingText: {
+		fontSize: 16,
+		color: '#666',
+		marginTop: 12,
+	},
+	errorState: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 60,
+	},
+	errorText: {
+		fontSize: 16,
+		color: '#ff4444',
+		marginTop: 12,
+		textAlign: 'center',
+		paddingHorizontal: 20,
+	},
+	retryButton: {
+		backgroundColor: '#333',
+		paddingHorizontal: 20,
+		paddingVertical: 10,
+		borderRadius: 8,
+		marginTop: 16,
+	},
+	retryButtonText: {
+		color: 'white',
+		fontSize: 14,
+		fontWeight: '600',
 	},
 });
