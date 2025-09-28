@@ -14,7 +14,7 @@
 - [Process] GitHub repo structure (`docs/`, `src/`, `README.md`)  
 - [Process] Mentor and client meetings (see Wiki for notes)
 
-## Sprint 1 – [01/09 to 26/09]
+## Sprint 2 – [01/09 to 26/09]
 
 **Goal:** Complete core features include user authentication, user profile and personal log & journalling page  
 ### Added
