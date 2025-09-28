@@ -26,19 +26,85 @@ Burnout is a common issue in non-profit and social service organisations because
 
 ## Tech Stack
 
+### Frontend (Mobile App)
+- **Framework**: [React Native](https://reactnative.dev/) with [Expo](https://expo.dev/)
+
+
+### Backend & Database
+- **Backend**: [Firebase Functions](https://firebase.google.com/docs/functions) (Node.js)
+- **Database**: [Firestore](https://firebase.google.com/docs/firestore) (NoSQL)
+- **Authentication**: [Firebase Authentication](https://firebase.google.com/docs/auth)
+- **Storage**: [Firebase Storage](https://firebase.google.com/docs/storage)
+- **Hosting**: [Firebase Hosting](https://firebase.google.com/docs/hosting)
+
+### Development Tools
+- **Version Control**: Git & GitHub
+- **Code Quality**: ChatGPT code review
+- **Build Tool**: Expo CLI
+- **Package Manager**: npm
+- **Development Environment**: Node.js 22+
 
 ---
 
 ## Get Started
+
+### Prerequisites
+Before you begin, ensure you have the following installed:
+- **Node.js** (version 22 or higher)
+- **npm** (comes with Node.js)
+- **Git**
+- **Expo CLI**: `npm install -g @expo/cli`
+- **Firebase CLI**: `npm install -g firebase-tools`
+
 ### Installation
 
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/COMP90082-2025-sem2/RP-Koala.git
+   cd RP-Koala
+   ```
 
-Navigate to the project directory:
+2. **Install Frontend Dependencies**:
+   ```bash
+   cd src/frontend
+   npm install
+   ```
 
----
+3. **Install Backend Dependencies**:
+   ```bash
+   cd ../backend/functions
+   npm install
+   ```
+
+4. **Firebase Setup**:
+   ```bash
+   # Login to Firebase (if not already logged in)
+   firebase login
+   
+   # Navigate to project root and connect to existing Firebase project
+   cd ../../..
+   firebase use comp90018-rp-koala-277f0
+   
+   # Initialize Firebase features (if not already done)
+   firebase init
+   ```
+
+5. **Environment Configuration**:
+   - Create a `.env` file in `src/frontend/` with your Firebase configuration
+   - Get Firebase config from [Firebase Console](https://console.firebase.google.com/u/0/project/comp90018-rp-koala-277f0/settings/general/)
+   - Contact the team for the required environment variables
+
+### Running the Application
+
+#### Frontend Development
+```bash
+cd src/frontend
+
+# Start the development server
+npm expo start
+
+
+```
 
 ## Project Structure
 
