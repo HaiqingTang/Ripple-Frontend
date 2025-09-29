@@ -27,18 +27,21 @@ The app will provide:
 - [User Story Mapping & Sprint Plannings](https://github.com/COMP90082-2025-sem2/RP-Koala/wiki/User-Story-Mapping-&-Sprint-Planning) - User story mappings and sprint plannings
 - [Key Takeaways from Validation Process](https://github.com/COMP90082-2025-sem2/RP-Koala/wiki/Key-Takeaways-from-Validation-Process) - Takeaways from Prototype Validation with Industry Partners
 - [Sprint Reviews & Retrospectives](https://github.com/COMP90082-2025-sem2/RP-Koala/wiki/Sprint-Reviews-and-Retrospective)
+- [Sprint 2 Product Demonstration](https://github.com/COMP90082-2025-sem2/RP-Koala/wiki/Product-Demonstration-&-Deployment-%E2%80%90-Sprint-2)
 
 ---
 
 ## 🛠️ How to Navigate
 The sidebar (right) is organised top-to-bottom:  
-1. **Project Overview** – context first  
-2. **Frameworks** – DO BE FEEL, Personas  
-3. **Requirements** – User Stories
-4. **Sprint Planning** - User Story Mapping and Sprint 2 Planning
-5. **Takeaways from Validation Process** - Takeaways from Prototype Validation with Industry Partners
-6. **Meeting Records** – Mentor, Client, Team notes by week  
-7. **Task Updates** – sprint-level tracking
+1. **Home** – welcome and introduction  
+2. **Project Planning & Analysis** – overall project organisation  
+3. **Sprint Planning & User Story Mapping** – backlog and sprint planning  
+4. **Sprint Reviews** – outcomes of each sprint  
+5. **Sprint Retrospectives** – team reflections and lessons learned  
+6. **Code Review Process** – approach to AI-assisted and manual code reviews  
+7. **Submission Feedback** – mentor/teaching staff feedback and responses 
+8. **Sprint 2 Product Demonstration** - Product Demonstration & Deployment for Sprint 2
+9. **Client Meeting Minutes** – notes from client, mentor and team meetings by week  
 
 ---
 ## 🎥 Sprint 1 - Client Feedback Video

@@ -15,9 +15,24 @@ RiPPLE is a comprehensive mobile application designed to address burnout among m
 * **Impact** - As a result, young frontline workers often experience emotional exhaustion, disconnection from work and diminished feelings of accomplishment, leading to low retention rate of employees in the community services sector, lower productivity and declining morale.
 
 ### 2.2. Client Goals and Motivations
-* **Goal:** Develop a functional Mobile MVP for RiPPLE Platform
-* **Objective:** Create a working minimum viable product for an iOS mobile app that includes all core features for user experience testing
-* **Specific Deliverables:** Mobile application with 7 core features:<br>
+**Client Introduction**<br>
+The RiPPLE project is supported by Mirela, a strategy and innovation consultant with extensive experience in the for-profit and health care sectors. Acting as an industry partner for the University of Melbourne final-year IT students, the client brings expertise in creating supportive environments where innovative teams can thrive.<br>
+Through collaboration with students and research into the social services workforce, the client identified a critical gap: burnout disproportionately affects early-career frontline workers in the social sector, who often feel isolated, unsupported, and disillusioned.<br>
+
+**Motivation:**  
+Mirela is passionate about addressing this issue by:  
+
+- Supporting the next generation of social service workers in building resilience  
+- Providing tools for holistic wellbeing that empower individuals to thrive rather than exit the sector  
+- Creating a sustainable community platform that helps reduce professional isolation  
+
+**Goal:** 
+1. Develop a functional Mobile MVP for RiPPLE Platform
+2. Enable user experience testing to validate whether peer connection and wellbeing-focused tools can reduce burnout risk<br>
+
+**Objective:** Create a working minimum viable product for an iOS mobile app that includes all core features for user experience testing<br>
+
+**Specific Deliverables:** Mobile application with 7 core features:<br>
        (1) wellbeing check-in that can track emotional and energy levels<br>
        (2) journaling feature where users can drop in their thoughts on the go<br>
        (3) community feed for members to post useful and uplifting tips<br>
@@ -25,7 +40,8 @@ RiPPLE is a comprehensive mobile application designed to address burnout among m
        (5) selecting topics of interest to get feeds (i.e. fitness, art, nutrition etc)<br>
        (6) joining different challenges<br>
        (7) rewards (i.e. discounts by local businesses (i.e. gym membership, yoga classes etc)<br>
-* **Justification:** This MVP directly addresses the gap identified in the client's previous research - no existing solution combines sector-specific understanding, peer-driven support, and accessible technology for community service workers. Success with this targeted MVP would help serve as a Proof-of-Concept for testing the fundamental hypothesis - that peer connection and through this platform can meaningfully reduce professional isolation and burnout risk.
+
+**Justification:** This MVP directly addresses the gap identified in the client's previous research - no existing solution combines sector-specific understanding, peer-driven support, and accessible technology for community service workers. Success with this targeted MVP would help serve as a Proof-of-Concept for testing the fundamental hypothesis - that peer connection and through this platform can meaningfully reduce professional isolation and burnout risk.
 
 ### 2.3. Project Scope (Team Deliverables)
 Our goal is to develop a minimum viable product (MVP), specifically focusing on four of the core features: user authentication system, profile management system, journaling, and community discussion board.<br>
