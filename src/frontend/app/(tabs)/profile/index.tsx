@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import pic1 from '@/assets/images/profile-post-1.png';
 import pic2 from '@/assets/images/profile-post-2.png';
 import pic3 from '@/assets/images/profile-post-3.png';
+import ProfilePicture from '@/components/ProfilePicture';
 
 const { width } = Dimensions.get("window");
 
@@ -226,19 +227,9 @@ export default function ProfilePage() {
 
 			{/* Profile Section */}
 			<View style={styles.profileSection}>
-				{/* Profile Picture Placeholder */}
-				<View style={styles.avatarContainer}>
-					<Ionicons
-						name="person-circle-outline"
-						size={150}
-						color="#333"
-						accessibilityLabel="Profile picture placeholder"
-					/>
-					{/* TODO: Implement profile picture when backend supports avatar URLs */}
-				</View>
-
-				<Text style={styles.name}>{displayName}</Text>
-				<Text style={styles.handle}>{displayHandle}</Text>
+				<ProfilePicture size={150} showEditButton={false} />
+				<Text style={styles.name}>{fullName}</Text>
+				<Text style={styles.handle}>{userName}</Text>
 
 				<TouchableOpacity
 					style={styles.editButton}
