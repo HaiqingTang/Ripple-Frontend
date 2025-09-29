@@ -9,22 +9,76 @@ import {
 	KeyboardAvoidingView,
 	Platform,
 	TouchableWithoutFeedback,
-	Keyboard, Alert,
+	Keyboard,
+	Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import CustomButton from '@/components/CustomButton';
-import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from 'firebase/auth';
-import {auth, db} from '@/lib/firebase';
+import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification, deleteUser } from 'firebase/auth';
+import { auth, db } from '@/lib/firebase';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { doc, setDoc} from "@firebase/firestore";
 import {useAppContext} from "@/context/AppContext";
 
 
+
+// Reusable Password Input Component
+interface PasswordInputProps {
+	label: string;
+	value: string;
+	onChangeText: (text: string) => void;
+	placeholder?: string;
+	showPassword: boolean;
+	onTogglePassword: () => void;
+	helperText?: string;
+	autoComplete?: 'off' | 'password' | 'new-password';
+}
+
+const PasswordInput: React.FC<PasswordInputProps> = ({
+	                                                     label,
+	                                                     value,
+	                                                     onChangeText,
+	                                                     placeholder = "••••••••",
+	                                                     showPassword,
+	                                                     onTogglePassword,
+	                                                     helperText,
+	                                                     autoComplete = 'new-password'
+                                                     }) => (
+	<View style={styles.inputContainer}>
+		<Text style={styles.label}>{label}</Text>
+		<View style={styles.passwordContainer}>
+			<TextInput
+				style={styles.passwordInput}
+				placeholder={placeholder}
+				placeholderTextColor="#9BA1A6"
+				value={value}
+				onChangeText={onChangeText}
+				secureTextEntry={!showPassword}
+				autoCapitalize="none"
+				autoCorrect={false}
+				autoComplete={autoComplete}
+			/>
+			<TouchableOpacity
+				onPress={onTogglePassword}
+				style={styles.eyeButton}
+			>
+				<Ionicons
+					name={showPassword ? 'eye' : 'eye-off'}
+					size={20}
+					color="#9BA1A6"
+				/>
+			</TouchableOpacity>
+		</View>
+		{helperText && <Text style={styles.helperText}>{helperText}</Text>}
+	</View>
+);
+
 export default function SignUpPage() {
-  const router = useRouter();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+	const router = useRouter();
+	const [firstName, setFirstName] = useState('');
+	const [lastName, setLastName] = useState('');
 	const [organization, setOrganization] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -324,111 +378,111 @@ export default function SignUpPage() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'white',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingBottom: 20,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F5F5F5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  form: {
-    flex: 1,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    textAlign: 'center',
-    marginBottom: 40,
-  },
-  errorText: {
-    color: 'red',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  nameContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  nameInputContainer: {
-    flex: 0.48,
-  },
-  inputContainer: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2C3E50',
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#2C3E50',
-    backgroundColor: 'white',
-  },
-  passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
-    backgroundColor: 'white',
-  },
-  passwordInput: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#2C3E50',
-  },
-  eyeButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#9BA1A6',
-    marginTop: 4,
-  },
-  signupButton: {
-    width: '100%',
-    marginTop: 32,
-    marginBottom: 24,
-  },
-  termsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  termsText: {
-    fontSize: 14,
-    color: '#9BA1A6',
-    textAlign: 'center',
-  },
-  termsLink: {
-    fontSize: 14,
-    color: '#4A90E2',
-    textDecorationLine: 'underline',
-  },
+	container: {
+		flex: 1,
+		backgroundColor: 'white',
+	},
+	header: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingHorizontal: 10,
+		paddingBottom: 20,
+	},
+	backButton: {
+		width: 40,
+		height: 40,
+		borderRadius: 20,
+		backgroundColor: '#F5F5F5',
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	form: {
+		flex: 1,
+		paddingTop: 20,
+		paddingHorizontal: 20,
+	},
+	title: {
+		fontSize: 24,
+		fontWeight: 'bold',
+		color: '#2C3E50',
+		textAlign: 'center',
+		marginBottom: 40,
+	},
+	errorText: {
+		color: 'red',
+		marginBottom: 10,
+		textAlign: 'center',
+	},
+	nameContainer: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		marginBottom: 24,
+	},
+	nameInputContainer: {
+		flex: 0.48,
+	},
+	inputContainer: {
+		marginBottom: 24,
+	},
+	label: {
+		fontSize: 16,
+		fontWeight: '600',
+		color: '#2C3E50',
+		marginBottom: 8,
+	},
+	input: {
+		borderWidth: 1,
+		borderColor: '#E0E0E0',
+		borderRadius: 8,
+		paddingHorizontal: 16,
+		paddingVertical: 12,
+		fontSize: 16,
+		color: '#2C3E50',
+		backgroundColor: 'white',
+	},
+	passwordContainer: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderWidth: 1,
+		borderColor: '#E0E0E0',
+		borderRadius: 8,
+		backgroundColor: 'white',
+	},
+	passwordInput: {
+		flex: 1,
+		paddingHorizontal: 16,
+		paddingVertical: 12,
+		fontSize: 16,
+		color: '#2C3E50',
+	},
+	eyeButton: {
+		paddingHorizontal: 16,
+		paddingVertical: 12,
+	},
+	helperText: {
+		fontSize: 12,
+		color: '#9BA1A6',
+		marginTop: 4,
+	},
+	signupButton: {
+		width: '100%',
+		marginTop: 32,
+		marginBottom: 24,
+	},
+	termsContainer: {
+		flexDirection: 'row',
+		flexWrap: 'wrap',
+		justifyContent: 'center',
+		paddingHorizontal: 20,
+	},
+	termsText: {
+		fontSize: 14,
+		color: '#9BA1A6',
+		textAlign: 'center',
+	},
+	termsLink: {
+		fontSize: 14,
+		color: '#4A90E2',
+		textDecorationLine: 'underline',
+	},
 });
