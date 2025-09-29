@@ -77,6 +77,7 @@ export default function JournalPage() {
 		setSelectedTags(selectedTags.filter(tag => tag !== tagToRemove));
 	};
 
+
 	const handleAddToLog = () => {
 		if (!journalText.trim()) {
 			return; // Button will be disabled anyway
@@ -113,19 +114,12 @@ export default function JournalPage() {
 						<Text style={styles.cardTitle}>Some questions for you today...</Text>
 
 						<View style={styles.promptsContainer}>
-							<Text style={styles.promptText}>• What's been weighing on your mind lately?</Text>
+							<Text style={styles.promptText}>• What&apos;s been weighing on your mind lately?</Text>
 							<Text style={styles.promptText}>• What 3 things are you grateful for today?</Text>
-							<Text style={styles.promptText}>• What's something you're proud of recently?</Text>
+							<Text style={styles.promptText}>• What&apos;s something you&apos;re proud of recently?</Text>
 						</View>
 
-
-  const addTag = (tag: string) => {
-    if (!selectedTags.includes(tag)) {
-      setSelectedTags([...selectedTags, tag]);
-    }
-  };
-
-						<TextInput
+					<TextInput
 							style={styles.journalInput}
 							placeholder="Start writing your thoughts here..."
 							placeholderTextColor="#999"
