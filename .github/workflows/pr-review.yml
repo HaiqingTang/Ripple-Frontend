@@ -9,44 +9,56 @@ permissions:
 
 jobs:
   review:
-    name: Hugging Face code review
+    name: AI Code Review (Space)
     runs-on: ubuntu-latest
     env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_MODEL: meta-llama/Llama-3.1-8B-Instruct
+      # ⚠️ 你的 Space 访问地址（username-spacename.hf.space）
+      SPACE_URL: https://haiqing19-pr-review.hf.space
+      # 为了控制 payload 体积，这里做一次轻裁剪；Space 内还有分片保护
+      MAX_CHARS: "48000"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Ping Space /health
+        run: |
+          set -e
+          echo "Pinging $SPACE_URL/health ..."
+          curl -sS "$SPACE_URL/health"
+
       - name: Get PR diff
         run: |
           git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
-          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > pr.diff
-          head -c 12000 pr.diff > pr_trimmed.diff
+          git diff --unified=3 origin/${{ github.event.pull_request.base.ref }}...HEAD > pr.diff
+          head -c "$MAX_CHARS" pr.diff > pr_trimmed.diff
+          echo "::group::Diff sizes"
+          wc -c pr.diff pr_trimmed.diff || true
+          echo "::endgroup::"
 
-      - name: Build prompt
+      - name: Call Space /review
         run: |
-          echo "You are a code reviewer. Review this PR diff and give concise, actionable feedback in markdown bullet points." > prompt.txt
-          echo "\nDIFF:\n\`\`\`diff" >> prompt.txt
-          cat pr_trimmed.diff >> prompt.txt
-          echo "\`\`\`" >> prompt.txt
+          jq -n --rawfile d pr_trimmed.diff '{diff:$d}' > payload.json
+          echo "::group::Calling Space"
+          http_code=$(curl -sS -w "%{http_code}" -o response.json \
+            -X POST "$SPACE_URL/review" \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json || echo "000")
+          echo "HTTP $http_code"
+          echo "::endgroup::"
 
-      - name: Call Hugging Face API
-        run: |
-          jq -n --rawfile text prompt.txt \
-            '{inputs: $text, parameters: {max_new_tokens: 400, temperature: 0.2}}' > payload.json
-
-          curl -s -H "Authorization: Bearer $HF_TOKEN" \
-               -H "Content-Type: application/json" \
-               -X POST https://api-inference.huggingface.co/models/$HF_MODEL \
-               --data-binary @payload.json > response.json
-
-          if jq -e '.[0].generated_text' response.json >/dev/null 2>&1; then
-            jq -r '.[0].generated_text' response.json > review.md
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "Space returned HTTP $http_code"
+            echo "Response:"
+            cat response.json || true
+            # 兜底，避免整条流水线失败，可按需改为 `exit 1`
+            echo "⚠️ Space error ($http_code). See logs below.\n\n\`\`\`json" > review.md
+            cat response.json >> review.md || true
+            echo "\n\`\`\`" >> review.md
           else
-            echo "⚠️ HF review failed or empty response." > review.md
+            jq -r '.review // "⚠️ Space returned no review."' response.json > review.md
           fi
 
       - name: Comment on PR
@@ -59,5 +71,6 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: "🧠 **HF Review (meta-llama/Llama-3.1-8B-Instruct)**\n\n" + body
+              body: "🧠 **AI Review (Space)**\n\n" + body
             });
+
