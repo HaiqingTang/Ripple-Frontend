@@ -87,6 +87,12 @@ export default function JournalPage() {
 
 	const isSubmitDisabled = !journalText.trim();
 
+	const addTag = (tag: string) => {
+		if (!selectedTags.includes(tag)) {
+			setSelectedTags([...selectedTags, tag]);
+		}
+	};
+
 	return (
 		<SafeAreaView style={styles.container}>
 			{/* Header */}
@@ -117,13 +123,6 @@ export default function JournalPage() {
 							<Text style={styles.promptText}>• What 3 things are you grateful for today?</Text>
 							<Text style={styles.promptText}>• What's something you're proud of recently?</Text>
 						</View>
-
-
-  const addTag = (tag: string) => {
-    if (!selectedTags.includes(tag)) {
-      setSelectedTags([...selectedTags, tag]);
-    }
-  };
 
 						<TextInput
 							style={styles.journalInput}
