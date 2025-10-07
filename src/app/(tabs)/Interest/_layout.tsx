@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { View, ActivityIndicator } from "react-native";
-import { auth } from "@/firebase";
+import { auth } from "../../../firebase";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,

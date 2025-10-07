@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Alert } from "react-native";
-import { auth } from "@/firebase";
+import { auth } from "../../../firebase";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
