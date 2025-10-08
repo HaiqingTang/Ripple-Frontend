@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect } from "react";
+// app/(tabs)/Challenge/myChallenges.tsx
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -13,7 +14,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { db, auth } from "../../../firebase";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 
 type Item = {
   id: string;
@@ -24,7 +32,7 @@ type Item = {
   percent: number;
   reward: string;
   category?: string;
-  status?: string;
+  status?: "active" | "completed";
 };
 
 const BOTTOM_SPACER = 64;
@@ -38,55 +46,48 @@ export default function CurrentChallengeList() {
   const [completed, setCompleted] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 订阅: userChallenges/<uid>/active 按 status 列表
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
-    // ✅ 从用户专属子集合读取挑战（推荐结构：users/<uid>/challenges）
-    const ongoingQ = query(
-      collection(db, "users", uid, "challenges"),
-      where("status", "==", "ongoing")
-    );
-    const completedQ = query(
-      collection(db, "users", uid, "challenges"),
-      where("status", "==", "completed")
-    );
+    const baseCol = collection(db, "userChallenges", uid, "active");
+    const ongoingQ = query(baseCol, where("status", "==", "active"));
+    const completedQ = query(baseCol, where("status", "==", "completed"));
 
     const unsubOngoing = onSnapshot(ongoingQ, (snap) => {
-      const list: Item[] = [];
-      snap.forEach((doc) => {
-        const d = doc.data() as any;
-        list.push({
-          id: doc.id,
-          title: d.title || "Untitled Challenge",
-          icon: d.icon || "🔥",
-          days: d.days || 0,
-          joined: d.joined || 0,
-          percent: d.percent || 0,
-          reward: d.reward || "",
-          category: d.category || "general",
-          status: d.status,
-        });
+      const list: Item[] = snap.docs.map((d) => {
+        const x = d.data() as any;
+        return {
+          id: d.id,
+          title: x.title || "Untitled Challenge",
+          icon: x.icon || "🔥",
+          days: Number(x.totalDays ?? x.days ?? 0),
+          joined: 0, // 先置 0，下面单独订阅 public joined
+          percent: Number(x.progress ?? 0),
+          reward: x.reward || "",
+          category: x.category || "",
+          status: x.status || "active",
+        };
       });
       setOngoing(list);
       setLoading(false);
     });
 
     const unsubCompleted = onSnapshot(completedQ, (snap) => {
-      const list: Item[] = [];
-      snap.forEach((doc) => {
-        const d = doc.data() as any;
-        list.push({
-          id: doc.id,
-          title: d.title || "Untitled Challenge",
-          icon: d.icon || "🏁",
-          days: d.days || 0,
-          joined: d.joined || 0,
+      const list: Item[] = snap.docs.map((d) => {
+        const x = d.data() as any;
+        return {
+          id: d.id,
+          title: x.title || "Untitled Challenge",
+          icon: x.icon || "🏁",
+          days: Number(x.totalDays ?? x.days ?? 0),
+          joined: 0,
           percent: 100,
-          reward: d.reward || "",
-          category: d.category || "general",
-          status: d.status,
-        });
+          reward: x.reward || "",
+          category: x.category || "",
+          status: x.status || "completed",
+        };
       });
       setCompleted(list);
     });
@@ -97,6 +98,74 @@ export default function CurrentChallengeList() {
     };
   }, []);
 
+  // ⭐ 为每个条目订阅 public 集合中的 joined（challenges/{category}/items/{id}）
+  const joinedUnsubs = useRef<(() => void)[]>([]);
+  useEffect(() => {
+    // 清理上一次所有订阅
+    joinedUnsubs.current.forEach((u) => u());
+    joinedUnsubs.current = [];
+
+    const attach = (
+      items: Item[],
+      setList: React.Dispatch<React.SetStateAction<Item[]>>
+    ) => {
+      items.forEach((it) => {
+        if (!it.category || !it.id) return;
+
+        const ref = doc(db, "challenges", it.category, "items", it.id);
+
+        // 先读一次，避免首屏显示 0
+        getDoc(ref)
+          .then((snap) => {
+            const j = Number(snap.data()?.joined ?? 0);
+            setList((prev) =>
+              prev.map((x) =>
+                x.id === it.id ? { ...x, joined: Number.isFinite(j) ? j : 0 } : x
+              )
+            );
+          })
+          .catch((e) =>
+            console.warn("[joined] getDoc error:", it.category, it.id, e?.message)
+          );
+
+        // 实时订阅
+        const unsub = onSnapshot(
+          ref,
+          (snap) => {
+            const j = Number(snap.data()?.joined ?? 0);
+            setList((prev) =>
+              prev.map((x) =>
+                x.id === it.id ? { ...x, joined: Number.isFinite(j) ? j : 0 } : x
+              )
+            );
+          },
+          (err) =>
+            console.warn(
+              "[joined] onSnapshot error:",
+              it.category,
+              it.id,
+              err?.message
+            )
+        );
+
+        joinedUnsubs.current.push(unsub);
+      });
+    };
+
+    attach(ongoing, setOngoing);
+    attach(completed, setCompleted);
+
+    return () => {
+      joinedUnsubs.current.forEach((u) => u());
+      joinedUnsubs.current = [];
+    };
+    // 当“列表的组成（id+category）”变化时重建订阅
+  }, [
+    JSON.stringify(ongoing.map((i) => [i.id, i.category])),
+    JSON.stringify(completed.map((i) => [i.id, i.category])),
+  ]);
+
+  // 搜索过滤
   const filtered = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return { ongoing, completed };
@@ -104,16 +173,17 @@ export default function CurrentChallengeList() {
     return { ongoing: ongoing.filter(match), completed: completed.filter(match) };
   }, [q, ongoing, completed]);
 
+  // 跳转
   const toCheckin = (c: Item) => {
     router.push({
-      pathname: "/Challenge/challengeCheckin",
+      pathname: "/(tabs)/Challenge/challengeCheckin",
       params: { challengeId: c.id, category: c.category },
     });
   };
 
   const toCompletedDetail = (c: Item) => {
     router.push({
-      pathname: "/Challenge/completedChallenge",
+      pathname: "/(tabs)/Challenge/completedChallenge",
       params: {
         challengeId: c.id,
         category: c.category,
@@ -124,6 +194,7 @@ export default function CurrentChallengeList() {
     });
   };
 
+  // 卡片
   const renderCard = (c: Item, isCompleted: boolean) => (
     <View key={`${isCompleted ? "done-" : "go-"}${c.id}`} style={styles.card}>
       <Text style={styles.cardTitle}>
@@ -137,7 +208,7 @@ export default function CurrentChallengeList() {
           <Text style={styles.metaTextDark}>{c.days} days</Text>
         </View>
         <View style={styles.metaItem}>
-          <Ionicons name="person-outline" size={18} color="#000" />
+          <Ionicons name="people-outline" size={18} color="#000" />
           <Text style={styles.metaTextDark}>{c.joined} joined</Text>
         </View>
       </View>
@@ -310,8 +381,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  rewardChip: { backgroundColor: "#4F46E5", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
+  rewardChip: {
+    backgroundColor: "#4F46E5",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
   rewardText: { color: "#fff", fontWeight: "800" },
-  actionBtn: { backgroundColor: "#6B7AFF", paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999 },
+  actionBtn: {
+    backgroundColor: "#6B7AFF",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
   actionText: { color: "#fff", fontWeight: "800", textTransform: "lowercase" },
 });
