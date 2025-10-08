@@ -1,3 +1,4 @@
+// app/(tabs)/Challenge/challengeCheckin.tsx
 import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
@@ -159,10 +160,21 @@ export default function ChallengeCheckin() {
     );
   };
 
-  /* ---------- 兜底：如果没带 challengeId，从用户 active 里取一个 ---------- */
+  /* ---------- 关键：同步路由参数到本地状态（防止兜底误触发） ---------- */
+  useEffect(() => {
+    if (typeof params.challengeId === "string" && params.challengeId.trim()) {
+      setCid(params.challengeId.trim());
+    }
+    if (typeof params.category === "string" && params.category.trim()) {
+      setCategory(params.category.trim());
+    }
+  }, [params.challengeId, params.category]);
+
+  /* ---------- 兜底：如果没带 challengeId，再从用户 active 里取一个 ---------- */
   useEffect(() => {
     (async () => {
-      if (cid) return;
+      if (cid) return;                  // 已有 cid 不兜底
+      if (params.challengeId !== undefined) return; // 路由有字段（哪怕空），先等同步 effect
       const uid = auth.currentUser?.uid;
       if (!uid) return;
       try {
@@ -182,7 +194,7 @@ export default function ChallengeCheckin() {
         console.log("[fallback cid] error:", e);
       }
     })();
-  }, [cid]);
+  }, [cid, params.challengeId]);
 
   /* ---------- 读取用户实例：userChallenges/<uid>/active/<cid> ---------- */
   useEffect(() => {
@@ -220,7 +232,7 @@ export default function ChallengeCheckin() {
           .map((x) => x.getDate());
         setMarkedDays(selected);
 
-        // 读取“今天”的 note（有的话回填）
+        // 读取今天的 note（有则回填）
         const todayId = ymd(new Date());
         const noteRef = doc(db, "userChallenges", uid, "active", cid, "checkins", todayId);
         const noteSnap = await getDoc(noteRef);
@@ -232,8 +244,7 @@ export default function ChallengeCheckin() {
         console.error("initial load error:", e);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid]);
+  }, [cid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------- 订阅 joined：/challenges/{category}/items/{cid} ---------- */
   useEffect(() => {
@@ -304,7 +315,7 @@ export default function ChallengeCheckin() {
           });
         }
 
-        // 1) 主文档追加当日打卡痕迹
+        // 1) 主文档记录今天的打卡
         await updateDoc(ref, {
           checkins: arrayUnion(todayStr),
           lastNote: note || "",
@@ -312,8 +323,7 @@ export default function ChallengeCheckin() {
           lastCheckinAt: serverTimestamp(),
         });
 
-        // 2) 写“当天的 note 子文档”，路径：
-        // userChallenges/{uid}/active/{cid}/checkins/{YYYY-MM-DD}
+        // 2) 写当天 note 子文档：userChallenges/{uid}/active/{cid}/checkins/{YYYY-MM-DD}
         const noteRef = doc(
           db,
           "userChallenges",
@@ -333,7 +343,7 @@ export default function ChallengeCheckin() {
           { merge: true } // 幂等：当天重复打卡则覆盖
         );
 
-        // 3) 重新读取计算进度并回写
+        // 3) 回写进度
         const latest = await getDoc(ref);
         const data = (latest.data() || {}) as UserChallengeDoc;
         const list = (data.checkins ?? []).filter(Boolean);

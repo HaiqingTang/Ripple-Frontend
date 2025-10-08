@@ -33,11 +33,20 @@ type Item = {
   reward: string;
   category?: string;
   status?: "active" | "completed";
+  checkedToday?: boolean; // ⬅️ 新增：今天是否已打卡
 };
 
 const BOTTOM_SPACER = 64;
 const BLUE = "#DDE7FF";
 const DEEP = "#6B7AFF";
+
+// 小工具：YYYY-MM-DD
+const ymd = (d = new Date()) => {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+};
+const TODAY = ymd();
 
 export default function CurrentChallengeList() {
   const router = useRouter();
@@ -58,6 +67,16 @@ export default function CurrentChallengeList() {
     const unsubOngoing = onSnapshot(ongoingQ, (snap) => {
       const list: Item[] = snap.docs.map((d) => {
         const x = d.data() as any;
+
+        // 计算今天是否已打卡：优先用 checkins 数组，其次用 lastCheckinAt
+        let checkedToday = Array.isArray(x.checkins) && x.checkins.includes?.(TODAY);
+        if (!checkedToday && x.lastCheckinAt) {
+          try {
+            const ts = x.lastCheckinAt?.toDate?.() ?? (x.lastCheckinAt.seconds ? new Date(x.lastCheckinAt.seconds * 1000) : null);
+            if (ts) checkedToday = ymd(ts) === TODAY;
+          } catch {}
+        }
+
         return {
           id: d.id,
           title: x.title || "Untitled Challenge",
@@ -68,6 +87,7 @@ export default function CurrentChallengeList() {
           reward: x.reward || "",
           category: x.category || "",
           status: x.status || "active",
+          checkedToday,
         };
       });
       setOngoing(list);
@@ -77,6 +97,15 @@ export default function CurrentChallengeList() {
     const unsubCompleted = onSnapshot(completedQ, (snap) => {
       const list: Item[] = snap.docs.map((d) => {
         const x = d.data() as any;
+
+        let checkedToday = Array.isArray(x.checkins) && x.checkins.includes?.(TODAY);
+        if (!checkedToday && x.lastCheckinAt) {
+          try {
+            const ts = x.lastCheckinAt?.toDate?.() ?? (x.lastCheckinAt.seconds ? new Date(x.lastCheckinAt.seconds * 1000) : null);
+            if (ts) checkedToday = ymd(ts) === TODAY;
+          } catch {}
+        }
+
         return {
           id: d.id,
           title: x.title || "Untitled Challenge",
@@ -87,6 +116,7 @@ export default function CurrentChallengeList() {
           reward: x.reward || "",
           category: x.category || "",
           status: x.status || "completed",
+          checkedToday,
         };
       });
       setCompleted(list);
@@ -159,7 +189,6 @@ export default function CurrentChallengeList() {
       joinedUnsubs.current.forEach((u) => u());
       joinedUnsubs.current = [];
     };
-    // 当“列表的组成（id+category）”变化时重建订阅
   }, [
     JSON.stringify(ongoing.map((i) => [i.id, i.category])),
     JSON.stringify(completed.map((i) => [i.id, i.category])),
@@ -173,12 +202,25 @@ export default function CurrentChallengeList() {
     return { ongoing: ongoing.filter(match), completed: completed.filter(match) };
   }, [q, ongoing, completed]);
 
-  // 跳转
+  // 跳转：今天已打卡 -> completedChallenge；否则去 checkin
   const toCheckin = (c: Item) => {
-    router.push({
-      pathname: "/(tabs)/Challenge/challengeCheckin",
-      params: { challengeId: c.id, category: c.category },
-    });
+    if (c.checkedToday) {
+      // 直接用“查看”逻辑
+      router.push({
+        pathname: "/(tabs)/Challenge/completedChallenge",
+        params: {
+          challengeId: c.id,
+          category: c.category,
+          title: c.title,
+          totalDays: String(c.days),
+          joined: String(c.joined),
+        },
+      });
+      return;
+    }
+    const id = encodeURIComponent(c.id);
+    const cat = encodeURIComponent(c.category || "");
+    router.push(`/(tabs)/Challenge/challengeCheckin?challengeId=${id}&category=${cat}`);
   };
 
   const toCompletedDetail = (c: Item) => {
@@ -242,7 +284,8 @@ export default function CurrentChallengeList() {
             onPress={() => toCheckin(c)}
             android_ripple={{ color: "#E0E7FF" }}
           >
-            <Text style={styles.actionText}>check in</Text>
+            {/* 今天已打卡，按钮文案也换成 view，更直观 */}
+            <Text style={styles.actionText}>{c.checkedToday ? "view" : "check in"}</Text>
           </Pressable>
         )}
       </View>
