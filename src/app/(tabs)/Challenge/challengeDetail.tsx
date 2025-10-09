@@ -23,95 +23,129 @@ import {
   increment,
 } from "firebase/firestore";
 
+type RewardConfig = {
+  name?: string;
+  vendor?: string;
+  logoUri?: string;
+  value?: string;
+};
+
 type ChallengeDoc = {
   title?: string;
   desc?: string;
   days?: number;
   joined?: number;
-  reward?: string;
+  capacity?: number;
   cover?: string;
   category?: string;
-  createdAt?: any;
+  rewardConfig?: RewardConfig;
 };
 
 export default function ChallengeDetail() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string; category?: string }>();
+  const params = useLocalSearchParams<{ id?: string | string[]; category?: string | string[] }>();
+
+  const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const rawCat = Array.isArray(params.category) ? params.category[0] : params.category;
+  const challengeId = rawId || "";
+  const category = (rawCat || "nutrition").toLowerCase();
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ChallengeDoc | null>(null);
+  const [alreadyJoined, setAlreadyJoined] = useState(false);
 
-  const challengeId = params.id || "";
-  const category = params.category || "nutrition";
+  // Smart back logic
+  const goBackSmart = () => {
+    if (router.canGoBack?.()) router.back();
+    else
+      router.replace({
+        pathname: "/(tabs)/Challenge/nutritionChallengeList",
+        params: { category },
+      } as any);
+  };
 
-  // 从 Firestore 读取挑战详情
+  // Fetch challenge info
   useEffect(() => {
     const fetchData = async () => {
       try {
+        if (!challengeId) return;
         const ref = doc(db, "challenges", category, "items", challengeId);
         const snap = await getDoc(ref);
-        if (snap.exists()) {
-          setData(snap.data() as ChallengeDoc);
-        } else {
-          console.warn("Challenge not found");
+        if (snap.exists()) setData(snap.data() as ChallengeDoc);
+        else {
           Alert.alert("Not Found", "Challenge no longer exists.");
-          router.back();
+          goBackSmart();
         }
       } catch (e: any) {
         console.error("fetch challenge error:", e);
         Alert.alert("Error", e?.message || "Failed to load challenge.");
+        goBackSmart();
       } finally {
         setLoading(false);
       }
     };
-    if (challengeId) fetchData();
+    fetchData();
   }, [challengeId, category]);
 
-  //  加入挑战并更新参与人数
+  // Check if already joined
+  useEffect(() => {
+    const checkJoined = async () => {
+      const uid = auth.currentUser?.uid;
+      if (!uid || !challengeId) return;
+      const ref = doc(db, "userChallenges", uid, "active", challengeId);
+      const snap = await getDoc(ref);
+      setAlreadyJoined(snap.exists());
+    };
+    checkJoined();
+  }, [challengeId]);
+
+  // Join logic
   const onJoin = async () => {
-  const uid = auth.currentUser?.uid;
-  if (!uid || !data) {
-    Alert.alert("Error", "You must be signed in to join a challenge.");
-    return;
-  }
-
-  try {
-    const userRef = doc(db, "userChallenges", uid, "active", challengeId);
-    const globalRef = doc(db, "challenges", category, "items", challengeId);
-
-    // 1) 先查用户是否已加入，避免重复 +1
-    const existing = await getDoc(userRef);
-    if (existing.exists()) {
-      Alert.alert("Already joined", "You've already joined this challenge.");
-      // 可选：直接跳到当前挑战页
-      // router.push("/(tabs)/Challenge/currentChallengeList");
+    const uid = auth.currentUser?.uid;
+    if (!uid || !data) {
+      Alert.alert("Error", "You must be signed in to join a challenge.");
       return;
     }
 
-    // 2) 写入用户参与记录
-    await setDoc(userRef, {
-      title: data.title || "",
-      desc: data.desc || "",
-      totalDays: data.days || 20,
-      daysCompleted: 0,
-      progress: 0,
-      reward: data.reward || "",
-      cover: data.cover || "",
-      category: data.category || category,
-      joinedAt: serverTimestamp(),
-      challengeId, // 方便排查
-    });
+    // Capacity limit
+    if (data.capacity && (data.joined || 0) >= data.capacity) {
+      Alert.alert("Full", "This challenge has reached its participant limit.");
+      return;
+    }
 
-    // 3) 只有第一次加入才全局 joined +1
-    await updateDoc(globalRef, { joined: increment(1) });
+    // Already joined
+    if (alreadyJoined) {
+      Alert.alert("Already joined", "You've already joined this challenge.");
+      return;
+    }
 
-    Alert.alert("Joined!", `You have joined "${data.title}" 🎉`);
-    router.push("/(tabs)/Challenge/currentChallengeList");
-  } catch (err: any) {
-    console.error("join challenge error:", err);
-    Alert.alert("Error", err?.message || "Failed to join challenge.");
-  }
-};
+    try {
+      const userRef = doc(db, "userChallenges", uid, "active", challengeId);
+      const globalRef = doc(db, "challenges", category, "items", challengeId);
+
+      await setDoc(userRef, {
+        title: data.title || "",
+        desc: data.desc || "",
+        totalDays: data.days || 20,
+        daysCompleted: 0,
+        progress: 0,
+        reward: data.rewardConfig?.name || "",
+        cover: data.rewardConfig?.logoUri || data.cover || "",
+        category: data.category || category,
+        joinedAt: serverTimestamp(),
+        challengeId,
+        status: "active",
+      });
+
+      await updateDoc(globalRef, { joined: increment(1) });
+
+      Alert.alert("Joined!", `You have joined "${data.title}" 🎉`);
+      router.push("/(tabs)/Challenge/currentChallengeList");
+    } catch (err: any) {
+      console.error("join challenge error:", err);
+      Alert.alert("Error", err?.message || "Failed to join challenge.");
+    }
+  };
 
   if (loading) {
     return (
@@ -123,11 +157,15 @@ export default function ChallengeDetail() {
 
   if (!data) return null;
 
+  const heroUri =
+    data.rewardConfig?.logoUri ||
+    data.cover ||
+    "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop";
+
   return (
     <SafeAreaView style={styles.safe}>
-      {/* header */}
       <View style={styles.header}>
-        <Pressable hitSlop={10} onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable hitSlop={10} onPress={goBackSmart} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color="#3C7BD6" />
         </Pressable>
         <Text style={styles.headerTitle}>challenge & reward</Text>
@@ -141,25 +179,18 @@ export default function ChallengeDetail() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.card}>
-          {/* title */}
           <Text style={styles.title}>{data.title}</Text>
 
-          {/* hero image */}
-          <Image
-            source={{
-              uri:
-                data.cover ||
-                "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop",
-            }}
-            style={styles.heroImg}
-          />
+          <Image source={{ uri: heroUri }} style={styles.heroImg} />
 
           <Section title="Introduction">
             <Text style={styles.paragraph}>{data.desc || "No description available."}</Text>
           </Section>
 
           <Section title="Reward 🏅">
-            <Text style={styles.bullet}>• {data.reward || "Reward to be announced"}</Text>
+            <Text style={styles.bullet}>• {data.rewardConfig?.name || "Reward to be announced"}</Text>
+            {!!data.rewardConfig?.vendor && <Text style={styles.bullet}>• {data.rewardConfig.vendor}</Text>}
+            {!!data.rewardConfig?.value && <Text style={styles.bullet}>• {data.rewardConfig.value}</Text>}
           </Section>
 
           <Section title="How to Join">
@@ -175,8 +206,17 @@ export default function ChallengeDetail() {
             <MetaItem label="Duration (days)" value={String(data.days || 20)} />
           </View>
 
-          <Pressable style={styles.joinBtn} onPress={onJoin} accessibilityRole="button" hitSlop={8}>
-            <Text style={styles.joinText}>join now</Text>
+          <Pressable
+            style={[
+              styles.joinBtn,
+              alreadyJoined && { backgroundColor: "#ccc" },
+            ]}
+            onPress={alreadyJoined ? undefined : onJoin}
+            disabled={alreadyJoined}
+          >
+            <Text style={styles.joinText}>
+              {alreadyJoined ? "joined" : "join now"}
+            </Text>
           </Pressable>
         </View>
 

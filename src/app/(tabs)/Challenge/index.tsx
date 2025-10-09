@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  SafeAreaView,
   View,
   Text,
   StyleSheet,
@@ -17,17 +18,29 @@ type ChallengeItem = {
   taglineLeft?: string;
   taglineRight?: string;
   imageUri: string;
-  href?: string;
 };
 
 const LIST: ChallengeItem[] = [
+  {
+    key: "meditation",
+    title: "Meditation challenge",
+    taglineLeft: "Calm mind,\nclear focus",
+    imageUri:
+      "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop",
+  },
   {
     key: "nutrition",
     title: "Nutrition challenge",
     taglineRight: "Healthy plate,\nhealthier you",
     imageUri:
       "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=800&auto=format&fit=crop",
-    href: "/(tabs)/Challenge/nutritionChallengeList",
+  },
+  {
+    key: "tech",
+    title: "Tech challenge",
+    taglineLeft: "Stay smart,\nlive connected",
+    imageUri:
+      "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=800&auto=format&fit=crop",
   },
   {
     key: "fitness",
@@ -37,42 +50,53 @@ const LIST: ChallengeItem[] = [
       "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=800&auto=format&fit=crop",
   },
   {
-    key: "meditation",
-    title: "Meditation challenge",
-    taglineLeft: "Calm mind,\nclear focus",
+    key: "art",
+    title: "Art challenge",
+    taglineLeft: "Create with joy",
     imageUri:
-      "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop",
-  },
-  {
-    key: "tech",
-    title: "Tech challenge",
-    taglineLeft: "Stay smart,\nlive connected",
-    imageUri:
-      "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=800&auto=format&fit=crop",
   },
 ];
+
+/**
+ * Route mapping for each card.
+ * Note: do NOT include the (tabs) group in pathname.
+ * All categories reuse the same list screen, passing { category } as a param.
+ */
+const ROUTE_BY_KEY: Record<
+  string,
+  { pathname: string; params: { category: string } } | undefined
+> = {
+  nutrition: { pathname: "/Challenge/nutritionChallengeList", params: { category: "nutrition" } },
+  fitness: { pathname: "/Challenge/nutritionChallengeList", params: { category: "fitness" } },
+  meditation: { pathname: "/Challenge/nutritionChallengeList", params: { category: "meditation" } },
+  tech: { pathname: "/Challenge/nutritionChallengeList", params: { category: "tech" } },
+  art: { pathname: "/Challenge/nutritionChallengeList", params: { category: "art" } },
+};
 
 export default function ChallengeIndex() {
   const router = useRouter();
 
-  const openMyChallenges = () =>
-    router.push("/(tabs)/Challenge/currentChallengeList" as any);
+  const openMyChallenges = () => {
+    router.push("/Challenge/currentChallengeList");
+  };
 
-  const openMyRewards = () =>
-    router.push("/(tabs)/Challenge/myRewards" as any);
+  const openMyRewards = () => {
+    router.push("/Challenge/myRewards");
+  };
 
-  const onCustomize = () =>
-    router.push("/(tabs)/Challenge/createChallenge" as any);
+  const onCustomize = () => {
+    router.push("/Challenge/createChallenge");
+  };
 
   return (
-    <View style={styles.safe}>
+    <SafeAreaView style={styles.safe}>
       <View style={styles.root}>
-        {/* Header */}
+        {/* header */}
         <View style={styles.header}>
           <View style={styles.headerRow}>
             <Text style={styles.headerTitle}>
-              Hey test user,{"\n"}Ready for some{" "}
-              <Text style={styles.headerTitleEm}>challenge?</Text>
+              Hey username,{"\n"}Ready for some <Text style={styles.headerTitleEm}>challenge?</Text>
             </Text>
             <Image
               source={{
@@ -84,9 +108,7 @@ export default function ChallengeIndex() {
 
           <View style={styles.customizeContainer}>
             <Pressable onPress={onCustomize} style={styles.customizeBtn} hitSlop={8}>
-              <Text style={styles.customizeText}>
-                customise your{"\n"}challenges here
-              </Text>
+              <Text style={styles.customizeText}>customise your{"\n"}challenges here</Text>
             </Pressable>
             <View style={styles.dayBox}>
               <Text style={styles.dayText}>Day 6</Text>
@@ -94,7 +116,7 @@ export default function ChallengeIndex() {
           </View>
         </View>
 
-        {/* Quick buttons */}
+        {/* quick actions */}
         <View style={styles.quickRow}>
           <Pressable style={styles.quickCard} onPress={openMyChallenges} hitSlop={8}>
             <View style={styles.quickInner}>
@@ -111,54 +133,64 @@ export default function ChallengeIndex() {
           </Pressable>
         </View>
 
-        {/* List */}
-        <ScrollView
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {LIST.map((it) => {
-            const CardBody = (
-              <>
-                <Text style={styles.cardTitle}>{it.title}</Text>
-                <View style={styles.cardInner}>
-                  {it.taglineLeft ? (
-                    <View style={styles.flexBox}>
-                      <Text style={styles.tagText}>{it.taglineLeft}</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.flexSpacer} />
-                  )}
-                  <Image source={{ uri: it.imageUri }} style={styles.cardImage} />
-                  {it.taglineRight ? (
-                    <View style={styles.flexBox}>
-                      <Text style={styles.tagText}>{it.taglineRight}</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.flexSpacer} />
-                  )}
-                </View>
-              </>
-            );
+        {/* list */}
+        <View style={styles.listHolder}>
+          <ScrollView
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {LIST.map((it) => {
+              const href = ROUTE_BY_KEY[it.key];
 
-            return it.href ? (
-              <Link key={it.key} href={it.href as any} asChild>
-                <Pressable style={styles.card} hitSlop={8}>
+              // If the card has a route configured, wrap with Link to keep navigation declarative.
+              const CardBody = (
+                <>
+                  <Text style={styles.cardTitle}>{it.title}</Text>
+                  <View style={styles.cardInner}>
+                    {it.taglineLeft ? (
+                      <View style={styles.flexBox}>
+                        <Text style={styles.tagText}>{it.taglineLeft}</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.flexSpacer} />
+                    )}
+                    <Image source={{ uri: it.imageUri }} style={styles.cardImage} />
+                    {it.taglineRight ? (
+                      <View style={styles.flexBox}>
+                        <Text style={styles.tagText}>{it.taglineRight}</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.flexSpacer} />
+                    )}
+                  </View>
+                </>
+              );
+
+              if (href) {
+                return (
+                  <Link key={it.key} href={href as any} asChild>
+                    <Pressable style={styles.card} hitSlop={8}>
+                      {CardBody}
+                    </Pressable>
+                  </Link>
+                );
+              }
+
+              // Cards without route still render but do not navigate.
+              return (
+                <Pressable key={it.key} style={styles.card} hitSlop={8}>
                   {CardBody}
                 </Pressable>
-              </Link>
-            ) : (
-              <Pressable key={it.key} style={styles.card} hitSlop={8}>
-                {CardBody}
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+              );
+            })}
+          </ScrollView>
+        </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
-// ---------- STYLES ----------
 const BG = "#C6DBFA";
 const HEADER_TEXT = "#5C95E9";
 const BIG_BOX = "#5C95E9";
@@ -183,6 +215,7 @@ const SHADOW =
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   root: { flex: 1, paddingHorizontal: 16, paddingTop: 8 },
+
   header: { marginBottom: 12 },
   headerRow: {
     flexDirection: "row",
@@ -200,6 +233,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   headerTitleEm: { color: HEADER_TEXT },
+
   customizeContainer: {
     backgroundColor: BIG_BOX,
     borderRadius: 16,
@@ -230,6 +264,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dayText: { fontWeight: "800", fontSize: 26, color: DAY_TEXT },
+
   quickRow: { flexDirection: "row", gap: 12, marginBottom: 14 },
   quickCard: {
     flex: 1,
@@ -241,14 +276,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     ...SHADOW,
   },
-  quickInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
+  quickInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   quickText: { fontSize: 14, fontWeight: "700", color: "#1f2937" },
+
+  listHolder: { flex: 1 },
   listContent: { paddingBottom: 100 },
+
   card: {
     backgroundColor: CARD_BG,
     borderRadius: 18,

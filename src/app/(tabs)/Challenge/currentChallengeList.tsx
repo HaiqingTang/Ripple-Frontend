@@ -22,6 +22,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 
+/* ---------- Types ---------- */
 type Item = {
   id: string;
   title: string;
@@ -29,17 +30,18 @@ type Item = {
   days: number;
   joined: number;
   percent: number;
-  reward: string; // 列表 chip 文案（来自 public.rewardConfig.name）
+  reward: string;
   category?: string;
   status?: "active" | "completed";
   checkedToday?: boolean;
 };
 
+/* ---------- Constants ---------- */
 const BOTTOM_SPACER = 64;
 const BLUE = "#DDE7FF";
 const DEEP = "#6B7AFF";
 
-// YYYY-MM-DD 辅助
+// helper YYYY-MM-DD
 const ymd = (d = new Date()) => {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -47,6 +49,7 @@ const ymd = (d = new Date()) => {
 };
 const TODAY = ymd();
 
+/* ---------- Component ---------- */
 export default function CurrentChallengeList() {
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -54,7 +57,7 @@ export default function CurrentChallengeList() {
   const [completed, setCompleted] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 订阅用户实例
+  /* ---------- Subscribe userChallenges ---------- */
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
@@ -63,68 +66,71 @@ export default function CurrentChallengeList() {
     const ongoingQ = query(baseCol, where("status", "==", "active"));
     const completedQ = query(baseCol, where("status", "==", "completed"));
 
+    const toCheckedToday = (x: any) => {
+      let ok = Array.isArray(x.checkins) && x.checkins.includes?.(TODAY);
+      if (!ok && x.lastCheckinAt) {
+        try {
+          const ts =
+            x.lastCheckinAt?.toDate?.() ??
+            (x.lastCheckinAt.seconds
+              ? new Date(x.lastCheckinAt.seconds * 1000)
+              : null);
+          if (ts) ok = ymd(ts) === TODAY;
+        } catch {}
+      }
+      return ok;
+    };
+
+    const mapActive = (d: any, id: string): Item => {
+      const totalDays = Number(d.totalDays ?? d.days ?? 0) || 0;
+      const dc = Number(d.daysCompleted ?? 0) || 0;
+      const pctFromCounts =
+        totalDays > 0
+          ? Math.min(100, Math.round((dc / totalDays) * 100))
+          : 0;
+
+      // ✅ 优先使用 progress 字段，缺失时回退计算值
+      let percent =
+        typeof d.progress === "number"
+          ? Math.min(100, Math.max(0, d.progress))
+          : pctFromCounts;
+
+      return {
+        id,
+        title: d.title || "Untitled Challenge",
+        icon: d.icon || "🔥",
+        days: totalDays,
+        joined: 0,
+        percent,
+        reward: "",
+        category: d.category || "",
+        status: d.status || "active",
+        checkedToday: toCheckedToday(d),
+      };
+    };
+
     const unsubOngoing = onSnapshot(ongoingQ, (snap) => {
-      const list: Item[] = snap.docs.map((d) => {
-        const x = d.data() as any;
-
-        let checkedToday =
-          Array.isArray(x.checkins) && x.checkins.includes?.(TODAY);
-        if (!checkedToday && x.lastCheckinAt) {
-          try {
-            const ts =
-              x.lastCheckinAt?.toDate?.() ??
-              (x.lastCheckinAt.seconds
-                ? new Date(x.lastCheckinAt.seconds * 1000)
-                : null);
-            if (ts) checkedToday = ymd(ts) === TODAY;
-          } catch {}
-        }
-
-        return {
-          id: d.id,
-          title: x.title || "Untitled Challenge",
-          icon: x.icon || "🔥",
-          days: Number(x.totalDays ?? x.days ?? 0),
-          joined: 0,              // 先置 0，稍后从 public 回填
-          percent: Number(x.progress ?? 0),
-          reward: "",             // ✅ 不再用用户实例的旧字段
-          category: x.category || "",
-          status: x.status || "active",
-          checkedToday,
-        };
-      });
+      const list: Item[] = snap.docs.map((docSnap) =>
+        mapActive(docSnap.data(), docSnap.id)
+      );
       setOngoing(list);
       setLoading(false);
     });
 
     const unsubCompleted = onSnapshot(completedQ, (snap) => {
-      const list: Item[] = snap.docs.map((d) => {
-        const x = d.data() as any;
-
-        let checkedToday =
-          Array.isArray(x.checkins) && x.checkins.includes?.(TODAY);
-        if (!checkedToday && x.lastCheckinAt) {
-          try {
-            const ts =
-              x.lastCheckinAt?.toDate?.() ??
-              (x.lastCheckinAt.seconds
-                ? new Date(x.lastCheckinAt.seconds * 1000)
-                : null);
-            if (ts) checkedToday = ymd(ts) === TODAY;
-          } catch {}
-        }
-
+      const list: Item[] = snap.docs.map((docSnap) => {
+        const d = docSnap.data() as any;
         return {
-          id: d.id,
-          title: x.title || "Untitled Challenge",
-          icon: x.icon || "🏁",
-          days: Number(x.totalDays ?? x.days ?? 0),
+          id: docSnap.id,
+          title: d.title || "Untitled Challenge",
+          icon: d.icon || "🏁",
+          days: Number(d.totalDays ?? d.days ?? 0),
           joined: 0,
           percent: 100,
-          reward: "",             // ✅ 不再用用户实例的旧字段
-          category: x.category || "",
-          status: x.status || "completed",
-          checkedToday,
+          reward: "",
+          category: d.category || "",
+          status: "completed",
+          checkedToday: toCheckedToday(d),
         };
       });
       setCompleted(list);
@@ -136,10 +142,9 @@ export default function CurrentChallengeList() {
     };
   }, []);
 
-  // 为每个条目订阅 public challenges 中的 joined + rewardConfig.name
+  /* ---------- Subscribe joined + reward from public ---------- */
   const joinedUnsubs = useRef<(() => void)[]>([]);
   useEffect(() => {
-    // 清理上一次所有订阅
     joinedUnsubs.current.forEach((u) => u());
     joinedUnsubs.current = [];
 
@@ -152,7 +157,7 @@ export default function CurrentChallengeList() {
 
         const ref = doc(db, "challenges", it.category, "items", it.id);
 
-        // 先读一次
+        // 读取一次 joined/rewardConfig
         getDoc(ref)
           .then((snap) => {
             const data = snap.data();
@@ -161,52 +166,26 @@ export default function CurrentChallengeList() {
             setList((prev) =>
               prev.map((x) =>
                 x.id === it.id
-                  ? {
-                      ...x,
-                      joined: Number.isFinite(j) ? j : 0,
-                      reward: name, // ✅ 列表 chip 仅展示 name
-                    }
+                  ? { ...x, joined: Number.isFinite(j) ? j : 0, reward: name }
                   : x
               )
             );
           })
-          .catch((e) =>
-            console.warn(
-              "[public getDoc] error:",
-              it.category,
-              it.id,
-              e?.message
+          .catch(() => {});
+
+        // 订阅更新
+        const unsub = onSnapshot(ref, (snap) => {
+          const data = snap.data();
+          const j = Number(data?.joined ?? 0);
+          const name = data?.rewardConfig?.name?.trim?.() || "";
+          setList((prev) =>
+            prev.map((x) =>
+              x.id === it.id
+                ? { ...x, joined: Number.isFinite(j) ? j : 0, reward: name }
+                : x
             )
           );
-
-        // 实时订阅
-        const unsub = onSnapshot(
-          ref,
-          (snap) => {
-            const data = snap.data();
-            const j = Number(data?.joined ?? 0);
-            const name = data?.rewardConfig?.name?.trim?.() || "";
-            setList((prev) =>
-              prev.map((x) =>
-                x.id === it.id
-                  ? {
-                      ...x,
-                      joined: Number.isFinite(j) ? j : 0,
-                      reward: name, // ✅ 同步 name
-                    }
-                  : x
-              )
-            );
-          },
-          (err) =>
-            console.warn(
-              "[public onSnapshot] error:",
-              it.category,
-              it.id,
-              err?.message
-            )
-        );
-
+        });
         joinedUnsubs.current.push(unsub);
       });
     };
@@ -223,39 +202,22 @@ export default function CurrentChallengeList() {
     JSON.stringify(completed.map((i) => [i.id, i.category])),
   ]);
 
-  // 搜索过滤
+  /* ---------- Search ---------- */
   const filtered = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return { ongoing, completed };
     const match = (x: Item) => x.title.toLowerCase().includes(kw);
-    return { ongoing: ongoing.filter(match), completed: completed.filter(match) };
+    return {
+      ongoing: ongoing.filter(match),
+      completed: completed.filter(match),
+    };
   }, [q, ongoing, completed]);
 
-  // 跳转
+  /* ---------- Navigation ---------- */
+  // ✅ ongoing challenge: always open challengeCheckin
   const toCheckin = (c: Item) => {
-    if (c.checkedToday) {
-      router.push({
-        pathname: "/(tabs)/Challenge/completedChallenge",
-        params: {
-          challengeId: c.id,
-          category: c.category,
-          title: c.title,
-          totalDays: String(c.days),
-          joined: String(c.joined),
-        },
-      });
-      return;
-    }
-    const id = encodeURIComponent(c.id);
-    const cat = encodeURIComponent(c.category || "");
-    router.push(
-      `/(tabs)/Challenge/challengeCheckin?challengeId=${id}&category=${cat}`
-    );
-  };
-
-  const toCompletedDetail = (c: Item) => {
     router.push({
-      pathname: "/(tabs)/Challenge/completedChallenge",
+      pathname: "/Challenge/challengeCheckin",
       params: {
         challengeId: c.id,
         category: c.category,
@@ -266,7 +228,21 @@ export default function CurrentChallengeList() {
     });
   };
 
-  // 卡片
+  // ✅ completed challenge: open completedChallenge page
+  const toCompletedDetail = (c: Item) => {
+    router.push({
+      pathname: "/Challenge/completedChallenge",
+      params: {
+        challengeId: c.id,
+        category: c.category,
+        title: c.title,
+        totalDays: String(c.days),
+        joined: String(c.joined),
+      },
+    });
+  };
+
+  /* ---------- Card Renderer ---------- */
   const renderCard = (c: Item, isCompleted: boolean) => (
     <View key={`${isCompleted ? "done-" : "go-"}${c.id}`} style={styles.card}>
       <Text style={styles.cardTitle}>
@@ -289,7 +265,10 @@ export default function CurrentChallengeList() {
       <Text style={styles.percentCenter}>{isCompleted ? 100 : c.percent}%</Text>
       <View style={styles.progressBar}>
         <View
-          style={[styles.progressFill, { width: `${isCompleted ? 100 : c.percent}%` }]}
+          style={[
+            styles.progressFill,
+            { width: `${isCompleted ? 100 : c.percent}%` },
+          ]}
         />
       </View>
 
@@ -325,21 +304,31 @@ export default function CurrentChallengeList() {
     </View>
   );
 
+  /* ---------- Render ---------- */
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.headerRow}>
-          <Pressable hitSlop={10} style={styles.backBtn} onPress={() => router.back()}>
+          <Pressable
+            hitSlop={10}
+            style={styles.backBtn}
+            onPress={() => router.back()}
+          >
             <Ionicons name="chevron-back" size={24} color="#6B7AFF" />
           </Pressable>
-        <Text style={styles.title}>My challenges</Text>
+          <Text style={styles.title}>My challenges</Text>
           <View style={{ width: 24 }} />
         </View>
 
         {/* Search */}
         <View style={styles.searchWrap}>
-          <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
+          <Ionicons
+            name="search"
+            size={18}
+            color="#99A2C0"
+            style={{ marginHorizontal: 10 }}
+          />
           <TextInput
             placeholder="Search"
             placeholderTextColor="#99A2C0"
@@ -352,7 +341,11 @@ export default function CurrentChallengeList() {
 
         {/* Content */}
         {loading ? (
-          <ActivityIndicator style={{ marginTop: 80 }} color={DEEP} size="large" />
+          <ActivityIndicator
+            style={{ marginTop: 80 }}
+            color={DEEP}
+            size="large"
+          />
         ) : (
           <ScrollView
             contentContainerStyle={{ paddingBottom: BOTTOM_SPACER + 24 }}
@@ -365,7 +358,9 @@ export default function CurrentChallengeList() {
               filtered.ongoing.map((c) => renderCard(c, false))
             )}
 
-            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>completed</Text>
+            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>
+              completed
+            </Text>
             {filtered.completed.length === 0 ? (
               <Text style={styles.emptyText}>No completed challenge</Text>
             ) : (
@@ -380,6 +375,7 @@ export default function CurrentChallengeList() {
   );
 }
 
+/* ---------- Styles ---------- */
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BLUE },
   container: { flex: 1, paddingTop: Platform.select({ ios: 54, android: 22 }) },
@@ -449,8 +445,17 @@ const styles = StyleSheet.create({
   metaTextDark: { color: "#000", fontWeight: "600" },
   progressLabel: { marginTop: 14, color: "#111827", fontWeight: "800" },
   percentCenter: { marginTop: 6, fontWeight: "700", color: "#111827" },
-  progressBar: { marginTop: 8, height: 12, borderRadius: 999, backgroundColor: "#CDD6F0" },
-  progressFill: { height: "100%", borderRadius: 999, backgroundColor: "#86A0FF" },
+  progressBar: {
+    marginTop: 8,
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: "#CDD6F0",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#86A0FF",
+  },
   bottomRow: {
     marginTop: 14,
     flexDirection: "row",
@@ -470,5 +475,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 999,
   },
-  actionText: { color: "#fff", fontWeight: "800", textTransform: "lowercase" },
+  actionText: {
+    color: "#fff",
+    fontWeight: "800",
+    textTransform: "lowercase",
+  },
 });

@@ -24,7 +24,7 @@ type Reward = {
   validUntil: string; // ISO
   value?: string;
   redeemed?: boolean;
-  terms?: string[];   // ✅ 新增：支持从 Firestore 读取条款
+  terms?: string[];
 };
 
 export default function MyRewards() {
@@ -89,7 +89,7 @@ export default function MyRewards() {
 
   // back button
   const goBackToIndex = () => {
-    router.replace("/(tabs)/Challenge"); // ✅ 去掉 /index，避免 TS 报错
+    router.replace("/(tabs)/Challenge");
   };
 
   const renderCard = (r: Reward, faded?: boolean) => (

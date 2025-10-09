@@ -34,8 +34,21 @@ export default function NutritionChallengeList() {
   const [q, setQ] = useState("");
   const [list, setList] = useState<Challenge[]>([]);
   const [loading, setLoading] = useState(true);
+  const [joinedIds, setJoinedIds] = useState<string[]>([]);
 
-  // 🔹 从 Firestore 获取 challenges/{category}/items
+  // 🔹 Fetch user's joined challenges
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const ref = collection(db, "userChallenges", uid, "active");
+    return onSnapshot(ref, (snap) => {
+      const arr: string[] = [];
+      snap.forEach((d) => arr.push(d.id));
+      setJoinedIds(arr);
+    });
+  }, []);
+
+  // 🔹 Fetch challenge list from Firestore
   useEffect(() => {
     const ref = collection(db, "challenges", category, "items");
     const qRef = query(ref, orderBy("createdAt", "desc"));
@@ -50,8 +63,9 @@ export default function NutritionChallengeList() {
           desc: d.desc || "",
           days: d.days || 0,
           joined: d.joined || 0,
-          reward: d.reward || "",
+          reward: d.rewardConfig?.name || d.reward || "",
           cover:
+            d.rewardConfig?.logoUri ||
             d.cover ||
             "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=800&auto=format&fit=crop",
           category: d.category || category,
@@ -64,7 +78,7 @@ export default function NutritionChallengeList() {
     return () => unsub();
   }, [category]);
 
-  // 搜索过滤
+  // 🔹 Search filter
   const filtered = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return list;
@@ -76,17 +90,17 @@ export default function NutritionChallengeList() {
     );
   }, [q, list]);
 
-  // 打开详情（奖励页）
+  // 🔹 Open detail page
   const openDetail = (c: Challenge) => {
     router.push({
-      pathname: "/(tabs)/Challenge/challengeDtail",
-      params: { id: c.id, title: c.title, category: c.category },
+      pathname: "/Challenge/challengeDetail",
+      params: { challengeId: c.id, title: c.title, category: c.category },
     } as any);
   };
 
-  // 创建新挑战（仅开发用）
+  // 🔹 Create new challenge (dev only)
   const createNew = () => {
-    router.push("/(tabs)/Challenge/createChallenge");
+    router.push("/Challenge/createChallenge");
   };
 
   return (
@@ -130,39 +144,56 @@ export default function NutritionChallengeList() {
         <ActivityIndicator style={{ marginTop: 50 }} color="#6B7AFF" size="large" />
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-          {filtered.map((c) => (
-            <View key={c.id} style={styles.card}>
-              <Text style={styles.cardTitle}>{c.title}</Text>
+          {filtered.map((c) => {
+            const isJoined = joinedIds.includes(c.id);
+            return (
+              <View key={c.id} style={styles.card}>
+                <Text style={styles.cardTitle}>{c.title}</Text>
 
-              <View style={styles.rowTop}>
-                <View style={styles.leftCol}>
-                  <Text style={styles.cardDesc}>{c.desc}</Text>
+                <View style={styles.rowTop}>
+                  <View style={styles.leftCol}>
+                    <Text style={styles.cardDesc}>{c.desc}</Text>
 
-                  <View style={styles.metaRow}>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="time-outline" size={18} color="#000" />
-                      <Text style={styles.metaText}>{c.days} days</Text>
+                    <View style={styles.metaRow}>
+                      <View style={styles.metaItem}>
+                        <Ionicons name="time-outline" size={18} color="#000" />
+                        <Text style={styles.metaText}>{c.days} days</Text>
+                      </View>
+                      <View style={styles.metaItem}>
+                        <Ionicons name="person-outline" size={18} color="#000" />
+                        <Text style={styles.metaText}>{c.joined} joined</Text>
+                      </View>
                     </View>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="person-outline" size={18} color="#000" />
-                      <Text style={styles.metaText}>{c.joined} joined</Text>
+
+                    <View style={styles.rewardChip}>
+                      <View style={styles.rewardDot} />
+                      <Text style={styles.rewardText}>{c.reward}</Text>
                     </View>
                   </View>
 
-                  <View style={styles.rewardChip}>
-                    <View style={styles.rewardDot} />
-                    <Text style={styles.rewardText}>{c.reward}</Text>
-                  </View>
+                  <Image source={{ uri: c.cover }} style={styles.cover} />
                 </View>
 
-                <Image source={{ uri: c.cover }} style={styles.cover} />
+                {isJoined ? (
+                  <Pressable
+                    style={[styles.viewBtn, { backgroundColor: "#3C7BD6" }]}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/Challenge/challengeCheckin",
+                        params: { challengeId: c.id, category: c.category },
+                      } as any)
+                    }
+                  >
+                    <Text style={styles.viewBtnText}>continue</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable style={styles.viewBtn} onPress={() => openDetail(c)}>
+                    <Text style={styles.viewBtnText}>view</Text>
+                  </Pressable>
+                )}
               </View>
-
-              <Pressable style={styles.viewBtn} onPress={() => openDetail(c)}>
-                <Text style={styles.viewBtnText}>view</Text>
-              </Pressable>
-            </View>
-          ))}
+            );
+          })}
         </ScrollView>
       )}
 
@@ -174,6 +205,7 @@ export default function NutritionChallengeList() {
   );
 }
 
+/* ---------- Styles ---------- */
 const BLUE = "#DDE7FF";
 const DEEP = "#6B7AFF";
 const GREEN = "#59C34A";

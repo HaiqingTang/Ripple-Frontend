@@ -167,7 +167,14 @@ export default function CreateChallenge() {
       });
 
       Alert.alert("Published", "Your challenge has been published.", [
-        { text: "OK", onPress: () => router.replace("/(tabs)/Challenge") },
+        {
+          text: "OK",
+          onPress: () =>
+            router.replace({
+              pathname: "/(tabs)/Challenge/nutritionChallengeList",
+              params: { category: theme! },  // ← 回到对应分类
+            } as any),
+        },
       ]);
     } catch (e: any) {
       console.error("Error creating challenge:", e);

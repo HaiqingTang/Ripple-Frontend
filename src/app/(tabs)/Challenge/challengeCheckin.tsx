@@ -13,7 +13,6 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
-
 import { auth, db } from "../../../firebase";
 import {
   doc,
@@ -23,13 +22,9 @@ import {
   arrayUnion,
   serverTimestamp,
   onSnapshot,
-  collection,
-  getDocs,
-  query,
-  limit,
 } from "firebase/firestore";
 
-/* ---------- 颜色与阴影 ---------- */
+/* ---------- Colors ---------- */
 const BG = "#CFE0FF";
 const CARD = "#FFFFFF";
 const LEMON = "#FFF7C8";
@@ -50,14 +45,19 @@ const SHADOW =
       }
     : { elevation: 3 };
 
-/* ---------- 工具 ---------- */
+/* ---------- Helpers ---------- */
 type DayCell = { day: number | null; isToday: boolean };
+
+const ymd = (d = new Date()) => {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+};
 
 function buildMonth(year: number, monthIndex0: number): DayCell[] {
   const first = new Date(year, monthIndex0, 1);
   const firstWeekday = first.getDay();
   const daysInMonth = new Date(year, monthIndex0 + 1, 0).getDate();
-
   const cells: DayCell[] = [];
   for (let i = 0; i < firstWeekday; i++) cells.push({ day: null, isToday: false });
   for (let d = 1; d <= daysInMonth; d++) {
@@ -70,12 +70,7 @@ function buildMonth(year: number, monthIndex0: number): DayCell[] {
   return cells;
 }
 
-const ymd = (d = new Date()) => {
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
-};
-
+/* ---------- Types ---------- */
 type UserChallengeDoc = {
   title?: string;
   totalDays?: number;
@@ -87,7 +82,7 @@ type UserChallengeDoc = {
   status?: "active" | "completed";
 };
 
-/* ---------- 页面 ---------- */
+/* ---------- Component ---------- */
 export default function ChallengeCheckin() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -98,45 +93,34 @@ export default function ChallengeCheckin() {
     title?: string;
     totalDays?: string;
     cover?: string;
-    joined?: string; // 兜底
+    joined?: string;
   }>();
 
-  // challengeId：路由带来的优先；缺失则从 userChallenges 兜底取一个
   const routeCid =
     typeof params.challengeId === "string" && params.challengeId.trim()
       ? params.challengeId
       : "";
-  const [cid, setCid] = useState<string>(routeCid);
-
-  // 标题/天数
-  const [title, setTitle] = useState<string>(params.title || "Daily 10k steps");
-  const [totalDaysNum, setTotalDaysNum] = useState<number>(
-    Math.max(1, Number(params.totalDays || 20) || 20)
-  );
-
-  // 类别（订阅 public joined 用）
-  const [category, setCategory] = useState<string>(
+  const [cid, setCid] = useState(routeCid);
+  const [category, setCategory] = useState(
     typeof params.category === "string" ? params.category : ""
   );
 
-  // joined：订阅 challenges/{category}/items/{cid}；先用路由值兜底
-  const [joined, setJoined] = useState<number>(
-    Math.max(0, Number(params.joined ?? 0) || 0)
+  const [title, setTitle] = useState(params.title || "Daily 10k steps");
+  const [totalDaysNum, setTotalDaysNum] = useState(
+    Math.max(1, Number(params.totalDays || 20) || 20)
   );
-
-  // 进度/备注/图片
-  const [progressPct, setProgressPct] = useState<number>(0);
+  const [joined, setJoined] = useState(Math.max(0, Number(params.joined ?? 0) || 0));
+  const [progressPct, setProgressPct] = useState(0);
   const [note, setNote] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [checkedToday, setCheckedToday] = useState(false);
 
-  // —— 奖励展示（来自 public challenge.rewardConfig）——
-  const [rewardName, setRewardName] = useState<string>("");
-  const [rewardSubtitle, setRewardSubtitle] = useState<string>(""); // vendor
-  const [rewardValue, setRewardValue] = useState<string>("");
-  const [rewardDesc, setRewardDesc] = useState<string>("");
-  const [rewardValidUntil, setRewardValidUntil] = useState<string>(""); // ISO
+  const [rewardName, setRewardName] = useState("");
+  const [rewardSubtitle, setRewardSubtitle] = useState("");
+  const [rewardValue, setRewardValue] = useState("");
+  const [rewardDesc, setRewardDesc] = useState("");
+  const [rewardValidUntil, setRewardValidUntil] = useState("");
 
-  // 日历展示
   const now = new Date();
   const [displayYear] = useState(now.getFullYear());
   const [displayMonth] = useState(now.getMonth());
@@ -166,74 +150,38 @@ export default function ChallengeCheckin() {
     );
   };
 
-  // 有效期格式化
-  function formatValidUntil(iso?: string) {
+  const formatValidUntil = (iso?: string) => {
     if (!iso) return "";
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
-    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    const dd = String(d.getDate()).padStart(2,"0");
+    const months = [
+      "January","February","March","April","May","June","July",
+      "August","September","October","November","December",
+    ];
+    const dd = String(d.getDate()).padStart(2, "0");
     return `Valid until ${dd} ${months[d.getMonth()]} ${d.getFullYear()}`;
-  }
+  };
 
-  /* ---------- 关键：同步路由参数到本地状态（防止兜底误触发） ---------- */
+  /* ---------- Real-time user challenge sync ---------- */
   useEffect(() => {
-    if (typeof params.challengeId === "string" && params.challengeId.trim()) {
-      setCid(params.challengeId.trim());
-    }
-    if (typeof params.category === "string" && params.category.trim()) {
-      setCategory(params.category.trim());
-    }
-  }, [params.challengeId, params.category]);
+    const uid = auth.currentUser?.uid;
+    if (!uid || !cid) return;
 
-  /* ---------- 兜底：如果没带 challengeId，再从用户 active 里取一个 ---------- */
-  useEffect(() => {
-    (async () => {
-      if (cid) return;
-      if (params.challengeId !== undefined) return;
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
-      try {
-        const q1 = query(collection(db, "userChallenges", uid, "active"), limit(1));
-        const s = await getDocs(q1);
-        if (!s.empty) {
-          const first = s.docs[0];
-          const d = first.data() as UserChallengeDoc;
-          setCid(first.id);
-          if (d.category) setCategory(String(d.category));
-          if (d.title) setTitle(d.title);
-          if (typeof d.totalDays === "number" && d.totalDays > 0) {
-            setTotalDaysNum(d.totalDays);
-          }
-        }
-      } catch (e) {
-        console.log("[fallback cid] error:", e);
-      }
-    })();
-  }, [cid, params.challengeId]);
-
-  /* ---------- 读取用户实例：userChallenges/<uid>/active/<cid> ---------- */
-  useEffect(() => {
-    (async () => {
-      try {
-        const uid = auth.currentUser?.uid;
-        if (!uid || !cid) return;
-
-        const ref = doc(db, "userChallenges", uid, "active", cid);
-        const snap = await getDoc(ref);
+    const ref = doc(db, "userChallenges", uid, "active", cid);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
         if (!snap.exists()) return;
-
         const d = snap.data() as UserChallengeDoc;
 
         if (d.title) setTitle(d.title);
-        if (typeof d.totalDays === "number" && d.totalDays > 0) {
+        if (typeof d.totalDays === "number" && d.totalDays > 0)
           setTotalDaysNum(d.totalDays);
-        }
         if (d.category && !category) setCategory(d.category);
 
-        // 进度：优先 progress；否则用 checkins 计算
         const list = (d.checkins ?? []).filter(Boolean);
         const td = Math.max(1, Number(d.totalDays ?? totalDaysNum) || totalDaysNum);
+
         const pctFromList = Math.min(100, Math.round((list.length / td) * 100));
         const pct =
           typeof d.progress === "number"
@@ -241,164 +189,119 @@ export default function ChallengeCheckin() {
             : pctFromList;
         setProgressPct(pct);
 
-        // 本月高亮
+        const todayStr = ymd();
+        setCheckedToday(list.includes(todayStr));
+
         const selected = list
           .map((s) => new Date(s))
-          .filter((x) => x.getFullYear() === displayYear && x.getMonth() === displayMonth)
+          .filter(
+            (x) =>
+              x.getFullYear() === displayYear && x.getMonth() === displayMonth
+          )
           .map((x) => x.getDate());
         setMarkedDays(selected);
+      },
+      (err) => console.error("realtime sync error:", err)
+    );
 
-        // 读取今天的 note（有则回填）
-        const todayId = ymd(new Date());
-        const noteRef = doc(db, "userChallenges", uid, "active", cid, "checkins", todayId);
-        const noteSnap = await getDoc(noteRef);
-        if (noteSnap.exists()) {
-          const v = String(noteSnap.get("note") ?? "");
-          setNote(v);
-        }
-      } catch (e: any) {
-        console.error("initial load error:", e);
-      }
-    })();
-  }, [cid]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => unsub();
+  }, [cid, category, totalDaysNum, displayYear, displayMonth]);
 
-  /* ---------- 订阅 public：/challenges/{category}/items/{cid}（joined + rewardConfig） ---------- */
+  /* ---------- Subscribe to public challenge ---------- */
   useEffect(() => {
-    const cat =
-      (category && String(category)) ||
-      (typeof params.category === "string" ? params.category : "");
+    const cat = category || (typeof params.category === "string" ? params.category : "");
     if (!cid || !cat) return;
 
     const pubRef = doc(db, "challenges", cat, "items", cid);
-    let unsub: undefined | (() => void);
-
-    const apply = (data?: any) => {
-      // joined
+    const unsub = onSnapshot(pubRef, (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
       const j = Number(data?.joined ?? 0);
       setJoined(Number.isFinite(j) && j >= 0 ? j : 0);
-
-      // rewardConfig
       const rc = data?.rewardConfig;
-      setRewardName(rc?.name?.trim?.() || "");
-      setRewardSubtitle(rc?.vendor?.trim?.() || "");
-      setRewardValue(rc?.value?.trim?.() || "");
-      setRewardDesc(rc?.description?.trim?.() || "");
+      setRewardName(rc?.name || "");
+      setRewardSubtitle(rc?.vendor || "");
+      setRewardValue(rc?.value || "");
+      setRewardDesc(rc?.description || "");
       setRewardValidUntil(rc?.validUntil || "");
-    };
+    });
 
-    (async () => {
-      try {
-        const once = await getDoc(pubRef);
-        if (once.exists()) apply(once.data());
-        unsub = onSnapshot(pubRef, (snap) => apply(snap.data()));
-      } catch (e) {
-        console.log("[public subscribe] error:", e);
-      }
-    })();
+    return () => unsub();
+  }, [cid, category]);
 
-    return () => {
-      if (unsub) unsub();
-    };
-  }, [cid, category, params.category]);
-
-  /* ---------- 打卡：写主文档 + 写“当天 note 的子文档” ---------- */
+  /* ---------- Handle check-in ---------- */
   const onCheckIn = async () => {
     const today = new Date();
     const todayStr = ymd(today);
     const uid = auth.currentUser?.uid;
+    if (!uid || !cid) return;
 
-    // 本地高亮
-    setMarkedDays((prev) => {
-      const d = today.getDate();
-      return prev.includes(d) ? prev : [...prev, d];
-    });
+    try {
+      const ref = doc(db, "userChallenges", uid, "active", cid);
+      const snap = await getDoc(ref);
 
-    if (uid && cid) {
-      try {
-        const ref = doc(db, "userChallenges", uid, "active", cid);
-        const snap = await getDoc(ref);
-
-        // 不存在就建壳
-        if (!snap.exists()) {
-          await setDoc(ref, {
-            title,
-            totalDays: totalDaysNum,
-            daysCompleted: 0,
-            progress: 0,
-            reward: "",
-            cover: params.cover || "",
-            category: category || params.category || "",
-            challengeId: cid,
-            joinedAt: serverTimestamp(),
-            status: "active",
-            checkins: [],
-          } as UserChallengeDoc & {
-            daysCompleted: number;
-            status: string;
-            checkins: string[];
-          });
-        }
-
-        // 1) 主文档记录今天的打卡
-        await updateDoc(ref, {
-          checkins: arrayUnion(todayStr),
-          lastNote: note || "",
-          lastPhoto: photoUri || "",
-          lastCheckinAt: serverTimestamp(),
+      // create shell if missing
+      if (!snap.exists()) {
+        await setDoc(ref, {
+          title,
+          totalDays: totalDaysNum,
+          progress: 0,
+          reward: "",
+          cover: params.cover || "",
+          category: category || params.category || "",
+          challengeId: cid,
+          joinedAt: serverTimestamp(),
+          status: "active",
+          checkins: [],
         });
-
-        // 2) 写当天 note 子文档：userChallenges/{uid}/active/{cid}/checkins/{YYYY-MM-DD}
-        const noteRef = doc(
-          db,
-          "userChallenges",
-          uid,
-          "active",
-          cid,
-          "checkins",
-          todayStr
-        );
-        await setDoc(
-          noteRef,
-          {
-            note: (note || "").trim(),
-            date: todayStr,
-            createdAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        // 3) 回写进度
-        const latest = await getDoc(ref);
-        const data = (latest.data() || {}) as UserChallengeDoc;
-        const list = (data.checkins ?? []).filter(Boolean);
-        const td = Math.max(1, Number(data.totalDays ?? totalDaysNum) || totalDaysNum);
-        const pct = Math.min(100, Math.round((list.length / td) * 100));
-
-        await updateDoc(ref, {
-          daysCompleted: list.length,
-          progress: pct,
-          ...(list.length >= td ? { status: "completed", completedAt: serverTimestamp() } : {}),
-        });
-
-        setProgressPct(pct);
-      } catch (e: any) {
-        console.error("check-in error:", e);
-        Alert.alert("Check-in Error", e?.message || "Failed to check in.");
-        return;
       }
-    }
 
-    // 跳转完成页
-    router.push({
-      pathname: "/(tabs)/Challenge/completedChallenge",
-      params: {
-        challengeId: cid,
-        dateISO: today.toISOString(),
-        title,
-        totalDays: String(totalDaysNum),
-        joined: String(joined),
-      },
-    });
+      await updateDoc(ref, {
+        checkins: arrayUnion(todayStr),
+        lastNote: note || "",
+        lastPhoto: photoUri || "",
+        lastCheckinAt: serverTimestamp(),
+      });
+
+      // recalc progress
+      const latest = await getDoc(ref);
+      const data = (latest.data() || {}) as UserChallengeDoc;
+      const list = (data.checkins ?? []).filter(Boolean);
+      const td = Math.max(1, Number(data.totalDays ?? totalDaysNum) || totalDaysNum);
+      const pct = Math.min(100, Math.round((list.length / td) * 100));
+
+      await updateDoc(ref, {
+        daysCompleted: list.length,
+        progress: pct,
+        ...(list.length >= td
+          ? { status: "completed", completedAt: serverTimestamp() }
+          : {}),
+      });
+
+      // local optimistic update
+      setProgressPct(pct);
+      setCheckedToday(true);
+      if (!markedDays.includes(today.getDate()))
+        setMarkedDays((prev) => [...prev, today.getDate()]);
+
+      if (list.length >= td) {
+        router.push({
+          pathname: "/Challenge/completedChallenge",
+          params: {
+            challengeId: cid,
+            dateISO: today.toISOString(),
+            title,
+            totalDays: String(totalDaysNum),
+            joined: String(joined),
+          },
+        });
+      } else {
+        Alert.alert("Nice!", "Today's check-in is saved.");
+      }
+    } catch (e: any) {
+      console.error("check-in error:", e);
+      Alert.alert("Check-in Error", e?.message || "Failed to check in.");
+    }
   };
 
   const remaining = Math.max(
@@ -406,9 +309,10 @@ export default function ChallengeCheckin() {
     totalDaysNum - Math.round((progressPct / 100) * totalDaysNum)
   );
 
+  /* ---------- Render ---------- */
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
-      {/* 顶部与 completed 保持一致 */}
+      {/* Header */}
       <View style={styles.headerBar}>
         <Pressable
           onPress={() => router.back()}
@@ -429,11 +333,9 @@ export default function ChallengeCheckin() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* 进度卡（绑定 userChallenges & public joined） */}
+        {/* Progress */}
         <View style={[styles.cardSoft, SHADOW]}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.titleBold}>{title}</Text>
-          </View>
+          <Text style={styles.titleBold}>{title}</Text>
 
           <View style={[styles.rowBetween, { marginTop: 8 }]}>
             <View style={styles.rowCenter}>
@@ -451,47 +353,45 @@ export default function ChallengeCheckin() {
             <View style={[styles.progressBar, { width: `${progressPct}%` }]} />
           </View>
           <Text style={styles.progressPct}>{progressPct}%</Text>
-          <Text style={[styles.small, { marginTop: 6 }]}>{remaining} days remaining</Text>
+          <Text style={[styles.small, { marginTop: 6 }]}>
+            {remaining} days remaining
+          </Text>
         </View>
 
-        {/* 奖励卡（name + subtitle/vendor + value + description/validUntil） */}
-        {(rewardName || rewardSubtitle || rewardValue || rewardDesc || rewardValidUntil) ? (
+        {/* Reward */}
+        {(rewardName ||
+          rewardSubtitle ||
+          rewardValue ||
+          rewardDesc ||
+          rewardValidUntil) && (
           <View style={[styles.rewardCard, SHADOW]}>
-            {/* 标题：name */}
             <Text style={styles.rewardTitle}>
               {rewardName ? `Reward: ${rewardName}` : "Reward"}
             </Text>
-
-            {/* 副标题：vendor/subtitle（可选） */}
-            {rewardSubtitle ? (
+            {rewardSubtitle && (
               <Text style={[styles.small, { marginTop: 4 }]}>{rewardSubtitle}</Text>
-            ) : null}
-
-            {/* 价值徽章 + 插画占位 */}
+            )}
             <View style={styles.rewardRow}>
-              {rewardValue ? (
+              {rewardValue && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{rewardValue}</Text>
                 </View>
-              ) : null}
+              )}
               <View style={styles.illus} />
             </View>
-
-            {/* 文本占位：显示 description + Valid until */}
-            {(rewardDesc || rewardValidUntil) ? (
+            {(rewardDesc || rewardValidUntil) && (
               <Text style={[styles.small, { marginTop: 10 }]}>
-                {rewardDesc ? rewardDesc : ""}
+                {rewardDesc}
                 {rewardDesc && rewardValidUntil ? "\n" : ""}
                 {rewardValidUntil ? formatValidUntil(rewardValidUntil) : ""}
               </Text>
-            ) : null}
+            )}
           </View>
-        ) : null}
+        )}
 
-        {/* 日历 + 今日打卡 */}
+        {/* Calendar */}
         <View style={[styles.calendarCard, SHADOW]}>
           <Text style={styles.monthTitle}>{monthTitle}</Text>
-
           <View style={styles.weekRow}>
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((w) => (
               <Text key={w} style={styles.weekText}>
@@ -509,14 +409,14 @@ export default function ChallengeCheckin() {
                     <View
                       style={[
                         styles.dayBubble,
-                        isMarked ? styles.dayBubbleMarked : undefined,
-                        c.isToday && !isMarked ? styles.dayBubbleToday : undefined,
+                        isMarked && styles.dayBubbleMarked,
+                        c.isToday && !isMarked && styles.dayBubbleToday,
                       ]}
                     >
                       <Text
                         style={[
                           styles.dayText,
-                          isMarked || c.isToday ? { color: "#fff" } : undefined,
+                          (isMarked || c.isToday) && { color: "#fff" },
                         ]}
                       >
                         {c.day}
@@ -530,8 +430,8 @@ export default function ChallengeCheckin() {
             })}
           </View>
 
+          {/* Input */}
           <Text style={[styles.smallBold, { marginTop: 18 }]}>Today’s Check-in</Text>
-
           <Text style={[styles.label, { marginTop: 12 }]}>Notes (Optional)</Text>
           <View style={[styles.inputBox, SHADOW]}>
             <TextInput
@@ -556,8 +456,14 @@ export default function ChallengeCheckin() {
             )}
           </Pressable>
 
-          <Pressable style={styles.btn} onPress={onCheckIn}>
-            <Text style={styles.btnText}>check in</Text>
+          <Pressable
+            style={[styles.btn, checkedToday && { backgroundColor: "#A1A1AA" }]}
+            onPress={checkedToday ? undefined : onCheckIn}
+            disabled={checkedToday}
+          >
+            <Text style={styles.btnText}>
+              {checkedToday ? "checked in" : "check in"}
+            </Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -565,10 +471,9 @@ export default function ChallengeCheckin() {
   );
 }
 
-/* ---------- 样式 ---------- */
+/* ---------- Styles ---------- */
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
-
   headerBar: {
     height: 72,
     paddingHorizontal: 16,
@@ -592,33 +497,75 @@ const styles = StyleSheet.create({
     color: TEXT_BLUE,
     textTransform: "lowercase",
   },
-
   scroll: { flex: 1, paddingHorizontal: 16 },
-
-  cardSoft: { backgroundColor: "#EAF7EF", borderRadius: 16, padding: 16, marginTop: 8 },
-  rewardCard: { backgroundColor: LEMON, borderRadius: 16, padding: 16, marginTop: 14 },
-  calendarCard: { backgroundColor: CARD, borderRadius: 12, padding: 16, marginTop: 14 },
-
-  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  cardSoft: {
+    backgroundColor: "#EAF7EF",
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 8,
+  },
+  rewardCard: {
+    backgroundColor: LEMON,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 14,
+  },
+  calendarCard: {
+    backgroundColor: CARD,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 14,
+  },
+  rowBetween: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   rowCenter: { flexDirection: "row", alignItems: "center", gap: 6 },
-
   titleBold: { color: TEXT_DARK, fontWeight: "800", fontSize: 20 },
   metaText: { color: TEXT_DARK, marginLeft: 6, fontWeight: "600" },
   smallBold: { color: TEXT_DARK, fontWeight: "700" },
   small: { color: TEXT_DARK, fontSize: 14 },
-
-  progressTrack: { height: 10, backgroundColor: BLUE_TRACK, borderRadius: 999, marginTop: 8 },
-  progressBar: { height: 10, backgroundColor: BLUE_PROGRESS, borderRadius: 999 },
+  progressTrack: {
+    height: 10,
+    backgroundColor: BLUE_TRACK,
+    borderRadius: 999,
+    marginTop: 8,
+  },
+  progressBar: {
+    height: 10,
+    backgroundColor: BLUE_PROGRESS,
+    borderRadius: 999,
+  },
   progressPct: { color: TEXT_DARK, fontWeight: "700", marginTop: 6 },
-
   rewardTitle: { color: TEXT_DARK, fontWeight: "800", fontSize: 16 },
   rewardRow: { flexDirection: "row", alignItems: "center", marginTop: 12 },
-  badge: { backgroundColor: LEMON_BADGE, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  badge: {
+    backgroundColor: LEMON_BADGE,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
   badgeText: { fontWeight: "700", color: TEXT_DARK },
-  illus: { flex: 1, height: 70, borderRadius: 12, backgroundColor: "#EAEFFF", marginLeft: 12 },
-
-  monthTitle: { fontSize: 18, fontWeight: "800", color: TEXT_DARK, marginTop: 6 },
-  weekRow: { flexDirection: "row", alignItems: "center", marginTop: 8, paddingHorizontal: 4 },
+  illus: {
+    flex: 1,
+    height: 70,
+    borderRadius: 12,
+    backgroundColor: "#EAEFFF",
+    marginLeft: 12,
+  },
+  monthTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: TEXT_DARK,
+    marginTop: 6,
+  },
+  weekRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
   weekText: {
     flexBasis: "14.2857%",
     maxWidth: "14.2857%",
@@ -626,13 +573,28 @@ const styles = StyleSheet.create({
     color: TEXT_DARK,
     fontWeight: "600",
   },
-  grid: { flexDirection: "row", flexWrap: "wrap", marginTop: 8, paddingHorizontal: 4 },
-  cell: { flexBasis: "14.2857%", maxWidth: "14.2857%", alignItems: "center", paddingVertical: 8 },
-  dayBubble: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  cell: {
+    flexBasis: "14.2857%",
+    maxWidth: "14.2857%",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  dayBubble: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   dayBubbleMarked: { backgroundColor: TEXT_BLUE_DEEP },
   dayBubbleToday: { backgroundColor: BLUE_PROGRESS },
   dayText: { color: TEXT_DARK, fontWeight: "700" },
-
   label: { color: TEXT_DARK, fontWeight: "700" },
   inputBox: {
     borderRadius: 12,
@@ -654,7 +616,6 @@ const styles = StyleSheet.create({
   photoInner: { height: 120, alignItems: "center", justifyContent: "center" },
   photo: { width: "100%", height: 160, resizeMode: "cover" },
   photoHint: { color: "#9CA3AF", marginTop: 6, fontWeight: "700" },
-
   btn: {
     marginTop: 18,
     alignSelf: "center",
@@ -663,5 +624,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
   },
-  btnText: { color: "#fff", fontWeight: "800", textTransform: "lowercase", fontSize: 16 },
+  btnText: {
+    color: "#fff",
+    fontWeight: "800",
+    textTransform: "lowercase",
+    fontSize: 16,
+  },
 });
