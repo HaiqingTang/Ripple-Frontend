@@ -53,23 +53,23 @@ export default function CompletedChallenge() {
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<ActiveDoc | null>(null);
 
-  // 展示月份：默认用完成日期或今天
+  // Display month: Default is completion date or today
   const completedDate = params.dateISO ? new Date(params.dateISO) : new Date();
   const [viewYear] = useState(completedDate.getFullYear());
   const [viewMonth] = useState(completedDate.getMonth()); // 0-11
 
-  // 读用户参与记录
+  // Read user participation records
   useEffect(() => {
     (async () => {
       const uid = auth.currentUser?.uid;
       const challengeId = (typeof params.challengeId === "string" && params.challengeId.trim()) ? params.challengeId : null;
 
       if (!uid || !challengeId) {
-        // 没登录/没 id → 走静态 fallback
+        // Not logged in/no ID → static fallback
         setActive({
           title: params.title || "Daily 10k steps",
           totalDays: Math.max(1, Number(params.totalDays ?? 20) || 20),
-          checkins: [completedDate.toISOString().slice(0,10)], // 至少点亮完成当天
+          checkins: [completedDate.toISOString().slice(0,10)], // At least light up the day
           joined: Math.max(0, Number(params.joined ?? 0) || 0),
         });
         setLoading(false);
@@ -104,7 +104,7 @@ export default function CompletedChallenge() {
     })();
   }, []);
 
-  // 计算当月高亮
+  // Calculate highlights for the month
   const markedDays = useMemo(() => {
     const set = new Set<number>();
     const arr = active?.checkins || [];
@@ -161,7 +161,7 @@ export default function CompletedChallenge() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
-      {/* 头部 */}
+      {/* Header */}
       <View style={styles.headerBar}>
         <Pressable onPress={handleBack} hitSlop={10} style={styles.backBtn} android_ripple={{ color: "#dfe7ff", borderless: true }}>
           <Ionicons name="chevron-back" size={28} color={TEXT_BLUE} />
@@ -175,7 +175,7 @@ export default function CompletedChallenge() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* 完成卡 */}
+        {/* Completion Card */}
         <View style={[styles.cardSoft, SHADOW]}>
           <View style={styles.rowBetween}>
             <Text style={styles.titleBold}>{title}</Text>
@@ -207,7 +207,7 @@ export default function CompletedChallenge() {
           </View>
         </View>
 
-        {/* 奖励卡（示例） */}
+        {/* Rewards Card (Example) */}
         <View style={[styles.rewardCard, SHADOW]}>
           <Text style={styles.rewardTitle}>Reward: Premium Meditation App</Text>
           <Text style={[styles.small, { marginTop: 8 }]}>3-month subscription to premium meditation app</Text>
@@ -217,7 +217,7 @@ export default function CompletedChallenge() {
           </View>
         </View>
 
-        {/* 日历 */}
+        {/* Calendar */}
         <View style={[styles.calendarCard, SHADOW]}>
           <Text style={styles.monthTitle}>{monthTitle}</Text>
 
