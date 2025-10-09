@@ -1,0 +1,152 @@
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+/**
+ * Bottom-sheet modal for profile picture selection
+ * Allows taking photos or choosing from gallery
+ * Modal closes when tapping outside or using close button
+ */
+
+interface ImagePickerModalProps {
+  visible: boolean;
+  onClose: () => void;
+  onTakePhoto: () => void;
+  onChooseFromGallery: () => void;
+}
+
+export default function ImagePickerModal({
+  visible,
+  onClose,
+  onTakePhoto,
+  onChooseFromGallery,
+}: ImagePickerModalProps) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={visible}
+      onRequestClose={onClose}
+      accessibilityViewIsModal={true}
+    >
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.overlay}>
+          <TouchableWithoutFeedback>
+            <View style={[styles.modal, { paddingBottom: insets.bottom || 20 }]}>
+              {/* Header */}
+              <View style={styles.header}>
+                <Text style={styles.title}>Change Profile Picture</Text>
+                <TouchableOpacity
+                  onPress={onClose}
+                  style={styles.closeButton}
+                  accessibilityLabel="Close modal"
+                  accessibilityHint="Closes the photo selection options"
+                  accessibilityRole="button"
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Options */}
+              <View style={styles.options}>
+                <TouchableOpacity
+                  style={styles.option}
+                  onPress={onTakePhoto}
+                  accessibilityLabel="Take photo with camera"
+                  accessibilityHint="Opens camera to take a new photo"
+                  accessibilityRole="button"
+                >
+                  <View style={styles.optionIcon}>
+                    <Ionicons name="camera" size={32} color="#4A90E2" />
+                  </View>
+                  <Text style={styles.optionText}>Take Photo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.option}
+                  onPress={onChooseFromGallery}
+                  accessibilityLabel="Choose photo from gallery"
+                  accessibilityHint="Opens photo gallery to select an existing photo"
+                  accessibilityRole="button"
+                >
+                  <View style={styles.optionIcon}>
+                    <Ionicons name="images" size={32} color="#4A90E2" />
+                  </View>
+                  <Text style={styles.optionText}>Choose from Gallery</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modal: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    minHeight: 200,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2C3E50',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  options: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 40,
+    paddingVertical: 30,
+  },
+  option: {
+    alignItems: 'center',
+    flex: 1,
+    paddingVertical: 16,
+  },
+  optionIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#E8F4FD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#2C3E50',
+    textAlign: 'center',
+  },
+});

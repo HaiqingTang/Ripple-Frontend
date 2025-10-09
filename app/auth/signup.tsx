@@ -18,7 +18,10 @@ import CustomButton from '@/components/CustomButton';
 import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification, deleteUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { setDoc, doc } from "@firebase/firestore";
+
+import { doc, setDoc} from "@firebase/firestore";
+import {useAppContext} from "@/context/AppContext";
+
 
 
 // Reusable Password Input Component
@@ -77,299 +80,301 @@ export default function SignUpPage() {
 	const [firstName, setFirstName] = useState('');
 	const [lastName, setLastName] = useState('');
 	const [organization, setOrganization] = useState('');
-	const [email, setEmail] = useState('');
-	const [password, setPassword] = useState('');
-	const [confirmPassword, setConfirmPassword] = useState('');
-	const [showPassword, setShowPassword] = useState(false);
-	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-	const [errorMessage, setErrorMessage] = useState('');
-	const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+	const {userId, fullName } = useAppContext();
 
-	// Clear error message when user starts typing
-	const handleInputChange = (setter: (value: string) => void) => (text: string) => {
-		if (errorMessage) setErrorMessage('');
-		setter(text);
-	};
+  // Validation functions
+  const validateEmail = (email: string) => {
+    const re = /\S+@\S+\.\S+/;
+    return re.test(email);
+  };
 
-	// Validation functions
-	const validateEmail = (email: string) => {
-		const re = /\S+@\S+\.\S+/;
-		return re.test(email);
-	};
+  const validatePassword = (password: string) => {
+    return password.length >= 8;
+  };
 
-	const validatePassword = (password: string) => {
-		return password.length >= 8;
-	};
+  const validateForm = () => {
+    if (!firstName.trim()) {
+      setErrorMessage('Please enter your first name');
+      return false;
+    }
+    if (!lastName.trim()) {
+      setErrorMessage('Please enter your last name');
+      return false;
+    }
+    if (!email.trim()) {
+      setErrorMessage('Please enter your email');
+      return false;
+    }
+    if (!validateEmail(email)) {
+      setErrorMessage('Please enter a valid email address');
+      return false;
+    }
+    if (!password) {
+      setErrorMessage('Please enter a password');
+      return false;
+    }
+    if (!validatePassword(password)) {
+      setErrorMessage('Password must contain at least 8 characters');
+      return false;
+    }
+    if (password !== confirmPassword) {
+      setErrorMessage('Passwords do not match');
+      return false;
+    }
+    return true;
+  };
 
-	const validateForm = () => {
-		if (!firstName.trim()) {
-			setErrorMessage('Please enter your first name');
-			return false;
-		}
-		if (!lastName.trim()) {
-			setErrorMessage('Please enter your last name');
-			return false;
-		}
-		if (!email.trim()) {
-			setErrorMessage('Please enter your email');
-			return false;
-		}
-		if (!validateEmail(email.trim())) {
-			setErrorMessage('Please enter a valid email address');
-			return false;
-		}
-		if (!password) {
-			setErrorMessage('Please enter a password');
-			return false;
-		}
-		if (!validatePassword(password)) {
-			setErrorMessage('Password must contain at least 8 characters');
-			return false;
-		}
-		if (password !== confirmPassword) {
-			setErrorMessage('Passwords do not match');
-			return false;
-		}
-		return true;
-	};
+  // Handle signup
+  const handleSignUp = async () => {
+    if (!validateForm()) {
+      return;
+    }
 
-	// Handle signup with proper error handling and rollback
-	const handleSignUp = async () => {
-		if (!validateForm()) {
-			return;
-		}
+    setLoading(true);
+    setErrorMessage('');
 
-		setLoading(true);
-		setErrorMessage('');
+    try {
+      // Create user account
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+			// Send email verifiaction to user
+	    await sendEmailVerification(userCredential.user);
+	    Alert.alert( 'A verification link has been sent to your email. Please verify your email before logging in.');
 
-		let userCredential: any = null;
+	    // Update user profile with name
+      await updateProfile(userCredential.user, {
+        displayName: `${firstName} ${lastName}`.trim(),
+      });
 
-		try {
-			// Normalize and trim inputs
-			const normalizedEmail = email.trim().toLowerCase();
-			const trimmedFirstName = firstName.trim();
-			const trimmedLastName = lastName.trim();
-			const trimmedOrganization = organization.trim();
-			const fullName = `${trimmedFirstName} ${trimmedLastName}`;
+	    // Create user document with the Firebase Auth UID as the document ID
+	    const userDocRef = doc(db, "users", userCredential.user.uid);
+	    await setDoc(userDocRef, {
+		    userId: userCredential.user.uid,
+		    name: `${firstName} ${lastName}`.trim(),
+		    email: email,
+		    ...(organization.trim() && { organization: organization.trim() })
+	    });
 
-			// Create user account
-			userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-			const { user } = userCredential;
+      console.log('Account created for:', userCredential.user.uid);
 
-			// Update user profile with name
-			await updateProfile(user, {
-				displayName: fullName,
-			});
+      // Navigate to login page after successful signup
+      router.push('/auth/login');
+    } catch (error: any) {
+      let message = 'Account creation failed. Please try again later';
 
-			// Send email verification
-			await sendEmailVerification(user);
-			Alert.alert('Verification Required', 'A verification link has been sent to your email. Please verify your email before logging in.');
+      switch (error.code) {
+        case 'auth/email-already-in-use':
+          message = 'An account with this email already exists';
+          break;
+        case 'auth/invalid-email':
+          message = 'Invalid email address';
+          break;
+        case 'auth/operation-not-allowed':
+          message = 'Email/password accounts are not enabled';
+          break;
+        case 'auth/weak-password':
+          message = 'Password is too weak. Please choose a stronger password';
+          break;
+        default:
+					console.log(error.message);
+          message = 'Account creation failed. Please try again later';
+      }
 
-			// Prepare user data for Firestore
-			const userData: any = {
-				name: fullName,
-				email: normalizedEmail,
-			};
+      console.log('Signup failed:', message);
+      setErrorMessage(message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-			// Only add organization if it exists
-			if (trimmedOrganization) {
-				userData.organization = trimmedOrganization;
-			}
+  const handleTermsPress = () => {
+    // TODO: Navigate to terms of service page
+    console.log('Terms of Service pressed');
+  };
 
-			// Use setDoc with uid as document ID for better data consistency
-			await setDoc(doc(db, "users", user.uid), userData);
+  const handlePrivacyPress = () => {
+    // TODO: Navigate to privacy policy page
+    console.log('Privacy Policy pressed');
+  };
 
-			console.log('Account created for:', user.uid);
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
+    <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+         <ScrollView 
+            style={styles.container}
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+        <View style={styles.container}>
+          {/* Header with back button */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#2C3E50" />
+            </TouchableOpacity>
+          </View>
 
-			// Navigate to login page after successful signup
-			router.push('/auth/login');
-		} catch (error: any) {
-			// If Firestore write fails but user was created, clean up the auth user
-			if (userCredential?.user && error.code !== 'auth/email-already-in-use') {
-				try {
-					await deleteUser(userCredential.user);
-					console.log('Cleaned up user account after Firestore failure');
-				} catch (deleteError) {
-					console.error('Failed to clean up user account:', deleteError);
-				}
-			}
+          {/* Form */}
+          <View style={styles.form}>
+            <Text style={styles.title}>Sign up</Text>
 
-			let message = 'Account creation failed. Please try again later';
+            {/* Error Message */}
+            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-			switch (error?.code) {
-				case 'auth/email-already-in-use':
-					message = 'An account with this email already exists';
-					break;
-				case 'auth/invalid-email':
-					message = 'Invalid email address';
-					break;
-				case 'auth/operation-not-allowed':
-					message = 'Email/password accounts are not enabled';
-					break;
-				case 'auth/weak-password':
-					message = 'Password is too weak. Please choose a stronger password';
-					break;
-				default:
-					console.log('Signup error:', error?.message || error);
-					message = 'Account creation failed. Please try again later';
-			}
+            {/* Name Fields - Side by Side */}
+            <View style={styles.nameContainer}>
+              <View style={styles.nameInputContainer}>
+                <Text style={styles.label}>First Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="John"
+                  placeholderTextColor="#9BA1A6"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+              </View>
 
-			console.log('Signup failed:', message);
-			setErrorMessage(message);
-		} finally {
-			setLoading(false);
-		}
-	};
+              <View style={styles.nameInputContainer}>
+                <Text style={styles.label}>Last Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Doe"
+                  placeholderTextColor="#9BA1A6"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
 
-	const handleTermsPress = () => {
-		// TODO: Navigate to terms of service page
-		// Consider adding router.push('/legal/terms') when page is ready
-		console.log('Terms of Service pressed');
-	};
+	          {/* Organization Input */}
+	          <View style={styles.inputContainer}>
+		          <Text style={styles.label}>Organization (Optional)</Text>
+		          <TextInput
+			          style={styles.input}
+			          placeholder="Enter your organization"
+			          placeholderTextColor="#9BA1A6"
+			          value={organization}
+			          onChangeText={setOrganization}
+			          autoCapitalize="none"
+			          autoCorrect={false}
+		          />
+	          </View>
 
-	const handlePrivacyPress = () => {
-		// TODO: Navigate to privacy policy page
-		// Consider adding router.push('/legal/privacy') when page is ready
-		console.log('Privacy Policy pressed');
-	};
+            {/* Email Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>E-mail</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your email"
+                placeholderTextColor="#9BA1A6"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
 
-	return (
-		<SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
-			<KeyboardAvoidingView
-				style={{ flex: 1 }}
-				behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-				keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-			>
-				<TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-					<ScrollView
-						style={styles.container}
-						contentContainerStyle={{ flexGrow: 1 }}
-						keyboardShouldPersistTaps="handled"
-						showsVerticalScrollIndicator={false}
-					>
-						<View style={styles.container}>
-							{/* Header with back button */}
-							<View style={styles.header}>
-								<TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-									<Ionicons name="arrow-back" size={24} color="#2C3E50" />
-								</TouchableOpacity>
-							</View>
+            {/* Password Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Password</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="••••••••"
+                  placeholderTextColor="#9BA1A6"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeButton}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye' : 'eye-off'}
+                    size={20}
+                    color="#9BA1A6"
+                  />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.helperText}>must contain at least 8 characters</Text>
+            </View>
 
-							{/* Form */}
-							<View style={styles.form}>
-								<Text style={styles.title}>Sign up</Text>
+            {/* Confirm Password Input */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Confirm Password</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="••••••••"
+                  placeholderTextColor="#9BA1A6"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showConfirmPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="off"
+                />
+                <TouchableOpacity
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={styles.eyeButton}
+                >
+                  <Ionicons
+                    name={showConfirmPassword ? 'eye' : 'eye-off'}
+                    size={20}
+                    color="#9BA1A6"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
 
-								{/* Error Message */}
-								{errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+            {/* Create Account Button */}
+            <CustomButton
+              title={loading ? 'Creating Account...' : 'Create Account'}
+              onPress={handleSignUp}
+              variant="primary"
+              size="large"
+              style={styles.signupButton}
+              disabled={loading}
+            />
 
-								{/* Name Fields - Side by Side */}
-								<View style={styles.nameContainer}>
-									<View style={styles.nameInputContainer}>
-										<Text style={styles.label}>First Name</Text>
-										<TextInput
-											style={styles.input}
-											placeholder="John"
-											placeholderTextColor="#9BA1A6"
-											value={firstName}
-											onChangeText={handleInputChange(setFirstName)}
-											autoCapitalize="words"
-											autoCorrect={false}
-										/>
-									</View>
-
-									<View style={styles.nameInputContainer}>
-										<Text style={styles.label}>Last Name</Text>
-										<TextInput
-											style={styles.input}
-											placeholder="Doe"
-											placeholderTextColor="#9BA1A6"
-											value={lastName}
-											onChangeText={handleInputChange(setLastName)}
-											autoCapitalize="words"
-											autoCorrect={false}
-										/>
-									</View>
-								</View>
-
-								{/* Organization Input */}
-								<View style={styles.inputContainer}>
-									<Text style={styles.label}>Organization (Optional)</Text>
-									<TextInput
-										style={styles.input}
-										placeholder="Enter your organization"
-										placeholderTextColor="#9BA1A6"
-										value={organization}
-										onChangeText={handleInputChange(setOrganization)}
-										autoCapitalize="none"
-										autoCorrect={false}
-									/>
-								</View>
-
-								{/* Email Input */}
-								<View style={styles.inputContainer}>
-									<Text style={styles.label}>E-mail</Text>
-									<TextInput
-										style={styles.input}
-										placeholder="Enter your email"
-										placeholderTextColor="#9BA1A6"
-										value={email}
-										onChangeText={handleInputChange(setEmail)}
-										keyboardType="email-address"
-										autoCapitalize="none"
-										autoCorrect={false}
-									/>
-								</View>
-
-								{/* Password Input - Using reusable component */}
-								<PasswordInput
-									label="Password"
-									value={password}
-									onChangeText={handleInputChange(setPassword)}
-									showPassword={showPassword}
-									onTogglePassword={() => setShowPassword(!showPassword)}
-									helperText="must contain at least 8 characters"
-									autoComplete="new-password"
-								/>
-
-								{/* Confirm Password Input - Using reusable component */}
-								<PasswordInput
-									label="Confirm Password"
-									value={confirmPassword}
-									onChangeText={handleInputChange(setConfirmPassword)}
-									showPassword={showConfirmPassword}
-									onTogglePassword={() => setShowConfirmPassword(!showConfirmPassword)}
-									autoComplete="off"
-								/>
-
-								{/* Create Account Button */}
-								<CustomButton
-									title={loading ? 'Creating Account...' : 'Create Account'}
-									onPress={handleSignUp}
-									variant="primary"
-									size="large"
-									style={styles.signupButton}
-									disabled={loading}
-								/>
-
-								{/* Terms and Privacy Policy */}
-								<View style={styles.termsContainer}>
-									<Text style={styles.termsText}>By continuing, you agree to our </Text>
-									<TouchableOpacity onPress={handleTermsPress}>
-										<Text style={styles.termsLink}>Terms of Service</Text>
-									</TouchableOpacity>
-									<Text style={styles.termsText}> and </Text>
-									<TouchableOpacity onPress={handlePrivacyPress}>
-										<Text style={styles.termsLink}>Privacy Policy</Text>
-									</TouchableOpacity>
-									<Text style={styles.termsText}>.</Text>
-								</View>
-							</View>
-						</View>
-					</ScrollView>
-				</TouchableWithoutFeedback>
-			</KeyboardAvoidingView>
-		</SafeAreaView>
-	);
+            {/* Terms and Privacy Policy */}
+            <View style={styles.termsContainer}>
+              <Text style={styles.termsText}>By continuing, you agree to our </Text>
+              <TouchableOpacity onPress={handleTermsPress}>
+                <Text style={styles.termsLink}>Terms of Service</Text>
+              </TouchableOpacity>
+              <Text style={styles.termsText}> and </Text>
+              <TouchableOpacity onPress={handlePrivacyPress}>
+                <Text style={styles.termsLink}>Privacy Policy</Text>
+              </TouchableOpacity>
+              <Text style={styles.termsText}>.</Text>
+            </View>
+          </View>
+        </View>
+       </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
