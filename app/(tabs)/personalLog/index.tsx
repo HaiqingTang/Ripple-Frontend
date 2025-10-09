@@ -74,6 +74,7 @@ export default function PersonalLog() {
 	const handleSave = async () => {
 		const logData = {
 			date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
+			weekday: dayOfWeek,
 			dayRating,
 			moodRating,
 			selectedEmoji: selectedEmoji + 1, // Save as 1-5 integer instead of emoji character
@@ -104,6 +105,7 @@ export default function PersonalLog() {
 	const handleViewPreviousEntries = () => {
 		// TODO: Navigate to previous entries screen
 		console.log('Viewing previous entries...');
+		router.push('/journal/entries')
 	};
 
 	const openJournal = () => {
