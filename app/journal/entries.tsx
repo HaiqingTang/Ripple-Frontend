@@ -10,9 +10,11 @@ import {
   Modal,
   ScrollView,
 } from "react-native";
+import { Image } from "expo-image";
 import { collection, getDocs, query, where } from "@firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAppContext } from "@/context/AppContext";
+import { createDataUri } from "@/lib/imageService";
 
 const BLUE_BG = "#DDE7FF";
 const WHITE = "#FFFFFF";
@@ -171,6 +173,18 @@ export default function LogEntriesPage() {
       <Text style={{ marginBottom: 16 }} numberOfLines={3}>
         {item.journalText || "-"}
       </Text>
+
+      {/* Image */}
+      {item.imageBase64 && (
+        <View style={{ marginBottom: 12, borderRadius: 8, overflow: "hidden" }}>
+          <Image
+            source={{ uri: createDataUri(item.imageBase64) }}
+            style={{ width: "100%", height: 160, borderRadius: 8 }}
+            contentFit="cover"
+            transition={200}
+          />
+        </View>
+      )}
 
       {/* Sleep info */}
       <Text style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>SLEEP</Text>
@@ -383,6 +397,18 @@ export default function LogEntriesPage() {
                 <Text style={{ fontSize: 12, color: "#666" }}>DAILY REFLECTION</Text>
                 <View style={{ flexDirection: "row", marginBottom: 6 }}></View>
                 <Text style={{ marginBottom: 20 }}>{selectedLog.journalText || "-"}</Text>
+
+                {/* Image */}
+                {selectedLog.imageBase64 && (
+                  <View style={{ marginBottom: 20, borderRadius: 12, overflow: "hidden" }}>
+                    <Image
+                      source={{ uri: createDataUri(selectedLog.imageBase64) }}
+                      style={{ width: "100%", height: 300, borderRadius: 12 }}
+                      contentFit="cover"
+                      transition={200}
+                    />
+                  </View>
+                )}
 
                 {/* Sleep */}
                 <Text style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>SLEEP</Text>

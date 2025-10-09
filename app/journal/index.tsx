@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Modal, SafeAreaView, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Modal, SafeAreaView, KeyboardAvoidingView, Platform, Dimensions, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import ImagePickerModal from '@/components/ImagePickerModal';
+import { pickJournalImageFromGallery, takeJournalPicture, createDataUri, validateImageFile } from '@/lib/imageService';
 
 const { width } = Dimensions.get('window');
 
@@ -38,6 +41,8 @@ export default function JournalPage() {
 	const [journalText, setJournalText] = useState('');
 	const [selectedTags, setSelectedTags] = useState<string[]>(['Work', 'Goals', 'Growth']);
 	const [isTagModalVisible, setIsTagModalVisible] = useState(false);
+	const [journalImage, setJournalImage] = useState<string | null>(null);
+	const [imageModalVisible, setImageModalVisible] = useState(false);
 
 	// Initialize from params on mount
 	useEffect(() => {
@@ -53,6 +58,9 @@ export default function JournalPage() {
 			} catch (error) {
 				console.warn('Error parsing tags from params:', error);
 			}
+		}
+		if (params.image) {
+			setJournalImage(params.image as string);
 		}
 	}, []); // Run once on mount
 
@@ -83,7 +91,77 @@ export default function JournalPage() {
 			return; // Button will be disabled anyway
 		}
 		const tagsString = JSON.stringify(selectedTags);
-		router.push(`/(tabs)/personalLog?journal=${encodeURIComponent(journalText.trim())}&tags=${encodeURIComponent(tagsString)}`);
+		let url = `/(tabs)/personalLog?journal=${encodeURIComponent(journalText.trim())}&tags=${encodeURIComponent(tagsString)}`;
+		if (journalImage) {
+			url += `&image=${encodeURIComponent(journalImage)}`;
+		}
+		router.push(url);
+	};
+
+	const handleImageSelected = async (base64Data: string) => {
+		setImageModalVisible(false);
+
+		try {
+			// Validate base64 data
+			if (!base64Data || base64Data.trim() === '') {
+				Alert.alert('Error', 'Invalid image data. Please try again.');
+				return;
+			}
+
+			// Validate file size
+			const sizeInBytes = (base64Data.length * 3) / 4;
+			const validation = validateImageFile(sizeInBytes);
+			if (!validation.isValid) {
+				Alert.alert('Error', validation.error || 'Image file is too large');
+				return;
+			}
+
+			// Create data URI for display
+			const dataUri = createDataUri(base64Data);
+			setJournalImage(dataUri);
+		} catch (error) {
+			console.error('Error processing image:', error);
+			Alert.alert('Error', 'Failed to process image. Please try again.');
+		}
+	};
+
+	const handleTakePhoto = async () => {
+		const result = await takeJournalPicture();
+		if (result.success && result.base64) {
+			await handleImageSelected(result.base64);
+		} else if (result.canceled) {
+			setImageModalVisible(false);
+		} else if (result.error) {
+			Alert.alert('Error', result.error);
+			setImageModalVisible(false);
+		}
+	};
+
+	const handleChooseFromGallery = async () => {
+		const result = await pickJournalImageFromGallery();
+		if (result.success && result.base64) {
+			await handleImageSelected(result.base64);
+		} else if (result.canceled) {
+			setImageModalVisible(false);
+		} else if (result.error) {
+			Alert.alert('Error', result.error);
+			setImageModalVisible(false);
+		}
+	};
+
+	const handleRemoveImage = () => {
+		Alert.alert(
+			'Remove Image',
+			'Are you sure you want to remove this image?',
+			[
+				{ text: 'Cancel', style: 'cancel' },
+				{
+					text: 'Remove',
+					style: 'destructive',
+					onPress: () => setJournalImage(null),
+				},
+			]
+		);
 	};
 
 	const isSubmitDisabled = !journalText.trim();
@@ -141,6 +219,40 @@ export default function JournalPage() {
 					</View>
 
 
+					{/* Image Attachment Card */}
+					<View style={[styles.card, styles.imageCard]}>
+						<Text style={styles.cardTitle}>Add an image (optional)</Text>
+
+						{journalImage ? (
+							<View style={styles.imagePreviewContainer}>
+								<Image
+									source={{ uri: journalImage }}
+									style={styles.imagePreview}
+									contentFit="cover"
+									transition={200}
+								/>
+								<TouchableOpacity
+									style={styles.removeImageButton}
+									onPress={handleRemoveImage}
+									accessibilityLabel="Remove image"
+									accessibilityRole="button"
+								>
+									<Ionicons name="close-circle" size={32} color="#FF3B30" />
+								</TouchableOpacity>
+							</View>
+						) : (
+							<TouchableOpacity
+								style={styles.addImageButton}
+								onPress={() => setImageModalVisible(true)}
+								accessibilityLabel="Add image to journal"
+								accessibilityRole="button"
+							>
+								<Ionicons name="camera-outline" size={32} color="#4A90E2" />
+								<Text style={styles.addImageText}>Add Photo</Text>
+							</TouchableOpacity>
+						)}
+					</View>
+
 					{/* Topic Tagging Card */}
 					<View style={[styles.card, styles.tagCard]}>
 						<Text style={styles.cardTitle}>Tag a topic</Text>
@@ -190,6 +302,15 @@ export default function JournalPage() {
 					</TouchableOpacity>
 				</ScrollView>
 			</KeyboardAvoidingView>
+
+			{/* Image Picker Modal */}
+			<ImagePickerModal
+				visible={imageModalVisible}
+				onClose={() => setImageModalVisible(false)}
+				onTakePhoto={handleTakePhoto}
+				onChooseFromGallery={handleChooseFromGallery}
+				title="Add Journal Photo"
+			/>
 
 			{/* Tag Selection Modal */}
 			<Modal
@@ -419,5 +540,46 @@ const styles = StyleSheet.create({
 	modalTagText: {
 		fontSize: 14,
 		fontWeight: '500',
+	},
+	imageCard: {
+		marginTop: 16,
+	},
+	addImageButton: {
+		backgroundColor: '#F8F8F8',
+		borderRadius: 12,
+		padding: 32,
+		alignItems: 'center',
+		justifyContent: 'center',
+		borderWidth: 2,
+		borderColor: '#E0E0E0',
+		borderStyle: 'dashed',
+	},
+	addImageText: {
+		marginTop: 8,
+		fontSize: 16,
+		color: '#4A90E2',
+		fontWeight: '500',
+	},
+	imagePreviewContainer: {
+		position: 'relative',
+		borderRadius: 12,
+		overflow: 'hidden',
+	},
+	imagePreview: {
+		width: '100%',
+		height: 240,
+		borderRadius: 12,
+	},
+	removeImageButton: {
+		position: 'absolute',
+		top: 8,
+		right: 8,
+		backgroundColor: 'rgba(255, 255, 255, 0.9)',
+		borderRadius: 16,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.2,
+		shadowRadius: 4,
+		elevation: 3,
 	},
 });

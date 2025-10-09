@@ -21,6 +21,7 @@ interface ImagePickerModalProps {
   onClose: () => void;
   onTakePhoto: () => void;
   onChooseFromGallery: () => void;
+  title?: string;
 }
 
 export default function ImagePickerModal({
@@ -28,6 +29,7 @@ export default function ImagePickerModal({
   onClose,
   onTakePhoto,
   onChooseFromGallery,
+  title = 'Add Photo',
 }: ImagePickerModalProps) {
   const insets = useSafeAreaInsets();
   return (
@@ -44,7 +46,7 @@ export default function ImagePickerModal({
             <View style={[styles.modal, { paddingBottom: insets.bottom || 20 }]}>
               {/* Header */}
               <View style={styles.header}>
-                <Text style={styles.title}>Change Profile Picture</Text>
+                <Text style={styles.title}>{title}</Text>
                 <TouchableOpacity
                   onPress={onClose}
                   style={styles.closeButton}
