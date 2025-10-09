@@ -36,7 +36,7 @@ export default function NutritionChallengeList() {
   const [loading, setLoading] = useState(true);
   const [joinedIds, setJoinedIds] = useState<string[]>([]);
 
-  // 🔹 Fetch user's joined challenges
+  // Fetch user's joined challenges
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
@@ -48,7 +48,7 @@ export default function NutritionChallengeList() {
     });
   }, []);
 
-  // 🔹 Fetch challenge list from Firestore
+  // Fetch challenge list from Firestore
   useEffect(() => {
     const ref = collection(db, "challenges", category, "items");
     const qRef = query(ref, orderBy("createdAt", "desc"));
@@ -78,7 +78,7 @@ export default function NutritionChallengeList() {
     return () => unsub();
   }, [category]);
 
-  // 🔹 Search filter
+  // Search filter
   const filtered = useMemo(() => {
     const kw = q.trim().toLowerCase();
     if (!kw) return list;
@@ -90,7 +90,7 @@ export default function NutritionChallengeList() {
     );
   }, [q, list]);
 
-  // 🔹 Open detail page
+  // Open detail page
   const openDetail = (c: Challenge) => {
     router.push({
       pathname: "/Challenge/challengeDetail",
@@ -98,10 +98,20 @@ export default function NutritionChallengeList() {
     } as any);
   };
 
-  // 🔹 Create new challenge (dev only)
+  // Create new challenge (dev only)
   const createNew = () => {
     router.push("/Challenge/createChallenge");
   };
+
+  // Subtitle mapping by category
+  const subtitleByCategory: Record<string, string> = {
+    nutrition: "Healthy plate, healthier you",
+    fitness: "Move more, feel stronger",
+    meditation: "Calm mind, clear focus",
+    tech: "Stay smart, live connected",
+    art: "Create with joy",
+  };
+  const subtitle = subtitleByCategory[category] || "Discover your challenge";
 
   return (
     <View style={styles.container}>
@@ -115,7 +125,7 @@ export default function NutritionChallengeList() {
           <Text style={styles.title}>
             {category.charAt(0).toUpperCase() + category.slice(1)} challenge
           </Text>
-          <Text style={styles.subtitle}>Healthy plate, healthier you</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
 
         <Image

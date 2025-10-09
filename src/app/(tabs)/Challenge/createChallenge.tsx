@@ -9,25 +9,62 @@ import {
   Pressable,
   Platform,
   Alert,
+  Image,
 } from "react-native";
-import type { KeyboardTypeOptions } from "react-native"; // 类型引入
+import type { KeyboardTypeOptions } from "react-native";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { db, auth } from "../../../firebase";
 import { collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import * as ImagePicker from "expo-image-picker";
 
 type ThemeKey = "fitness" | "nutrition" | "tech" | "art" | "meditation";
 type RewardType = "badge" | "voucher" | "points" | "other";
 
+/** Theme metadata (for selection cards) */
 const THEME_META: Record<
   ThemeKey,
   { title: string; subtitle: string; icon: keyof typeof Ionicons.glyphMap }
 > = {
-  fitness: { title: "Fitness", subtitle: "Move daily, get stronger, feel amazing.", icon: "barbell-outline" },
-  nutrition: { title: "Nutrition", subtitle: "Healthier plan, healthier you", icon: "restaurant-outline" },
-  tech: { title: "Tech", subtitle: "Make tech simple, make ideas real.", icon: "hardware-chip-outline" },
-  art: { title: "Art", subtitle: "Create daily, explore styles, find your voice.", icon: "color-palette-outline" },
-  meditation: { title: "Meditation", subtitle: "Calm mind, steady focus, gentle practice", icon: "leaf-outline" },
+  fitness: {
+    title: "Fitness",
+    subtitle: "Move daily, get stronger, feel amazing.",
+    icon: "barbell-outline",
+  },
+  nutrition: {
+    title: "Nutrition",
+    subtitle: "Healthy plate, healthier you",
+    icon: "restaurant-outline",
+  },
+  tech: {
+    title: "Tech",
+    subtitle: "Make tech simple, make ideas real.",
+    icon: "hardware-chip-outline",
+  },
+  art: {
+    title: "Art",
+    subtitle: "Create daily, explore styles, find your voice.",
+    icon: "color-palette-outline",
+  },
+  meditation: {
+    title: "Meditation",
+    subtitle: "Calm mind, steady focus, gentle practice",
+    icon: "leaf-outline",
+  },
+};
+
+/** Default cover image for each theme */
+const THEME_COVERS: Record<ThemeKey, string> = {
+  meditation:
+    "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop",
+  nutrition:
+    "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=800&auto=format&fit=crop",
+  tech:
+    "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=800&auto=format&fit=crop",
+  fitness:
+    "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=800&auto=format&fit=crop",
+  art:
+    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=800&auto=format&fit=crop",
 };
 
 const COLORS = {
@@ -43,35 +80,55 @@ const COLORS = {
   helper: "#6F7EA6",
 };
 
-// 默认 reward terms（与详情页一致）
+// Default reward terms
 const DEFAULT_REWARD_TERMS = [
   "Redeemable at participating locations.",
   "Not valid with other discounts or promotions.",
   "No cash value.",
 ];
 
+// Cloudinary settings (same as newMeetup)
+const CLOUDINARY = {
+  CLOUD_NAME: "dwo2o5q8y",
+  UPLOAD_PRESET: "meetup_unsigned",
+  FOLDER_COVER: "challenge_covers",
+  FOLDER_REWARD: "challenge_rewards",
+};
+
 export default function CreateChallenge() {
   const router = useRouter();
 
-  // challenge 基本信息
+  // Basic challenge info
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [theme, setTheme] = useState<ThemeKey | null>(null);
   const [capacity, setCapacity] = useState<string>("");
-  const [duration, setDuration] = useState<string>(""); // days
+  const [duration, setDuration] = useState<string>("");
 
-  // reward setup — 基础 + 扩展
+  // Cover (gallery import + Cloudinary)
+  const [coverLocalUri, setCoverLocalUri] = useState<string | null>(null);
+  const [coverMime, setCoverMime] = useState<string | null>(null);
+  const [coverWebFile, setCoverWebFile] = useState<File | null>(null);
+  const [coverUploadedUrl, setCoverUploadedUrl] = useState<string | null>(null);
+  const [coverUploading, setCoverUploading] = useState(false);
+
+  // Reward logo (gallery import + Cloudinary)
+  const [rewardLocalUri, setRewardLocalUri] = useState<string | null>(null);
+  const [rewardMime, setRewardMime] = useState<string | null>(null);
+  const [rewardWebFile, setRewardWebFile] = useState<File | null>(null);
+  const [rewardUploadedUrl, setRewardUploadedUrl] = useState<string | null>(null);
+  const [rewardUploading, setRewardUploading] = useState(false);
+
+  // Reward configuration
   const [rewardName, setRewardName] = useState("");
   const [rewardDesc, setRewardDesc] = useState("");
   const [rewardType, setRewardType] = useState<RewardType | null>(null);
   const [rewardValue, setRewardValue] = useState("");
   const [showTypeMenu, setShowTypeMenu] = useState(false);
-  const [rewardVendor, setRewardVendor] = useState("");             // 副标题
-  const [rewardLogoUri, setRewardLogoUri] = useState("");           // 覆盖默认封面
-  const [rewardTermsText, setRewardTermsText] = useState("");       // 多行 -> terms[]
-  const [rewardQuantity, setRewardQuantity] = useState<string>(""); // 库存/上限
-  const [rewardExpiryDays, setRewardExpiryDays] = useState<string>(""); // 奖励有效期（天）
-  const [rewardQrPayload, setRewardQrPayload] = useState("");       // 固定二维码载荷
+  const [rewardVendor, setRewardVendor] = useState("");
+  const [rewardTermsText, setRewardTermsText] = useState("");
+  const [rewardQuantity, setRewardQuantity] = useState<string>("");
+  const [rewardExpiryDays, setRewardExpiryDays] = useState<string>("");
 
   const TITLE_MAX = 30;
   const DESC_MAX = 360;
@@ -88,7 +145,7 @@ export default function CreateChallenge() {
     );
   }, [title, description, theme, capacity, duration, rewardName, rewardType]);
 
-  // 工具：根据天数计算 ISO
+  // Calculate validUntil ISO date
   const toValidUntilISO = (days: number) => {
     const d = new Date();
     d.setDate(d.getDate() + Math.max(1, days));
@@ -105,7 +162,87 @@ export default function CreateChallenge() {
       .slice(0, 12);
   };
 
-  // 发布
+  /** Pick one image (same as newMeetup) */
+  const pickOneImage = async (
+    setLocalUri: (uri: string | null) => void,
+    setMime: (m: string | null) => void,
+    setWebFile: (f: File | null) => void,
+    setUploadedUrl: (u: string | null) => void
+  ) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "Media library access is needed to select an image.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      selectionLimit: 1,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+      base64: false,
+    });
+
+    if (result.canceled) return;
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return;
+
+    setLocalUri(asset.uri);
+    setMime((asset as any)?.mimeType || "image/jpeg");
+    setWebFile(Platform.OS === "web" ? (asset as any)?.file ?? null : null);
+    setUploadedUrl(null);
+  };
+
+  /** Upload to Cloudinary (shared for cover/reward) */
+  const uploadToCloudinary = async (
+    localUri: string | null,
+    webFile: File | null,
+    mime: string | null,
+    folder: string,
+    setUploading: (b: boolean) => void,
+    setUploadedUrl: (u: string) => void,
+    uid: string
+  ): Promise<string> => {
+    if (!localUri) return "";
+
+    try {
+      setUploading(true);
+
+      const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY.CLOUD_NAME}/image/upload`;
+      const form = new FormData();
+      form.append("upload_preset", CLOUDINARY.UPLOAD_PRESET);
+      form.append("folder", folder);
+
+      const filename = `${folder}_${uid}_${Date.now()}.jpg`;
+      const mt = mime || "image/jpeg";
+
+      if (Platform.OS === "web") {
+        let fileToSend: Blob | File | null = webFile;
+        if (!fileToSend) {
+          const resp = await fetch(localUri);
+          fileToSend = await resp.blob();
+        }
+        form.append("file", fileToSend as any, filename);
+      } else {
+        form.append("file", { uri: localUri, name: filename, type: mt } as any);
+      }
+
+      const res = await fetch(endpoint, { method: "POST", body: form as any });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Cloudinary upload failed: ${text}`);
+      }
+      const data = await res.json();
+      const url = data.secure_url as string;
+      setUploadedUrl(url);
+      return url;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Submit handler
   const onSubmit = async () => {
     if (!isValid) {
       Alert.alert("Incomplete", "Please fill all required fields before publishing.");
@@ -118,27 +255,55 @@ export default function CreateChallenge() {
         Alert.alert("Error", "Please log in before creating a challenge.");
         return;
       }
+      if (!theme) {
+        Alert.alert("Error", "Please select a theme.");
+        return;
+      }
 
-      // 选择封面：若输入了 rewardLogoUri 就优先用；否则用主题预设
-      const themeCover =
-        theme === "nutrition"
-          ? "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=640&q=80&auto=format&fit=crop"
-          : theme === "fitness"
-          ? "https://images.unsplash.com/photo-1579758629938-03607ccdbaba?w=640&auto=format&fit=crop"
-          : "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop";
-      const cover = rewardLogoUri.trim() || themeCover;
+      // Upload selected images if not yet uploaded
+      let finalCoverUrl = coverUploadedUrl || "";
+      if (!finalCoverUrl && coverLocalUri) {
+        finalCoverUrl = await uploadToCloudinary(
+          coverLocalUri,
+          coverWebFile,
+          coverMime,
+          CLOUDINARY.FOLDER_COVER,
+          setCoverUploading,
+          (u) => setCoverUploadedUrl(u),
+          uid
+        );
+      }
 
-      // 计算奖励有效期：优先使用 rewardExpiryDays；否则用 challenge 的 duration
-      const rewardDays = Number(rewardExpiryDays) > 0 ? Number(rewardExpiryDays) : Number(duration);
+      let finalRewardLogoUrl = rewardUploadedUrl || "";
+      if (!finalRewardLogoUrl && rewardLocalUri) {
+        finalRewardLogoUrl = await uploadToCloudinary(
+          rewardLocalUri,
+          rewardWebFile,
+          rewardMime,
+          CLOUDINARY.FOLDER_REWARD,
+          setRewardUploading,
+          (u) => setRewardUploadedUrl(u),
+          uid
+        );
+      }
+
+      // Final cover: uploaded one or default theme cover
+      const cover = finalCoverUrl || THEME_COVERS[theme];
+
+      // Reward logo: uploaded one or fallback to cover
+      const rewardLogo = finalRewardLogoUrl || cover;
+
+      // Reward expiry
+      const rewardDays =
+        Number(rewardExpiryDays) > 0 ? Number(rewardExpiryDays) : Number(duration);
       const validUntilISO = toValidUntilISO(rewardDays);
 
       const terms = parseTerms();
       const quantityNum = Math.max(0, Number(rewardQuantity) || 0);
 
-      // 1) 创建 challenge 文档（公开配置）
-      const challengeRef = doc(collection(db, "challenges", theme!, "items"));
+      // Firestore write
+      const challengeRef = doc(collection(db, "challenges", theme, "items"));
       await setDoc(challengeRef, {
-        // 基本字段
         title: title.trim(),
         desc: description.trim(),
         category: theme,
@@ -149,36 +314,32 @@ export default function CreateChallenge() {
         active: true,
         cover,
         createdAt: serverTimestamp(),
-
-        // 只用 rewardConfig
         rewardConfig: {
           name: rewardName.trim(),
           description: rewardDesc.trim(),
           type: rewardType,
           value: rewardValue.trim(),
           vendor: rewardVendor.trim(),
-          logoUri: cover,
+          logoUri: rewardLogo,
           terms,
           quantity: quantityNum,
           issuedCount: 0,
-          qrPayload: rewardQrPayload.trim() || null,
           validUntil: validUntilISO,
         },
       });
 
       Alert.alert("Published", "Your challenge has been published.", [
-      {
-        text: "OK",
-        onPress: async () => {
-          // tiny delay to ensure write visibility for the next read
-          await new Promise((r) => setTimeout(r, 300));
-          router.replace({
-            pathname: "/(tabs)/Challenge/nutritionChallengeList",
-            params: { category: theme! },
-          } as any);
+        {
+          text: "OK",
+          onPress: async () => {
+            await new Promise((r) => setTimeout(r, 300));
+            router.replace({
+              pathname: "/(tabs)/Challenge/nutritionChallengeList",
+              params: { category: theme },
+            } as any);
+          },
         },
-      },
-    ]);
+      ]);
     } catch (e: any) {
       console.error("Error creating challenge:", e);
       Alert.alert("Error", e?.message || "Failed to publish challenge.");
@@ -189,7 +350,7 @@ export default function CreateChallenge() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* header */}
+      {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={8} style={{ padding: 4, borderRadius: 8 }}>
           <Ionicons name="chevron-back" size={22} color={COLORS.titleBlue} />
@@ -223,7 +384,7 @@ export default function CreateChallenge() {
             counter={DESC_MAX - description.length}
           />
 
-          {/* Theme */}
+          {/* Theme selection */}
           <FieldLabel text="Theme" top={16} />
           <View style={{ gap: 10 }}>
             {(Object.keys(THEME_META) as ThemeKey[]).map((key) => {
@@ -233,10 +394,7 @@ export default function CreateChallenge() {
                 <Pressable
                   key={key}
                   onPress={() => setTheme(key)}
-                  style={[
-                    styles.themeCard,
-                    active && { borderColor: COLORS.activeStroke },
-                  ]}
+                  style={[styles.themeCard, active && { borderColor: COLORS.activeStroke }]}
                   hitSlop={8}
                 >
                   <View style={styles.themeRow}>
@@ -273,8 +431,90 @@ export default function CreateChallenge() {
             keyboardType="number-pad"
           />
 
-          {/* Reward Setup */}
-          <View style={{ marginTop: 18, marginBottom: 6, flexDirection: "row", alignItems: "baseline", gap: 6 }}>
+          {/* Challenge cover upload */}
+          <FieldLabel text="Challenge cover" top={18} />
+          <View style={styles.imageBlock}>
+            <View style={styles.imageBox}>
+              <Image
+                source={{
+                  uri:
+                    coverLocalUri ||
+                    coverUploadedUrl ||
+                    (theme ? THEME_COVERS[theme] : THEME_COVERS["nutrition"]),
+                }}
+                style={{ width: "100%", height: "100%" }}
+                resizeMode="cover"
+              />
+            </View>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+              <Pressable
+                onPress={() =>
+                  pickOneImage(setCoverLocalUri, setCoverMime, setCoverWebFile, setCoverUploadedUrl)
+                }
+                style={styles.imageBtn}
+              >
+                <Text style={styles.imageBtnText}>
+                  {coverLocalUri ? "Change Image" : "Select from Gallery"}
+                </Text>
+              </Pressable>
+              {coverUploading && (
+                <View style={styles.imageUploadingBadge}>
+                  <Text style={{ color: "white", fontWeight: "700" }}>Uploading…</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Reward logo upload */}
+          <FieldLabel text="Reward logo" top={18} />
+          <View style={styles.imageBlock}>
+            <View style={[styles.imageBox, { height: 120 }]}>
+              <Image
+                source={{
+                  uri:
+                    rewardLocalUri ||
+                    rewardUploadedUrl ||
+                    coverUploadedUrl ||
+                    (theme ? THEME_COVERS[theme] : THEME_COVERS["nutrition"]),
+                }}
+                style={{ width: "100%", height: "100%" }}
+                resizeMode="cover"
+              />
+            </View>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+              <Pressable
+                onPress={() =>
+                  pickOneImage(
+                    setRewardLocalUri,
+                    setRewardMime,
+                    setRewardWebFile,
+                    setRewardUploadedUrl
+                  )
+                }
+                style={styles.imageBtn}
+              >
+                <Text style={styles.imageBtnText}>
+                  {rewardLocalUri ? "Change Image" : "Select from Gallery"}
+                </Text>
+              </Pressable>
+              {rewardUploading && (
+                <View style={styles.imageUploadingBadge}>
+                  <Text style={{ color: "white", fontWeight: "700" }}>Uploading…</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Reward setup */}
+          <View
+            style={{
+              marginTop: 18,
+              marginBottom: 6,
+              flexDirection: "row",
+              alignItems: "baseline",
+              gap: 6,
+            }}
+          >
             <Text style={styles.sectionTitle}>Reward Setup</Text>
             <Text style={{ color: COLORS.primary, fontWeight: "700" }}>＊</Text>
           </View>
@@ -308,7 +548,11 @@ export default function CreateChallenge() {
             <Text style={[styles.selectText, !rewardType && { color: COLORS.placeholder }]}>
               {rewardType ? rewardType : "Select reward type"}
             </Text>
-            <Ionicons name={showTypeMenu ? "chevron-up" : "chevron-down"} size={18} color={COLORS.titleBlue} />
+            <Ionicons
+              name={showTypeMenu ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={COLORS.titleBlue}
+            />
           </Pressable>
           {showTypeMenu && (
             <View style={styles.selectMenu}>
@@ -334,14 +578,6 @@ export default function CreateChallenge() {
             placeholder="e.g., $25.00 / 100 points"
           />
 
-          <FieldLabel text="Logo URL (optional)" top={10} />
-          <InputBox
-            value={rewardLogoUri}
-            onChangeText={setRewardLogoUri}
-            placeholder="https://..."
-            autoCapitalize="none"
-          />
-
           <FieldLabel text="Quantity / Stock (optional)" top={10} />
           <InputBox
             value={rewardQuantity}
@@ -362,26 +598,21 @@ export default function CreateChallenge() {
           <TextareaBox
             value={rewardTermsText}
             onChangeText={setRewardTermsText}
-            placeholder={"Redeemable at participating locations.\nNot valid with other discounts or promotions.\nNo cash value."}
+            placeholder={
+              "Redeemable at participating locations.\nNot valid with other discounts or promotions.\nNo cash value."
+            }
             minHeight={96}
-          />
-
-          <FieldLabel text="QR / Barcode payload (optional)" top={10} />
-          <InputBox
-            value={rewardQrPayload}
-            onChangeText={setRewardQrPayload}
-            placeholder="If set, QR code will encode this exact string"
           />
 
           {/* Publish */}
           <Pressable
             style={[styles.submitBtn, disabled && styles.submitBtnDisabled]}
             onPress={onSubmit}
-            disabled={disabled}
+            disabled={disabled || coverUploading || rewardUploading}
             hitSlop={8}
           >
             <Text style={[styles.submitText, disabled && styles.submitTextDisabled]}>
-              Publish
+              {coverUploading || rewardUploading ? "Uploading…" : "Publish"}
             </Text>
           </Pressable>
         </View>
@@ -390,12 +621,11 @@ export default function CreateChallenge() {
   );
 }
 
-/** ——— Reusable UI ——— */
+/** Reusable small UI components */
 function FieldLabel({ text, top = 8 }: { text: string; top?: number }) {
   return <Text style={[styles.sectionTitle, { marginTop: top }]}>{text}</Text>;
 }
 
-// 带类型的 InputBox，避免 onChangeText 的参数隐式 any
 type InputBoxProps = {
   value: string;
   onChangeText: (text: string) => void;
@@ -423,14 +653,11 @@ function InputBox({
         autoCapitalize={autoCapitalize}
         style={styles.input}
       />
-      {typeof counter === "number" ? (
-        <Text style={styles.counter}>{counter}</Text>
-      ) : null}
+      {typeof counter === "number" ? <Text style={styles.counter}>{counter}</Text> : null}
     </View>
   );
 }
 
-// 带类型的 TextareaBox
 type TextareaBoxProps = {
   value: string;
   onChangeText: (text: string) => void;
@@ -455,9 +682,7 @@ function TextareaBox({
         style={[styles.input, { minHeight, textAlignVertical: "top" }]}
         multiline
       />
-      {typeof counter === "number" ? (
-        <Text style={styles.counter}>{counter}</Text>
-      ) : null}
+      {typeof counter === "number" ? <Text style={styles.counter}>{counter}</Text> : null}
     </View>
   );
 }
@@ -554,6 +779,28 @@ const styles = StyleSheet.create({
   },
   selectItem: { paddingVertical: 12, paddingHorizontal: 12 },
   selectItemText: { fontSize: 14, color: COLORS.text },
+  imageBlock: { marginTop: 8 },
+  imageBox: {
+    width: "100%",
+    height: 160,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+  },
+  imageBtn: {
+    backgroundColor: "#cfe0ff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  imageBtnText: { color: "#3b5aa9", fontWeight: "700" },
+  imageUploadingBadge: {
+    backgroundColor: "#3b5aa9",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignSelf: "flex-start",
+  },
   submitBtn: {
     marginTop: 22,
     backgroundColor: COLORS.primary,
