@@ -167,15 +167,18 @@ export default function CreateChallenge() {
       });
 
       Alert.alert("Published", "Your challenge has been published.", [
-        {
-          text: "OK",
-          onPress: () =>
-            router.replace({
-              pathname: "/(tabs)/Challenge/nutritionChallengeList",
-              params: { category: theme! },  // ← 回到对应分类
-            } as any),
+      {
+        text: "OK",
+        onPress: async () => {
+          // tiny delay to ensure write visibility for the next read
+          await new Promise((r) => setTimeout(r, 300));
+          router.replace({
+            pathname: "/(tabs)/Challenge/nutritionChallengeList",
+            params: { category: theme! },
+          } as any);
         },
-      ]);
+      },
+    ]);
     } catch (e: any) {
       console.error("Error creating challenge:", e);
       Alert.alert("Error", e?.message || "Failed to publish challenge.");

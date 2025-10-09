@@ -43,11 +43,18 @@ type ChallengeDoc = {
 
 export default function ChallengeDetail() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string | string[]; category?: string | string[] }>();
+  // 👇 accept both "id" (legacy) and "challengeId" (new)
+  const params = useLocalSearchParams<{
+    id?: string | string[];
+    challengeId?: string | string[];
+    category?: string | string[];
+  }>();
 
   const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const altId = Array.isArray(params.challengeId) ? params.challengeId[0] : params.challengeId;
   const rawCat = Array.isArray(params.category) ? params.category[0] : params.category;
-  const challengeId = rawId || "";
+
+  const challengeId = (rawId || altId || "").trim();
   const category = (rawCat || "nutrition").toLowerCase();
 
   const [loading, setLoading] = useState(true);
@@ -68,7 +75,13 @@ export default function ChallengeDetail() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        if (!challengeId) return;
+        // fix: if missing id, stop loading and go back
+        if (!challengeId) {
+          setLoading(false);
+          Alert.alert("Missing", "Challenge id is missing.");
+          goBackSmart();
+          return;
+        }
         const ref = doc(db, "challenges", category, "items", challengeId);
         const snap = await getDoc(ref);
         if (snap.exists()) setData(snap.data() as ChallengeDoc);
