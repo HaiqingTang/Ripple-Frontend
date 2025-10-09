@@ -41,19 +41,35 @@ type RewardDoc = {
   redeemed?: boolean;
   issuedAt?: any;
   redeemedAt?: any;
+  terms?: string[];     
 };
+
+const DEFAULT_TERMS = [
+  "Redeemable at participating locations.",
+  "Not valid with other discounts or promotions.",
+  "No cash value."
+];
 
 export default function RewardDetail() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string; title?: string; subtitle?: string; description?: string; logoUri?: string; validUntil?: string; }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    title?: string;
+    subtitle?: string;
+    description?: string;
+    logoUri?: string;
+    validUntil?: string;
+    value?: string;
+    terms?: string;
+  }>();
 
-  const rewardId = params.id; // 如果从列表点进来，会带 id
+  const rewardId = params.id;
   const uid = auth.currentUser?.uid;
 
-  const [loading, setLoading] = useState<boolean>(!!rewardId); // 只有有 id 才尝试读 Firestore
+  const [loading, setLoading] = useState<boolean>(!!rewardId);
   const [docData, setDocData] = useState<RewardDoc | null>(null);
 
-  // Firestore 实时读取（优先使用）
+  // Firestore read
   useEffect(() => {
     if (!rewardId || !uid) return;
     const ref = doc(db, "users", uid, "rewards", rewardId);
@@ -71,14 +87,33 @@ export default function RewardDetail() {
     return () => unsub();
   }, [rewardId, uid]);
 
-  // 兜底：如果没从 Firestore 读到，就用路由参数
-  const title = docData?.title ?? (params.title as string) ?? "25% OFF";
-  const subtitle = docData?.subtitle ?? (params.subtitle as string) ?? "Gift Store";
-  const description = docData?.description ?? (params.description as string) ?? "Get 25% off your next purchase";
-  const logo = docData?.logoUri ?? (params.logoUri as string) ?? "https://images.unsplash.com/photo-1603988363607-e1e4a66962c4?q=80&w=800&auto=format&fit=crop";
-  const validUntilISO = docData?.validUntil ?? (params.validUntil as string) ?? "";
+  const routeTerms: string[] | undefined = (() => {
+    try {
+      return params.terms ? JSON.parse(params.terms as string) : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
 
-  // 有 ISO 则格式化，否则给 30 天后兜底
+// Merge data sources (Firestore>Routing>Default)
+  const title = docData?.title ?? (params.title as string) ?? "";
+  const subtitle = docData?.subtitle ?? (params.subtitle as string) ?? "";
+  const description = docData?.description ?? (params.description as string) ?? "";
+  const logo = docData?.logoUri ?? (params.logoUri as string) ?? "";
+  const validUntilISO = docData?.validUntil ?? (params.validUntil as string) ?? "";
+  const terms: string[] =
+    docData?.terms ?? routeTerms ?? DEFAULT_TERMS;
+
+  // Error/empty status: If there is neither Firestore document nor any key fields, an error message will be prompted and a return will be provided
+  const noData =
+    !docData &&
+    !title &&
+    !subtitle &&
+    !description &&
+    !logo &&
+    !validUntilISO;
+
+  // Format with ISO, otherwise provide a 30 day fallback period
   const validUntilText = useMemo(() => {
     try {
       if (validUntilISO) return formatValid(new Date(validUntilISO));
@@ -88,18 +123,6 @@ export default function RewardDetail() {
     return formatValid(fallback);
   }, [validUntilISO]);
 
-  // terms: 可以未来从 doc 拿数组；现在沿用你原默认
-  const terms: string[] = [
-    "Redeemable at participating locations.",
-    "Not valid with other discounts or promotions.",
-    "No cash value."
-  ];
-
-  // 生成二维码
-  const qrData = `reward:${encodeURIComponent(title)}|${encodeURIComponent(subtitle)}|exp:${encodeURIComponent(validUntilText)}`;
-  const qrUri = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrData)}`;
-
-  // 兑换（写入 redeemed=true, redeemedAt=serverTimestamp）
   const markRedeemed = async () => {
     if (!uid || !rewardId) {
       Alert.alert("Action not available", "Missing user or reward id.");
@@ -117,11 +140,16 @@ export default function RewardDetail() {
     }
   };
 
+  // 固定返回到 MyRewards（Challenge 目录）
+  const goBackToMyRewards = () => {
+    router.replace("/(tabs)/Challenge/myRewards");
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       {/* header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={8} style={{ padding: 4, borderRadius: 8 }}>
+        <Pressable onPress={goBackToMyRewards} hitSlop={8} style={{ padding: 4, borderRadius: 8 }}>
           <Ionicons name="chevron-back" size={22} color={TITLE_BLUE} />
         </Pressable>
         <Text style={styles.headerTitle}>Reward Details</Text>
@@ -131,6 +159,19 @@ export default function RewardDetail() {
       {loading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color={TITLE_BLUE} />
+        </View>
+      ) : noData ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
+          <Ionicons name="alert-circle-outline" size={40} color="#ef4444" />
+          <Text style={{ marginTop: 10, fontWeight: "800", color: "#ef4444" }}>
+            Unable to load this reward.
+          </Text>
+          <Text style={{ marginTop: 6, color: "#4b5563", textAlign: "center" }}>
+            The reward data is missing. Please go back and try again.
+          </Text>
+          <Pressable onPress={goBackToMyRewards} style={{ marginTop: 16, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#3C7BD6", borderRadius: 10 }}>
+            <Text style={{ color: "#fff", fontWeight: "800" }}>Back to My Rewards</Text>
+          </Pressable>
         </View>
       ) : (
         <ScrollView
@@ -142,19 +183,24 @@ export default function RewardDetail() {
           <View style={styles.ticketWrap}>
             {/* top content */}
             <View style={styles.topBox}>
-              {/* two-column layout: image center-left, text center-right */}
+              {/* 封面图（从 Firestore 或路由） */}
               <View style={styles.row}>
                 <View style={styles.leftCol}>
-                  <Image source={{ uri: logo }} style={styles.heroImg} />
+                  <Image
+                    source={{ uri: logo || "https://cdn-icons-png.flaticon.com/512/1047/1047711.png" }}
+                    style={styles.heroImg}
+                  />
                 </View>
                 <View style={styles.rightCol}>
-                  <Text style={styles.offerTitle}>{title}</Text>
+                  <Text style={styles.offerTitle}>{title || "Reward"}</Text>
                   <Text style={styles.offerSub}>{subtitle}</Text>
                 </View>
               </View>
 
-              {/* centered tagline */}
-              <Text style={styles.descStrong}>{description}</Text>
+              {/* tagline */}
+              {!!description && (
+                <Text style={styles.descStrong}>{description}</Text>
+              )}
 
               {/* terms */}
               <View style={{ marginTop: 10, gap: 8 }}>
@@ -172,10 +218,19 @@ export default function RewardDetail() {
 
             {/* bottom content */}
             <View style={styles.bottomBox}>
-              <Image source={{ uri: qrUri }} style={styles.qr} />
+              {/* QR */}
+              <Image
+                source={{
+                  uri: `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+                    `reward:${encodeURIComponent(title || "")}|${encodeURIComponent(
+                      subtitle || ""
+                    )}|exp:${encodeURIComponent(validUntilText)}`
+                  )}`,
+                }}
+                style={styles.qr}
+              />
               <Text style={styles.valid}>{validUntilText}</Text>
 
-              {/* 兑换按钮（如果未兑换时显示） */}
               {docData?.redeemed ? (
                 <View style={styles.redeemedTag}>
                   <Ionicons name="checkmark-done-circle-outline" size={18} color="#16a34a" />
@@ -235,10 +290,8 @@ const styles = StyleSheet.create({
     ...SHADOW,
   },
 
-  /* top area with balanced margins */
   topBox: { padding: 16, paddingTop: 16, paddingBottom: 12 },
 
-  // two equal columns so content sits near the center line
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -246,8 +299,8 @@ const styles = StyleSheet.create({
   },
   leftCol: {
     flex: 1,
-    alignItems: "flex-end", // push image toward the center
-    paddingRight: 12,       // gap between image and center line
+    alignItems: "flex-end",
+    paddingRight: 12,
     paddingLeft: 4,
   },
   rightCol: {

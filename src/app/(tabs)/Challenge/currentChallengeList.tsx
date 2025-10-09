@@ -1,4 +1,3 @@
-// app/(tabs)/Challenge/myChallenges.tsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   View,
@@ -30,17 +29,17 @@ type Item = {
   days: number;
   joined: number;
   percent: number;
-  reward: string;
+  reward: string; // 列表 chip 文案（来自 public.rewardConfig.name）
   category?: string;
   status?: "active" | "completed";
-  checkedToday?: boolean; // ⬅️ 新增：今天是否已打卡
+  checkedToday?: boolean;
 };
 
 const BOTTOM_SPACER = 64;
 const BLUE = "#DDE7FF";
 const DEEP = "#6B7AFF";
 
-// 小工具：YYYY-MM-DD
+// YYYY-MM-DD 辅助
 const ymd = (d = new Date()) => {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -55,7 +54,7 @@ export default function CurrentChallengeList() {
   const [completed, setCompleted] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 订阅: userChallenges/<uid>/active 按 status 列表
+  // 订阅用户实例
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
@@ -68,11 +67,15 @@ export default function CurrentChallengeList() {
       const list: Item[] = snap.docs.map((d) => {
         const x = d.data() as any;
 
-        // 计算今天是否已打卡：优先用 checkins 数组，其次用 lastCheckinAt
-        let checkedToday = Array.isArray(x.checkins) && x.checkins.includes?.(TODAY);
+        let checkedToday =
+          Array.isArray(x.checkins) && x.checkins.includes?.(TODAY);
         if (!checkedToday && x.lastCheckinAt) {
           try {
-            const ts = x.lastCheckinAt?.toDate?.() ?? (x.lastCheckinAt.seconds ? new Date(x.lastCheckinAt.seconds * 1000) : null);
+            const ts =
+              x.lastCheckinAt?.toDate?.() ??
+              (x.lastCheckinAt.seconds
+                ? new Date(x.lastCheckinAt.seconds * 1000)
+                : null);
             if (ts) checkedToday = ymd(ts) === TODAY;
           } catch {}
         }
@@ -82,9 +85,9 @@ export default function CurrentChallengeList() {
           title: x.title || "Untitled Challenge",
           icon: x.icon || "🔥",
           days: Number(x.totalDays ?? x.days ?? 0),
-          joined: 0, // 先置 0，下面单独订阅 public joined
+          joined: 0,              // 先置 0，稍后从 public 回填
           percent: Number(x.progress ?? 0),
-          reward: x.reward || "",
+          reward: "",             // ✅ 不再用用户实例的旧字段
           category: x.category || "",
           status: x.status || "active",
           checkedToday,
@@ -98,10 +101,15 @@ export default function CurrentChallengeList() {
       const list: Item[] = snap.docs.map((d) => {
         const x = d.data() as any;
 
-        let checkedToday = Array.isArray(x.checkins) && x.checkins.includes?.(TODAY);
+        let checkedToday =
+          Array.isArray(x.checkins) && x.checkins.includes?.(TODAY);
         if (!checkedToday && x.lastCheckinAt) {
           try {
-            const ts = x.lastCheckinAt?.toDate?.() ?? (x.lastCheckinAt.seconds ? new Date(x.lastCheckinAt.seconds * 1000) : null);
+            const ts =
+              x.lastCheckinAt?.toDate?.() ??
+              (x.lastCheckinAt.seconds
+                ? new Date(x.lastCheckinAt.seconds * 1000)
+                : null);
             if (ts) checkedToday = ymd(ts) === TODAY;
           } catch {}
         }
@@ -113,7 +121,7 @@ export default function CurrentChallengeList() {
           days: Number(x.totalDays ?? x.days ?? 0),
           joined: 0,
           percent: 100,
-          reward: x.reward || "",
+          reward: "",             // ✅ 不再用用户实例的旧字段
           category: x.category || "",
           status: x.status || "completed",
           checkedToday,
@@ -128,7 +136,7 @@ export default function CurrentChallengeList() {
     };
   }, []);
 
-  // ⭐ 为每个条目订阅 public 集合中的 joined（challenges/{category}/items/{id}）
+  // 为每个条目订阅 public challenges 中的 joined + rewardConfig.name
   const joinedUnsubs = useRef<(() => void)[]>([]);
   useEffect(() => {
     // 清理上一次所有订阅
@@ -144,34 +152,55 @@ export default function CurrentChallengeList() {
 
         const ref = doc(db, "challenges", it.category, "items", it.id);
 
-        // 先读一次，避免首屏显示 0
+        // 先读一次
         getDoc(ref)
           .then((snap) => {
-            const j = Number(snap.data()?.joined ?? 0);
+            const data = snap.data();
+            const j = Number(data?.joined ?? 0);
+            const name = data?.rewardConfig?.name?.trim?.() || "";
             setList((prev) =>
               prev.map((x) =>
-                x.id === it.id ? { ...x, joined: Number.isFinite(j) ? j : 0 } : x
+                x.id === it.id
+                  ? {
+                      ...x,
+                      joined: Number.isFinite(j) ? j : 0,
+                      reward: name, // ✅ 列表 chip 仅展示 name
+                    }
+                  : x
               )
             );
           })
           .catch((e) =>
-            console.warn("[joined] getDoc error:", it.category, it.id, e?.message)
+            console.warn(
+              "[public getDoc] error:",
+              it.category,
+              it.id,
+              e?.message
+            )
           );
 
         // 实时订阅
         const unsub = onSnapshot(
           ref,
           (snap) => {
-            const j = Number(snap.data()?.joined ?? 0);
+            const data = snap.data();
+            const j = Number(data?.joined ?? 0);
+            const name = data?.rewardConfig?.name?.trim?.() || "";
             setList((prev) =>
               prev.map((x) =>
-                x.id === it.id ? { ...x, joined: Number.isFinite(j) ? j : 0 } : x
+                x.id === it.id
+                  ? {
+                      ...x,
+                      joined: Number.isFinite(j) ? j : 0,
+                      reward: name, // ✅ 同步 name
+                    }
+                  : x
               )
             );
           },
           (err) =>
             console.warn(
-              "[joined] onSnapshot error:",
+              "[public onSnapshot] error:",
               it.category,
               it.id,
               err?.message
@@ -202,10 +231,9 @@ export default function CurrentChallengeList() {
     return { ongoing: ongoing.filter(match), completed: completed.filter(match) };
   }, [q, ongoing, completed]);
 
-  // 跳转：今天已打卡 -> completedChallenge；否则去 checkin
+  // 跳转
   const toCheckin = (c: Item) => {
     if (c.checkedToday) {
-      // 直接用“查看”逻辑
       router.push({
         pathname: "/(tabs)/Challenge/completedChallenge",
         params: {
@@ -220,7 +248,9 @@ export default function CurrentChallengeList() {
     }
     const id = encodeURIComponent(c.id);
     const cat = encodeURIComponent(c.category || "");
-    router.push(`/(tabs)/Challenge/challengeCheckin?challengeId=${id}&category=${cat}`);
+    router.push(
+      `/(tabs)/Challenge/challengeCheckin?challengeId=${id}&category=${cat}`
+    );
   };
 
   const toCompletedDetail = (c: Item) => {
@@ -258,7 +288,9 @@ export default function CurrentChallengeList() {
       <Text style={styles.progressLabel}>Progress</Text>
       <Text style={styles.percentCenter}>{isCompleted ? 100 : c.percent}%</Text>
       <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: `${isCompleted ? 100 : c.percent}%` }]} />
+        <View
+          style={[styles.progressFill, { width: `${isCompleted ? 100 : c.percent}%` }]}
+        />
       </View>
 
       <View style={styles.bottomRow}>
@@ -284,8 +316,9 @@ export default function CurrentChallengeList() {
             onPress={() => toCheckin(c)}
             android_ripple={{ color: "#E0E7FF" }}
           >
-            {/* 今天已打卡，按钮文案也换成 view，更直观 */}
-            <Text style={styles.actionText}>{c.checkedToday ? "view" : "check in"}</Text>
+            <Text style={styles.actionText}>
+              {c.checkedToday ? "view" : "check in"}
+            </Text>
           </Pressable>
         )}
       </View>
@@ -300,7 +333,7 @@ export default function CurrentChallengeList() {
           <Pressable hitSlop={10} style={styles.backBtn} onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={24} color="#6B7AFF" />
           </Pressable>
-          <Text style={styles.title}>My challenges</Text>
+        <Text style={styles.title}>My challenges</Text>
           <View style={{ width: 24 }} />
         </View>
 

@@ -79,12 +79,12 @@ export default function NutritionChallengeList() {
   // 打开详情（奖励页）
   const openDetail = (c: Challenge) => {
     router.push({
-      pathname: "/(tabs)/Challenge/rewardDetail",
+      pathname: "/(tabs)/Challenge/challengeDtail",
       params: { id: c.id, title: c.title, category: c.category },
     } as any);
   };
 
-  // 🔹 创建新挑战（仅开发用）
+  // 创建新挑战（仅开发用）
   const createNew = () => {
     router.push("/(tabs)/Challenge/createChallenge");
   };

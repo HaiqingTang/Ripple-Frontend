@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
 } from "react-native";
+import type { KeyboardTypeOptions } from "react-native"; // 类型引入
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { db, auth } from "../../../firebase";
@@ -42,22 +43,35 @@ const COLORS = {
   helper: "#6F7EA6",
 };
 
+// 默认 reward terms（与详情页一致）
+const DEFAULT_REWARD_TERMS = [
+  "Redeemable at participating locations.",
+  "Not valid with other discounts or promotions.",
+  "No cash value.",
+];
+
 export default function CreateChallenge() {
   const router = useRouter();
 
-  // form state
+  // challenge 基本信息
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [theme, setTheme] = useState<ThemeKey | null>(null);
   const [capacity, setCapacity] = useState<string>("");
   const [duration, setDuration] = useState<string>(""); // days
 
-  // reward setup
+  // reward setup — 基础 + 扩展
   const [rewardName, setRewardName] = useState("");
   const [rewardDesc, setRewardDesc] = useState("");
   const [rewardType, setRewardType] = useState<RewardType | null>(null);
   const [rewardValue, setRewardValue] = useState("");
   const [showTypeMenu, setShowTypeMenu] = useState(false);
+  const [rewardVendor, setRewardVendor] = useState("");             // 副标题
+  const [rewardLogoUri, setRewardLogoUri] = useState("");           // 覆盖默认封面
+  const [rewardTermsText, setRewardTermsText] = useState("");       // 多行 -> terms[]
+  const [rewardQuantity, setRewardQuantity] = useState<string>(""); // 库存/上限
+  const [rewardExpiryDays, setRewardExpiryDays] = useState<string>(""); // 奖励有效期（天）
+  const [rewardQrPayload, setRewardQrPayload] = useState("");       // 固定二维码载荷
 
   const TITLE_MAX = 30;
   const DESC_MAX = 360;
@@ -74,10 +88,27 @@ export default function CreateChallenge() {
     );
   }, [title, description, theme, capacity, duration, rewardName, rewardType]);
 
-  // 提交表单到 Firestore
+  // 工具：根据天数计算 ISO
+  const toValidUntilISO = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + Math.max(1, days));
+    return d.toISOString();
+  };
+
+  const parseTerms = (): string[] => {
+    const raw = rewardTermsText.trim();
+    if (!raw) return DEFAULT_REWARD_TERMS;
+    return raw
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 12);
+  };
+
+  // 发布
   const onSubmit = async () => {
     if (!isValid) {
-      Alert.alert("Incomplete", "Please fill all required fields before creating a challenge.");
+      Alert.alert("Incomplete", "Please fill all required fields before publishing.");
       return;
     }
 
@@ -88,39 +119,59 @@ export default function CreateChallenge() {
         return;
       }
 
-      // 自动生成新挑战 ID
-      const newRef = doc(collection(db, "challenges", theme!, "items"));
-      const newId = newRef.id;
+      // 选择封面：若输入了 rewardLogoUri 就优先用；否则用主题预设
+      const themeCover =
+        theme === "nutrition"
+          ? "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=640&q=80&auto=format&fit=crop"
+          : theme === "fitness"
+          ? "https://images.unsplash.com/photo-1579758629938-03607ccdbaba?w=640&auto=format&fit=crop"
+          : "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop";
+      const cover = rewardLogoUri.trim() || themeCover;
 
-      await setDoc(newRef, {
+      // 计算奖励有效期：优先使用 rewardExpiryDays；否则用 challenge 的 duration
+      const rewardDays = Number(rewardExpiryDays) > 0 ? Number(rewardExpiryDays) : Number(duration);
+      const validUntilISO = toValidUntilISO(rewardDays);
+
+      const terms = parseTerms();
+      const quantityNum = Math.max(0, Number(rewardQuantity) || 0);
+
+      // 1) 创建 challenge 文档（公开配置）
+      const challengeRef = doc(collection(db, "challenges", theme!, "items"));
+      await setDoc(challengeRef, {
+        // 基本字段
         title: title.trim(),
         desc: description.trim(),
         category: theme,
         creatorId: uid,
         capacity: Number(capacity),
         days: Number(duration),
-        reward: `${rewardName.trim()} (${rewardType}) - ${rewardValue}`,
-        rewardDetail: {
+        joined: 0,
+        active: true,
+        cover,
+        createdAt: serverTimestamp(),
+
+        // 只用 rewardConfig
+        rewardConfig: {
           name: rewardName.trim(),
           description: rewardDesc.trim(),
           type: rewardType,
           value: rewardValue.trim(),
+          vendor: rewardVendor.trim(),
+          logoUri: cover,
+          terms,
+          quantity: quantityNum,
+          issuedCount: 0,
+          qrPayload: rewardQrPayload.trim() || null,
+          validUntil: validUntilISO,
         },
-        joined: 0,
-        cover:
-          theme === "nutrition"
-            ? "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=640&q=80&auto=format&fit=crop"
-            : theme === "fitness"
-            ? "https://images.unsplash.com/photo-1579758629938-03607ccdbaba?w=640&auto=format&fit=crop"
-            : "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop",
-        createdAt: serverTimestamp(),
       });
 
-      Alert.alert("Success!", "Your challenge has been created successfully 🎉");
-      router.back();
+      Alert.alert("Published", "Your challenge has been published.", [
+        { text: "OK", onPress: () => router.replace("/(tabs)/Challenge") },
+      ]);
     } catch (e: any) {
       console.error("Error creating challenge:", e);
-      Alert.alert("Error", e?.message || "Failed to create challenge.");
+      Alert.alert("Error", e?.message || "Failed to publish challenge.");
     }
   };
 
@@ -146,30 +197,21 @@ export default function CreateChallenge() {
         <View style={styles.card}>
           {/* Title */}
           <FieldLabel text="Title" />
-          <View style={styles.inputWrap}>
-            <TextInput
-              value={title}
-              onChangeText={(t) => setTitle(t.slice(0, TITLE_MAX))}
-              placeholder="Enter your challenge title here"
-              placeholderTextColor={COLORS.placeholder}
-              style={styles.input}
-            />
-            <Text style={styles.counter}>{TITLE_MAX - title.length}</Text>
-          </View>
+          <InputBox
+            value={title}
+            onChangeText={(t) => setTitle(t.slice(0, TITLE_MAX))}
+            placeholder="Enter your challenge title here"
+            counter={TITLE_MAX - title.length}
+          />
 
           {/* Description */}
           <FieldLabel text="Description" top={16} />
-          <View style={styles.textareaWrap}>
-            <TextInput
-              value={description}
-              onChangeText={(t) => setDescription(t.slice(0, DESC_MAX))}
-              placeholder="Enter your challenge description here"
-              placeholderTextColor={COLORS.placeholder}
-              style={[styles.input, { minHeight: 120, textAlignVertical: "top" }]}
-              multiline
-            />
-            <Text style={styles.counter}>{DESC_MAX - description.length}</Text>
-          </View>
+          <TextareaBox
+            value={description}
+            onChangeText={(t) => setDescription(t.slice(0, DESC_MAX))}
+            placeholder="Enter your challenge description here"
+            counter={DESC_MAX - description.length}
+          />
 
           {/* Theme */}
           <FieldLabel text="Theme" top={16} />
@@ -205,68 +247,48 @@ export default function CreateChallenge() {
 
           {/* Capacity */}
           <FieldLabel text="Capacity" top={18} />
-          <View style={styles.inputWrap}>
-            <TextInput
-              value={capacity}
-              onChangeText={(t) => setCapacity(t.replace(/[^\d]/g, ""))}
-              placeholder="Enter max capacity"
-              placeholderTextColor={COLORS.placeholder}
-              keyboardType="number-pad"
-              style={styles.input}
-            />
-          </View>
+          <InputBox
+            value={capacity}
+            onChangeText={(t) => setCapacity(t.replace(/[^\d]/g, ""))}
+            placeholder="Enter max capacity"
+            keyboardType="number-pad"
+          />
 
           {/* Duration */}
           <FieldLabel text="Duration (days)" top={16} />
-          <View style={styles.inputWrap}>
-            <TextInput
-              value={duration}
-              onChangeText={(t) => setDuration(t.replace(/[^\d]/g, ""))}
-              placeholder="e.g., 21"
-              placeholderTextColor={COLORS.placeholder}
-              keyboardType="number-pad"
-              style={styles.input}
-            />
-          </View>
+          <InputBox
+            value={duration}
+            onChangeText={(t) => setDuration(t.replace(/[^\d]/g, ""))}
+            placeholder="e.g., 21"
+            keyboardType="number-pad"
+          />
 
           {/* Reward Setup */}
-          <View
-            style={{
-              marginTop: 18,
-              marginBottom: 6,
-              flexDirection: "row",
-              alignItems: "baseline",
-              gap: 6,
-            }}
-          >
+          <View style={{ marginTop: 18, marginBottom: 6, flexDirection: "row", alignItems: "baseline", gap: 6 }}>
             <Text style={styles.sectionTitle}>Reward Setup</Text>
             <Text style={{ color: COLORS.primary, fontWeight: "700" }}>＊</Text>
           </View>
 
-          {/* Reward Name */}
-          <View style={styles.inputWrap}>
-            <TextInput
-              value={rewardName}
-              onChangeText={setRewardName}
-              placeholder="Reward name (e.g., Gym Voucher)"
-              placeholderTextColor={COLORS.placeholder}
-              style={styles.input}
-            />
-          </View>
+          <InputBox
+            value={rewardName}
+            onChangeText={setRewardName}
+            placeholder="Reward name (e.g., Gym Voucher)"
+          />
 
-          {/* Reward Description */}
-          <View style={styles.textareaWrap}>
-            <TextInput
-              value={rewardDesc}
-              onChangeText={setRewardDesc}
-              placeholder="Describe the reward in detail"
-              placeholderTextColor={COLORS.placeholder}
-              style={[styles.input, { minHeight: 90, textAlignVertical: "top" }]}
-              multiline
-            />
-          </View>
+          <TextareaBox
+            value={rewardDesc}
+            onChangeText={setRewardDesc}
+            placeholder="Describe the reward in detail"
+            minHeight={90}
+          />
 
-          {/* Reward Type */}
+          <FieldLabel text="Vendor / Subtitle" top={10} />
+          <InputBox
+            value={rewardVendor}
+            onChangeText={setRewardVendor}
+            placeholder="e.g., Fitness Nutrition Store"
+          />
+
           <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Type</Text>
           <Pressable
             onPress={() => setShowTypeMenu((s) => !s)}
@@ -295,19 +317,53 @@ export default function CreateChallenge() {
             </View>
           )}
 
-          {/* Reward Value */}
           <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Value</Text>
-          <View style={styles.inputWrap}>
-            <TextInput
-              value={rewardValue}
-              onChangeText={setRewardValue}
-              placeholder="e.g., $25.00"
-              placeholderTextColor={COLORS.placeholder}
-              style={styles.input}
-            />
-          </View>
+          <InputBox
+            value={rewardValue}
+            onChangeText={setRewardValue}
+            placeholder="e.g., $25.00 / 100 points"
+          />
 
-          {/* Submit */}
+          <FieldLabel text="Logo URL (optional)" top={10} />
+          <InputBox
+            value={rewardLogoUri}
+            onChangeText={setRewardLogoUri}
+            placeholder="https://..."
+            autoCapitalize="none"
+          />
+
+          <FieldLabel text="Quantity / Stock (optional)" top={10} />
+          <InputBox
+            value={rewardQuantity}
+            onChangeText={(t) => setRewardQuantity(t.replace(/[^\d]/g, ""))}
+            placeholder="e.g., 100"
+            keyboardType="number-pad"
+          />
+
+          <FieldLabel text="Reward expiry (days, optional)" top={10} />
+          <InputBox
+            value={rewardExpiryDays}
+            onChangeText={(t) => setRewardExpiryDays(t.replace(/[^\d]/g, ""))}
+            placeholder="Leave empty to use challenge duration"
+            keyboardType="number-pad"
+          />
+
+          <FieldLabel text="Terms (one per line)" top={10} />
+          <TextareaBox
+            value={rewardTermsText}
+            onChangeText={setRewardTermsText}
+            placeholder={"Redeemable at participating locations.\nNot valid with other discounts or promotions.\nNo cash value."}
+            minHeight={96}
+          />
+
+          <FieldLabel text="QR / Barcode payload (optional)" top={10} />
+          <InputBox
+            value={rewardQrPayload}
+            onChangeText={setRewardQrPayload}
+            placeholder="If set, QR code will encode this exact string"
+          />
+
+          {/* Publish */}
           <Pressable
             style={[styles.submitBtn, disabled && styles.submitBtnDisabled]}
             onPress={onSubmit}
@@ -315,7 +371,7 @@ export default function CreateChallenge() {
             hitSlop={8}
           >
             <Text style={[styles.submitText, disabled && styles.submitTextDisabled]}>
-              Create
+              Publish
             </Text>
           </Pressable>
         </View>
@@ -324,18 +380,81 @@ export default function CreateChallenge() {
   );
 }
 
+/** ——— Reusable UI ——— */
 function FieldLabel({ text, top = 8 }: { text: string; top?: number }) {
   return <Text style={[styles.sectionTitle, { marginTop: top }]}>{text}</Text>;
 }
 
+// 带类型的 InputBox，避免 onChangeText 的参数隐式 any
+type InputBoxProps = {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  keyboardType?: KeyboardTypeOptions;
+  counter?: number;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+};
+function InputBox({
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  counter,
+  autoCapitalize,
+}: InputBoxProps) {
+  return (
+    <View style={styles.inputWrap}>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={COLORS.placeholder}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        style={styles.input}
+      />
+      {typeof counter === "number" ? (
+        <Text style={styles.counter}>{counter}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+// 带类型的 TextareaBox
+type TextareaBoxProps = {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  counter?: number;
+  minHeight?: number;
+};
+function TextareaBox({
+  value,
+  onChangeText,
+  placeholder,
+  counter,
+  minHeight = 120,
+}: TextareaBoxProps) {
+  return (
+    <View style={styles.textareaWrap}>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={COLORS.placeholder}
+        style={[styles.input, { minHeight, textAlignVertical: "top" }]}
+        multiline
+      />
+      {typeof counter === "number" ? (
+        <Text style={styles.counter}>{counter}</Text>
+      ) : null}
+    </View>
+  );
+}
+
 const SHADOW =
   Platform.OS === "ios"
-    ? {
-        shadowColor: "#000",
-        shadowOpacity: 0.06,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 6 },
-      }
+    ? { shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 6 } }
     : { elevation: 2 };
 
 const styles = StyleSheet.create({
@@ -433,15 +552,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  submitBtnDisabled: {
-    backgroundColor: "#5C95E9",
-  },
-  submitText: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#113D7C",
-  },
-  submitTextDisabled: {
-    color: "#fff",
-  },
+  submitBtnDisabled: { backgroundColor: "#5C95E9" },
+  submitText: { fontSize: 16, fontWeight: "800", color: "#113D7C" },
+  submitTextDisabled: { color: "#fff" },
 });

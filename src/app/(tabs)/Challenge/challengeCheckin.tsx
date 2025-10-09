@@ -1,4 +1,3 @@
-// app/(tabs)/Challenge/challengeCheckin.tsx
 import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
@@ -130,6 +129,13 @@ export default function ChallengeCheckin() {
   const [note, setNote] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
 
+  // —— 奖励展示（来自 public challenge.rewardConfig）——
+  const [rewardName, setRewardName] = useState<string>("");
+  const [rewardSubtitle, setRewardSubtitle] = useState<string>(""); // vendor
+  const [rewardValue, setRewardValue] = useState<string>("");
+  const [rewardDesc, setRewardDesc] = useState<string>("");
+  const [rewardValidUntil, setRewardValidUntil] = useState<string>(""); // ISO
+
   // 日历展示
   const now = new Date();
   const [displayYear] = useState(now.getFullYear());
@@ -160,6 +166,16 @@ export default function ChallengeCheckin() {
     );
   };
 
+  // 有效期格式化
+  function formatValidUntil(iso?: string) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `Valid until ${dd} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  }
+
   /* ---------- 关键：同步路由参数到本地状态（防止兜底误触发） ---------- */
   useEffect(() => {
     if (typeof params.challengeId === "string" && params.challengeId.trim()) {
@@ -173,8 +189,8 @@ export default function ChallengeCheckin() {
   /* ---------- 兜底：如果没带 challengeId，再从用户 active 里取一个 ---------- */
   useEffect(() => {
     (async () => {
-      if (cid) return;                  // 已有 cid 不兜底
-      if (params.challengeId !== undefined) return; // 路由有字段（哪怕空），先等同步 effect
+      if (cid) return;
+      if (params.challengeId !== undefined) return;
       const uid = auth.currentUser?.uid;
       if (!uid) return;
       try {
@@ -246,7 +262,7 @@ export default function ChallengeCheckin() {
     })();
   }, [cid]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ---------- 订阅 joined：/challenges/{category}/items/{cid} ---------- */
+  /* ---------- 订阅 public：/challenges/{category}/items/{cid}（joined + rewardConfig） ---------- */
   useEffect(() => {
     const cat =
       (category && String(category)) ||
@@ -256,19 +272,27 @@ export default function ChallengeCheckin() {
     const pubRef = doc(db, "challenges", cat, "items", cid);
     let unsub: undefined | (() => void);
 
+    const apply = (data?: any) => {
+      // joined
+      const j = Number(data?.joined ?? 0);
+      setJoined(Number.isFinite(j) && j >= 0 ? j : 0);
+
+      // rewardConfig
+      const rc = data?.rewardConfig;
+      setRewardName(rc?.name?.trim?.() || "");
+      setRewardSubtitle(rc?.vendor?.trim?.() || "");
+      setRewardValue(rc?.value?.trim?.() || "");
+      setRewardDesc(rc?.description?.trim?.() || "");
+      setRewardValidUntil(rc?.validUntil || "");
+    };
+
     (async () => {
       try {
         const once = await getDoc(pubRef);
-        if (once.exists()) {
-          const j = Number(once.get("joined") ?? 0);
-          setJoined(Number.isFinite(j) && j >= 0 ? j : 0);
-        }
-        unsub = onSnapshot(pubRef, (snap) => {
-          const j = Number(snap.data()?.joined ?? 0);
-          setJoined(Number.isFinite(j) && j >= 0 ? j : 0);
-        });
+        if (once.exists()) apply(once.data());
+        unsub = onSnapshot(pubRef, (snap) => apply(snap.data()));
       } catch (e) {
-        console.log("[joined subscribe] error:", e);
+        console.log("[public subscribe] error:", e);
       }
     })();
 
@@ -340,7 +364,7 @@ export default function ChallengeCheckin() {
             date: todayStr,
             createdAt: serverTimestamp(),
           },
-          { merge: true } // 幂等：当天重复打卡则覆盖
+          { merge: true }
         );
 
         // 3) 回写进度
@@ -430,19 +454,39 @@ export default function ChallengeCheckin() {
           <Text style={[styles.small, { marginTop: 6 }]}>{remaining} days remaining</Text>
         </View>
 
-        {/* 奖励卡（示例） */}
-        <View style={[styles.rewardCard, SHADOW]}>
-          <Text style={styles.rewardTitle}>Reward: Premium Meditation App</Text>
-          <Text style={[styles.small, { marginTop: 8 }]}>
-            3-month subscription to {"\n"}premium meditation app
-          </Text>
-          <View style={styles.rewardRow}>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>$3 value</Text>
+        {/* 奖励卡（name + subtitle/vendor + value + description/validUntil） */}
+        {(rewardName || rewardSubtitle || rewardValue || rewardDesc || rewardValidUntil) ? (
+          <View style={[styles.rewardCard, SHADOW]}>
+            {/* 标题：name */}
+            <Text style={styles.rewardTitle}>
+              {rewardName ? `Reward: ${rewardName}` : "Reward"}
+            </Text>
+
+            {/* 副标题：vendor/subtitle（可选） */}
+            {rewardSubtitle ? (
+              <Text style={[styles.small, { marginTop: 4 }]}>{rewardSubtitle}</Text>
+            ) : null}
+
+            {/* 价值徽章 + 插画占位 */}
+            <View style={styles.rewardRow}>
+              {rewardValue ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{rewardValue}</Text>
+                </View>
+              ) : null}
+              <View style={styles.illus} />
             </View>
-            <View style={styles.illus} />
+
+            {/* 文本占位：显示 description + Valid until */}
+            {(rewardDesc || rewardValidUntil) ? (
+              <Text style={[styles.small, { marginTop: 10 }]}>
+                {rewardDesc ? rewardDesc : ""}
+                {rewardDesc && rewardValidUntil ? "\n" : ""}
+                {rewardValidUntil ? formatValidUntil(rewardValidUntil) : ""}
+              </Text>
+            ) : null}
           </View>
-        </View>
+        ) : null}
 
         {/* 日历 + 今日打卡 */}
         <View style={[styles.calendarCard, SHADOW]}>
