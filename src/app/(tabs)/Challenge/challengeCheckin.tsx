@@ -13,6 +13,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as ImagePicker from "expo-image-picker";
 import { auth, db } from "../../../firebase";
 import {
   doc,
@@ -35,6 +36,7 @@ const TEXT_BLUE_DEEP = "#3C5BD6";
 const BLUE_TRACK = "#C7D4F7";
 const BLUE_PROGRESS = "#6A99F0";
 
+/* ---------- Platform shadow ---------- */
 const SHADOW =
   Platform.OS === "ios"
     ? {
@@ -44,6 +46,13 @@ const SHADOW =
         shadowOffset: { width: 0, height: 6 },
       }
     : { elevation: 3 };
+
+/* ---------- Cloudinary settings (shared with CreateChallenge) ---------- */
+const CLOUDINARY = {
+  CLOUD_NAME: "dwo2o5q8y",
+  UPLOAD_PRESET: "meetup_unsigned",
+  FOLDER_CHECKIN: "challenge_checkins",
+};
 
 /* ---------- Helpers ---------- */
 type DayCell = { day: number | null; isToday: boolean };
@@ -87,6 +96,7 @@ export default function ChallengeCheckin() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  // Route params
   const params = useLocalSearchParams<{
     challengeId?: string;
     category?: string;
@@ -96,6 +106,7 @@ export default function ChallengeCheckin() {
     joined?: string;
   }>();
 
+  // Params -> state
   const routeCid =
     typeof params.challengeId === "string" && params.challengeId.trim()
       ? params.challengeId
@@ -105,22 +116,31 @@ export default function ChallengeCheckin() {
     typeof params.category === "string" ? params.category : ""
   );
 
+  // Challenge meta & progress
   const [title, setTitle] = useState(params.title || "Daily 10k steps");
   const [totalDaysNum, setTotalDaysNum] = useState(
     Math.max(1, Number(params.totalDays || 20) || 20)
   );
   const [joined, setJoined] = useState(Math.max(0, Number(params.joined ?? 0) || 0));
   const [progressPct, setProgressPct] = useState(0);
-  const [note, setNote] = useState("");
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [checkedToday, setCheckedToday] = useState(false);
 
+  // Check-in inputs
+  const [note, setNote] = useState("");
+  const [photoUri, setPhotoUri] = useState<string | null>(null); // Cloudinary URL after upload
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoLocalPreview, setPhotoLocalPreview] = useState<string | null>(null);
+  const [photoMime, setPhotoMime] = useState<string | null>(null);
+  const [photoWebFile, setPhotoWebFile] = useState<File | null>(null);
+
+  // Reward (from public challenge doc)
   const [rewardName, setRewardName] = useState("");
   const [rewardSubtitle, setRewardSubtitle] = useState("");
   const [rewardValue, setRewardValue] = useState("");
   const [rewardDesc, setRewardDesc] = useState("");
   const [rewardValidUntil, setRewardValidUntil] = useState("");
 
+  // Calendar state
   const now = new Date();
   const [displayYear] = useState(now.getFullYear());
   const [displayMonth] = useState(now.getMonth());
@@ -144,12 +164,7 @@ export default function ChallengeCheckin() {
     }
   }, [displayYear, displayMonth]);
 
-  const onPickPhoto = () => {
-    setPhotoUri(
-      "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=1000&auto=format&fit=crop"
-    );
-  };
-
+  // Human readable reward valid date
   const formatValidUntil = (iso?: string) => {
     if (!iso) return "";
     const d = new Date(iso);
@@ -207,7 +222,7 @@ export default function ChallengeCheckin() {
     return () => unsub();
   }, [cid, category, totalDaysNum, displayYear, displayMonth]);
 
-  /* ---------- Subscribe to public challenge ---------- */
+  /* ---------- Subscribe to public challenge for reward/joined ---------- */
   useEffect(() => {
     const cat = category || (typeof params.category === "string" ? params.category : "");
     if (!cid || !cat) return;
@@ -229,6 +244,112 @@ export default function ChallengeCheckin() {
     return () => unsub();
   }, [cid, category]);
 
+  /* ---------- Image picking & upload ---------- */
+
+  // Shared uploader: pick local file/blob and upload to Cloudinary, return secure_url
+  const uploadToCloudinary = async (
+    localUri: string | null,
+    webFile: File | null,
+    mime: string | null,
+    folder: string,
+    setUploading: (b: boolean) => void,
+    setUploadedUrl?: (u: string) => void
+  ): Promise<string> => {
+    if (!localUri) return "";
+
+    try {
+      setUploading(true);
+
+      const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY.CLOUD_NAME}/image/upload`;
+      const form = new FormData();
+      form.append("upload_preset", CLOUDINARY.UPLOAD_PRESET);
+      form.append("folder", folder);
+
+      const filename = `${folder}_${auth.currentUser?.uid || "anon"}_${Date.now()}.jpg`;
+      const mt = mime || "image/jpeg";
+
+      if (Platform.OS === "web") {
+        let fileToSend: Blob | File | null = webFile;
+        if (!fileToSend) {
+          const resp = await fetch(localUri);
+          fileToSend = await resp.blob();
+        }
+        form.append("file", fileToSend as any, filename);
+      } else {
+        form.append("file", { uri: localUri, name: filename, type: mt } as any);
+      }
+
+      const res = await fetch(endpoint, { method: "POST", body: form as any });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Cloudinary upload failed: ${text}`);
+      }
+      const data = await res.json();
+      const url = data.secure_url as string;
+      if (setUploadedUrl) setUploadedUrl(url);
+      return url;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Pick one image from gallery
+  const pickOneImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "Media library access is needed to select an image.");
+      return null;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      selectionLimit: 1,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+      base64: false,
+    });
+
+    if (result.canceled) return null;
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return null;
+
+    setPhotoLocalPreview(asset.uri);
+    setPhotoMime((asset as any)?.mimeType || "image/jpeg");
+    setPhotoWebFile(Platform.OS === "web" ? (asset as any)?.file ?? null : null);
+
+    return {
+      localUri: asset.uri as string,
+      mime: (asset as any)?.mimeType || "image/jpeg",
+      webFile: Platform.OS === "web" ? (asset as any)?.file ?? null : null,
+    };
+  };
+
+  // Pick image then upload to Cloudinary; keep secure_url in photoUri for saving
+  const onPickPhoto = async () => {
+    const picked = await pickOneImage();
+    if (!picked) return;
+
+    try {
+      const url = await uploadToCloudinary(
+        picked.localUri,
+        picked.webFile,
+        picked.mime,
+        CLOUDINARY.FOLDER_CHECKIN,
+        setPhotoUploading,
+        (u) => setPhotoUri(u)
+      );
+
+      if (!url) {
+        Alert.alert("Upload failed", "Could not get an image URL from Cloudinary.");
+        return;
+      }
+    } catch (e: any) {
+      console.error("check-in photo upload error:", e);
+      Alert.alert("Upload error", e?.message || "Could not upload the image.");
+    }
+  };
+
   /* ---------- Handle check-in ---------- */
   const onCheckIn = async () => {
     const today = new Date();
@@ -240,7 +361,7 @@ export default function ChallengeCheckin() {
       const ref = doc(db, "userChallenges", uid, "active", cid);
       const snap = await getDoc(ref);
 
-      // create shell if missing
+      // Create shell doc if not exists
       if (!snap.exists()) {
         await setDoc(ref, {
           title,
@@ -256,6 +377,7 @@ export default function ChallengeCheckin() {
         });
       }
 
+      // Save today's check-in with note + photo (photoUri is Cloudinary URL)
       await updateDoc(ref, {
         checkins: arrayUnion(todayStr),
         lastNote: note || "",
@@ -263,7 +385,7 @@ export default function ChallengeCheckin() {
         lastCheckinAt: serverTimestamp(),
       });
 
-      // recalc progress
+      // Recalculate progress based on latest data
       const latest = await getDoc(ref);
       const data = (latest.data() || {}) as UserChallengeDoc;
       const list = (data.checkins ?? []).filter(Boolean);
@@ -278,12 +400,13 @@ export default function ChallengeCheckin() {
           : {}),
       });
 
-      // local optimistic update
+      // Local optimistic update
       setProgressPct(pct);
       setCheckedToday(true);
       if (!markedDays.includes(today.getDate()))
         setMarkedDays((prev) => [...prev, today.getDate()]);
 
+      // Navigate to completion if finished, otherwise toast success
       if (list.length >= td) {
         router.push({
           pathname: "/Challenge/completedChallenge",
@@ -333,7 +456,7 @@ export default function ChallengeCheckin() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Progress */}
+        {/* Progress card */}
         <View style={[styles.cardSoft, SHADOW]}>
           <Text style={styles.titleBold}>{title}</Text>
 
@@ -353,12 +476,10 @@ export default function ChallengeCheckin() {
             <View style={[styles.progressBar, { width: `${progressPct}%` }]} />
           </View>
           <Text style={styles.progressPct}>{progressPct}%</Text>
-          <Text style={[styles.small, { marginTop: 6 }]}>
-            {remaining} days remaining
-          </Text>
+          <Text style={[styles.small, { marginTop: 6 }]}>{remaining} days remaining</Text>
         </View>
 
-        {/* Reward */}
+        {/* Reward card */}
         {(rewardName ||
           rewardSubtitle ||
           rewardValue ||
@@ -430,7 +551,7 @@ export default function ChallengeCheckin() {
             })}
           </View>
 
-          {/* Input */}
+          {/* Check-in inputs */}
           <Text style={[styles.smallBold, { marginTop: 18 }]}>Today’s Check-in</Text>
           <Text style={[styles.label, { marginTop: 12 }]}>Notes (Optional)</Text>
           <View style={[styles.inputBox, SHADOW]}>
@@ -446,8 +567,11 @@ export default function ChallengeCheckin() {
 
           <Text style={[styles.label, { marginTop: 16 }]}>Add photo (Optional)</Text>
           <Pressable onPress={onPickPhoto} style={[styles.photoBox, SHADOW]}>
-            {photoUri ? (
-              <Image source={{ uri: photoUri }} style={styles.photo} />
+            {photoLocalPreview || photoUri ? (
+              <Image
+                source={{ uri: photoLocalPreview || (photoUri as string) }}
+                style={styles.photo}
+              />
             ) : (
               <View style={styles.photoInner}>
                 <Ionicons name="image-outline" size={36} color="#9CA3AF" />
@@ -455,14 +579,28 @@ export default function ChallengeCheckin() {
               </View>
             )}
           </Pressable>
+          {photoUploading ? (
+            <View
+              style={{
+                marginTop: 6,
+                alignSelf: "flex-start",
+                backgroundColor: "#3b5aa9",
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: "white", fontWeight: "700" }}>Uploading…</Text>
+            </View>
+          ) : null}
 
           <Pressable
-            style={[styles.btn, checkedToday && { backgroundColor: "#A1A1AA" }]}
-            onPress={checkedToday ? undefined : onCheckIn}
-            disabled={checkedToday}
+            style={[styles.btn, (checkedToday || photoUploading) && { backgroundColor: "#A1A1AA" }]}
+            onPress={checkedToday || photoUploading ? undefined : onCheckIn}
+            disabled={checkedToday || photoUploading}
           >
             <Text style={styles.btnText}>
-              {checkedToday ? "checked in" : "check in"}
+              {checkedToday ? "checked in" : photoUploading ? "uploading…" : "check in"}
             </Text>
           </Pressable>
         </View>
