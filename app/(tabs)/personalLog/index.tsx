@@ -79,12 +79,12 @@ export default function PersonalLog() {
 
 	const handleSave = async () => {
 		// Extract base64 data from data URI if image exists
-		let imageBase64 = null;
+		let journalPhoto = null;
 		if (journalImage) {
 			// Remove the data URI prefix (e.g., "data:image/jpeg;base64,")
 			const base64Match = journalImage.match(/^data:image\/[a-z]+;base64,(.+)$/);
 			if (base64Match && base64Match[1]) {
-				imageBase64 = base64Match[1];
+				journalPhoto = base64Match[1];
 			}
 		}
 
@@ -99,7 +99,7 @@ export default function PersonalLog() {
 			sleepDuration,
 			sleepQuality,
 			timestamp: new Date().toISOString(),
-			imageBase64: imageBase64, // Store only the base64 string
+			journalPhoto: journalPhoto, // Store only the base64 string
 		};
 
 		try {

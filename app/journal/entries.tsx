@@ -175,10 +175,10 @@ export default function LogEntriesPage() {
       </Text>
 
       {/* Image */}
-      {item.imageBase64 && (
+      {(item.journalPhoto || item.imageBase64) && (
         <View style={{ marginBottom: 12, borderRadius: 8, overflow: "hidden" }}>
           <Image
-            source={{ uri: createDataUri(item.imageBase64) }}
+            source={{ uri: createDataUri(item.journalPhoto || item.imageBase64) }}
             style={{ width: "100%", height: 160, borderRadius: 8 }}
             contentFit="cover"
             transition={200}
@@ -399,10 +399,10 @@ export default function LogEntriesPage() {
                 <Text style={{ marginBottom: 20 }}>{selectedLog.journalText || "-"}</Text>
 
                 {/* Image */}
-                {selectedLog.imageBase64 && (
+                {(selectedLog.journalPhoto || selectedLog.imageBase64) && (
                   <View style={{ marginBottom: 20, borderRadius: 12, overflow: "hidden" }}>
                     <Image
-                      source={{ uri: createDataUri(selectedLog.imageBase64) }}
+                      source={{ uri: createDataUri(selectedLog.journalPhoto || selectedLog.imageBase64) }}
                       style={{ width: "100%", height: 300, borderRadius: 12 }}
                       contentFit="cover"
                       transition={200}
