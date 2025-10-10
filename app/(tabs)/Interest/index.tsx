@@ -1,41 +1,58 @@
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React from "react";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
+import { useRouter } from "expo-router";
+import { useDiscussion } from "./_layout"; // relative import to provider
 
-export default function Interest() {
+export default function DiscussionIndex() {
+  const router = useRouter();
+  const { posts } = useDiscussion();
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
+    <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
+      {/* hero / cover */}
       <View style={styles.hero}>
-        <Text style={styles.heroTitle}>Welcome to the community hub{'\n'}Ellie!</Text>
-        <Text style={styles.heroSub}>
-          Here you can find discussion boards, events, and clubs to participate in!
-        </Text>
+        <View style={styles.heroImage} />
+        <Text style={styles.heroTitle}>🔥 Hot topics right now</Text>
+        <Text style={styles.heroSub}>Tap a topic to see discussion</Text>
       </View>
 
-      <View style={styles.card}>
-        <View style={styles.imagePlaceholder} />
-        <Text style={styles.cardTitle}>Clubs</Text>
-        <Text style={styles.cardDesc}>
-          Share your thoughts, ask questions, and interact with other members.
-        </Text>
+      {/* search row */}
+      <View style={styles.searchRow}>
+        <TouchableOpacity style={styles.searchInput} onPress={() => router.push("/(tabs)/Interest/Discussion/search")}>
+          <Text style={{ color: "#888" }}>Search</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.addButton} onPress={() => router.push("/(tabs)/Interest/Discussion/post")}>
+          <Text style={{ color: "#fff", fontWeight: "700" }}>＋</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.card}>
-        <View style={styles.imagePlaceholder} />
-        <Text style={styles.cardTitle}>Meetups</Text>
-        <Text style={styles.cardDesc}>
-          Discover nearby meetups and join others for coffee, walks, or shared activities.
-        </Text>
-      </View>
+      <Text style={styles.sectionTitle}>Latest Discussions</Text>
+
+      {posts.map(p => (
+        <TouchableOpacity
+          key={p.id}
+          style={styles.card}
+          onPress={() => router.push({ pathname: "/(tabs)/Interest/Discussion/detail", params: { id: p.id } })}
+        >
+          <Text style={styles.cardTitle}>{p.title}</Text>
+          <Text style={styles.cardMeta}>{p.author} • {new Date(p.createdAt).toLocaleString()}</Text>
+        </TouchableOpacity>
+      ))}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#DDE7FF' },
-  hero: { paddingHorizontal: 16, paddingTop: 24, paddingBottom: 8 },
-  heroTitle: { fontSize: 28, fontWeight: '800', color: '#4A66C2', lineHeight: 34, marginBottom: 8 },
-  heroSub: { fontSize: 14, color: '#6F7EA6' },
-  card: { marginHorizontal: 12, marginTop: 16, backgroundColor: '#C9D7FF', borderRadius: 18, padding: 12 },
-  imagePlaceholder: { height: 150, borderRadius: 14, backgroundColor: '#EAF0FF', marginBottom: 10 },
-  cardTitle: { textAlign: 'center', fontSize: 20, fontWeight: '800', color: '#4A66C2' },
-  cardDesc: { textAlign: 'left', marginTop: 6, color: '#536082' },
+  container: { flex: 1, backgroundColor: "#DDE7FF" },
+  hero: { padding: 12 },
+  heroImage: { height: 140, borderRadius: 14, backgroundColor: "#EAF0FF", marginBottom: 10 },
+  heroTitle: { fontSize: 18, fontWeight: "800", color: "#4A66C2" },
+  heroSub: { color: "#6F7EA6", marginTop: 4 },
+  searchRow: { flexDirection: "row", alignItems: "center", marginTop: 12, paddingHorizontal: 4 },
+  searchInput: { flex: 1, backgroundColor: "#fff", padding: 10, borderRadius: 10 },
+  addButton: { marginLeft: 8, backgroundColor: "#4A66C2", padding: 10, borderRadius: 8 },
+  sectionTitle: { marginTop: 16, marginLeft: 4, fontWeight: "700" },
+  card: { marginTop: 10, marginHorizontal: 4, padding: 12, backgroundColor: "#C9D7FF", borderRadius: 12 },
+  cardTitle: { fontWeight: "700" },
+  cardMeta: { color: "#6F7EA6", marginTop: 6, fontSize: 12 },
 });
