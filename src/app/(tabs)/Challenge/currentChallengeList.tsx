@@ -20,7 +20,9 @@ import {
   onSnapshot,
   doc,
   getDoc,
+  deleteDoc,
 } from "firebase/firestore";
+import { Alert } from "react-native";
 
 /* ---------- Types ---------- */
 type Item = {
@@ -224,6 +226,32 @@ export default function CurrentChallengeList() {
     });
   };
 
+  const handleDeleteCompleted = async (c: Item) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const confirm = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        "Delete completed challenge",
+        `This will remove "${c.title}" from your list.`,
+        [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+          { text: "Delete", style: "destructive", onPress: () => resolve(true) },
+        ],
+        { cancelable: true }
+      );
+    });
+
+    if (!confirm) return;
+
+    try {
+      await deleteDoc(doc(db, "userChallenges", uid, "active", c.id));
+      // onSnapshot 会自动刷新 UI
+    } catch (e) {
+      Alert.alert("Delete failed", "Please try again later.");
+    }
+  };
+
   /* ---------- Card Renderer ---------- */
   const renderCard = (c: Item, isCompleted: boolean) => (
     <View key={`${isCompleted ? "done-" : "go-"}${c.id}`} style={styles.card}>
@@ -264,13 +292,23 @@ export default function CurrentChallengeList() {
         )}
 
         {isCompleted ? (
-          <Pressable
-            style={[styles.actionBtn, { backgroundColor: "#16A34A" }]}
-            onPress={() => toCompletedDetail(c)}
-            android_ripple={{ color: "#D1FAE5" }}
-          >
-            <Text style={styles.actionText}>view</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: "#16A34A" }]}
+              onPress={() => toCompletedDetail(c)}
+              android_ripple={{ color: "#D1FAE5" }}
+            >
+              <Text style={styles.actionText}>view</Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.actionBtn, styles.deleteBtn]}
+              onPress={() => handleDeleteCompleted(c)}
+              android_ripple={{ color: "#FEE2E2" }}
+            >
+              <Text style={[styles.actionText, { textTransform: "none" }]}>Delete</Text>
+            </Pressable>
+          </View>
         ) : (
           <Pressable
             style={styles.actionBtn}
@@ -450,5 +488,8 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "800",
     textTransform: "lowercase",
+  },
+  deleteBtn: {
+    backgroundColor: "#DC2626",
   },
 });
