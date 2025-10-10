@@ -47,7 +47,7 @@ const SHADOW =
       }
     : { elevation: 3 };
 
-/* ---------- Cloudinary settings (shared with CreateChallenge) ---------- */
+/* ---------- Cloudinary settings ---------- */
 const CLOUDINARY = {
   CLOUD_NAME: "dwo2o5q8y",
   UPLOAD_PRESET: "meetup_unsigned",
@@ -89,6 +89,8 @@ type UserChallengeDoc = {
   cover?: string;
   category?: string;
   status?: "active" | "completed";
+  lastNote?: string;
+  lastPhoto?: string;
 };
 
 /* ---------- Component ---------- */
@@ -111,7 +113,7 @@ export default function ChallengeCheckin() {
     typeof params.challengeId === "string" && params.challengeId.trim()
       ? params.challengeId
       : "";
-  const [cid, setCid] = useState(routeCid);
+  const [cid] = useState(routeCid);
   const [category, setCategory] = useState(
     typeof params.category === "string" ? params.category : ""
   );
@@ -164,7 +166,6 @@ export default function ChallengeCheckin() {
     }
   }, [displayYear, displayMonth]);
 
-  // Human readable reward valid date
   const formatValidUntil = (iso?: string) => {
     if (!iso) return "";
     const d = new Date(iso);
@@ -205,8 +206,19 @@ export default function ChallengeCheckin() {
         setProgressPct(pct);
 
         const todayStr = ymd();
-        setCheckedToday(list.includes(todayStr));
+        const didCheckToday = list.includes(todayStr);
+        setCheckedToday(didCheckToday);
 
+        // Checked in on the same day: Fill in the lastNote/lastPhoto in the main document
+        if (didCheckToday) {
+          if (typeof d.lastNote === "string") setNote(d.lastNote);
+          if (typeof d.lastPhoto === "string" && d.lastPhoto) {
+            setPhotoUri(d.lastPhoto);
+            setPhotoLocalPreview(null);
+          }
+        }
+
+        // Mark the check-in days for this month
         const selected = list
           .map((s) => new Date(s))
           .filter(
@@ -233,7 +245,7 @@ export default function ChallengeCheckin() {
       const data = snap.data();
       const j = Number(data?.joined ?? 0);
       setJoined(Number.isFinite(j) && j >= 0 ? j : 0);
-      const rc = data?.rewardConfig;
+      const rc = (data as any)?.rewardConfig;
       setRewardName(rc?.name || "");
       setRewardSubtitle(rc?.vendor || "");
       setRewardValue(rc?.value || "");
@@ -245,8 +257,6 @@ export default function ChallengeCheckin() {
   }, [cid, category]);
 
   /* ---------- Image picking & upload ---------- */
-
-  // Shared uploader: pick local file/blob and upload to Cloudinary, return secure_url
   const uploadToCloudinary = async (
     localUri: string | null,
     webFile: File | null,
@@ -325,12 +335,9 @@ export default function ChallengeCheckin() {
     };
   };
 
-  // Pick image then upload to Cloudinary; keep secure_url in photoUri for saving
   const onPickPhoto = async () => {
-    // ✅ 当天已打卡后，禁用添加图片
-    if (checkedToday) {
-      return;
-    }
+    // After clocking in that day, it was locked and no longer allowed to select images
+    if (checkedToday) return;
 
     const picked = await pickOneImage();
     if (!picked) return;
@@ -355,7 +362,7 @@ export default function ChallengeCheckin() {
     }
   };
 
-  /* ---------- Handle check-in ---------- */
+  /* ---------- Handle check-in (only updates main doc) ---------- */
   const onCheckIn = async () => {
     const today = new Date();
     const todayStr = ymd(today);
@@ -382,7 +389,7 @@ export default function ChallengeCheckin() {
         });
       }
 
-      // Save today's check-in with note + photo (photoUri is Cloudinary URL)
+      // Only update existing fields in the main document
       await updateDoc(ref, {
         checkins: arrayUnion(todayStr),
         lastNote: note || "",
@@ -390,7 +397,6 @@ export default function ChallengeCheckin() {
         lastCheckinAt: serverTimestamp(),
       });
 
-      // Recalculate progress based on latest data
       const latest = await getDoc(ref);
       const data = (latest.data() || {}) as UserChallengeDoc;
       const list = (data.checkins ?? []).filter(Boolean);
@@ -405,7 +411,7 @@ export default function ChallengeCheckin() {
           : {}),
       });
 
-      /* === issue reward once when completed (writes to users/{uid}/rewards/{challengeId}) === */
+      // Distribute rewards
       try {
         if (list.length >= td) {
           const latest2 = await getDoc(ref);
@@ -418,7 +424,6 @@ export default function ChallengeCheckin() {
               (typeof params.category === "string" ? params.category : "") ||
               "";
 
-            // read rewardConfig (incl. logoUri) from public challenge
             let rc: any = null;
             if (catForPub) {
               const pubRef = doc(db, "challenges", catForPub, "items", cid);
@@ -428,7 +433,6 @@ export default function ChallengeCheckin() {
               }
             }
 
-            // write to users/{uid}/rewards/{challengeId} (idempotent)
             const rewardRef = doc(db, "users", uid, "rewards", cid);
             const rewardSnap = await getDoc(rewardRef);
             if (!rewardSnap.exists()) {
@@ -438,7 +442,7 @@ export default function ChallengeCheckin() {
                 description: rc?.description || "",
                 value: rc?.value || "",
                 validUntil: rc?.validUntil || "",
-                logoUri: rc?.logoUri || "", // <= from challenge.rewardConfig
+                logoUri: rc?.logoUri || "",
                 challengeId: cid,
                 category: catForPub,
                 redeemed: false,
@@ -450,22 +454,18 @@ export default function ChallengeCheckin() {
               });
             }
 
-            // mark active to avoid duplicate issuing
             await updateDoc(ref, { rewardIssued: true });
           }
         }
       } catch (e) {
         console.warn("Issue reward failed:", e);
       }
-      /* === END NEW === */
 
-      // Local optimistic update
       setProgressPct(pct);
       setCheckedToday(true);
       if (!markedDays.includes(today.getDate()))
         setMarkedDays((prev) => [...prev, today.getDate()]);
 
-      // Navigate to completion if finished, otherwise toast success
       if (list.length >= td) {
         router.push({
           pathname: "/Challenge/completedChallenge",
@@ -492,7 +492,6 @@ export default function ChallengeCheckin() {
     totalDaysNum - Math.round((progressPct / 100) * totalDaysNum)
   );
 
-  // ✅ 统一锁定开关：当天已打卡 => 全页不可交互（UI外观不变）
   const locked = checkedToday;
 
   /* ---------- Render ---------- */
@@ -620,8 +619,8 @@ export default function ChallengeCheckin() {
           <View style={[styles.inputBox, SHADOW]}>
             <TextInput
               value={note}
-              onChangeText={locked ? undefined : setNote} // ✅ 锁定后不再响应输入
-              editable={!locked}                           // ✅ 文本框不可编辑
+              onChangeText={locked ? undefined : setNote}
+              editable={!locked}
               placeholder="How did it go? Share your progress..."
               placeholderTextColor="#9CA3AF"
               multiline
@@ -631,8 +630,8 @@ export default function ChallengeCheckin() {
 
           <Text style={[styles.label, { marginTop: 16 }]}>Add photo (Optional)</Text>
           <Pressable
-            onPress={locked || photoUploading ? undefined : onPickPhoto} // lock
-            disabled={locked || photoUploading}                          
+            onPress={locked || photoUploading ? undefined : onPickPhoto}
+            disabled={locked || photoUploading}
             style={[styles.photoBox, SHADOW]}
           >
             {photoLocalPreview || photoUri ? (

@@ -101,12 +101,12 @@ export default function CurrentChallengeList() {
         percent,
         reward: "",
         category: d.category || "",
-        status: d.status === "completed" ? "completed" : "active", // ✅ 已收窄
+        status: d.status === "completed" ? "completed" : "active",
         checkedToday: toCheckedToday(d),
       };
     };
 
-    // Ongoing 实时获取 joined/rewardConfig
+    // Ongoing real-time retrieval of joined/rewardConfig
     const unsubOngoing = onSnapshot(ongoingQ, async (snap) => {
       const raw = snap.docs.map((docSnap) => mapActive(docSnap.data(), docSnap.id));
       const enriched: Item[] = await Promise.all(
@@ -125,7 +125,7 @@ export default function CurrentChallengeList() {
               return {
                 ...it,
                 joined: Number.isFinite(j) ? j : 0,
-                reward: name, // ✅ 明确 string
+                reward: name,
               } as Item;
             }
           } catch {}
@@ -136,7 +136,7 @@ export default function CurrentChallengeList() {
       setLoading(false);
     });
 
-    // Completed 实时获取 joined/rewardConfig
+    // Completed real-time retrieval of joined/rewardConfig
     const unsubCompleted = onSnapshot(completedQ, async (snap) => {
       const raw: Item[] = snap.docs.map((docSnap) => {
         const d = docSnap.data() as any;
@@ -149,7 +149,7 @@ export default function CurrentChallengeList() {
           percent: 100,
           reward: "",
           category: d.category || "",
-          status: "completed", // ✅ 字面量
+          status: "completed",
           checkedToday: toCheckedToday(d),
         };
       });
