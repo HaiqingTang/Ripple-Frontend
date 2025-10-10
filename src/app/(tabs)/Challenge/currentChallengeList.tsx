@@ -41,7 +41,6 @@ const BOTTOM_SPACER = 64;
 const BLUE = "#DDE7FF";
 const DEEP = "#6B7AFF";
 
-// helper YYYY-MM-DD
 const ymd = (d = new Date()) => {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -88,9 +87,7 @@ export default function CurrentChallengeList() {
         totalDays > 0
           ? Math.min(100, Math.round((dc / totalDays) * 100))
           : 0;
-
-      // ✅ 优先使用 progress 字段，缺失时回退计算值
-      let percent =
+      const percent =
         typeof d.progress === "number"
           ? Math.min(100, Math.max(0, d.progress))
           : pctFromCounts;
@@ -100,25 +97,48 @@ export default function CurrentChallengeList() {
         title: d.title || "Untitled Challenge",
         icon: d.icon || "🔥",
         days: totalDays,
-        joined: 0,
+        joined: 0, // placeholder, will be updated immediately
         percent,
         reward: "",
         category: d.category || "",
-        status: d.status || "active",
+        status: d.status === "completed" ? "completed" : "active", // ✅ 已收窄
         checkedToday: toCheckedToday(d),
       };
     };
 
-    const unsubOngoing = onSnapshot(ongoingQ, (snap) => {
-      const list: Item[] = snap.docs.map((docSnap) =>
-        mapActive(docSnap.data(), docSnap.id)
+    // Ongoing 实时获取 joined/rewardConfig
+    const unsubOngoing = onSnapshot(ongoingQ, async (snap) => {
+      const raw = snap.docs.map((docSnap) => mapActive(docSnap.data(), docSnap.id));
+      const enriched: Item[] = await Promise.all(
+        raw.map(async (it) => {
+          if (!it.category || !it.id) return it;
+          try {
+            const ref = doc(db, "challenges", it.category, "items", it.id);
+            const s = await getDoc(ref);
+            if (s.exists()) {
+              const data = s.data() as any;
+              const j = Number(data?.joined ?? 0);
+              const name: string =
+                typeof data?.rewardConfig?.name === "string"
+                  ? data.rewardConfig.name.trim()
+                  : "";
+              return {
+                ...it,
+                joined: Number.isFinite(j) ? j : 0,
+                reward: name, // ✅ 明确 string
+              } as Item;
+            }
+          } catch {}
+          return it;
+        })
       );
-      setOngoing(list);
+      setOngoing(enriched);
       setLoading(false);
     });
 
-    const unsubCompleted = onSnapshot(completedQ, (snap) => {
-      const list: Item[] = snap.docs.map((docSnap) => {
+    // Completed 实时获取 joined/rewardConfig
+    const unsubCompleted = onSnapshot(completedQ, async (snap) => {
+      const raw: Item[] = snap.docs.map((docSnap) => {
         const d = docSnap.data() as any;
         return {
           id: docSnap.id,
@@ -129,11 +149,35 @@ export default function CurrentChallengeList() {
           percent: 100,
           reward: "",
           category: d.category || "",
-          status: "completed",
+          status: "completed", // ✅ 字面量
           checkedToday: toCheckedToday(d),
         };
       });
-      setCompleted(list);
+
+      const enriched: Item[] = await Promise.all(
+        raw.map(async (it) => {
+          if (!it.category || !it.id) return it;
+          try {
+            const ref = doc(db, "challenges", it.category, "items", it.id);
+            const s = await getDoc(ref);
+            if (s.exists()) {
+              const data = s.data() as any;
+              const j = Number(data?.joined ?? 0);
+              const name: string =
+                typeof data?.rewardConfig?.name === "string"
+                  ? data.rewardConfig.name.trim()
+                  : "";
+              return {
+                ...it,
+                joined: Number.isFinite(j) ? j : 0,
+                reward: name, // ✅ 明确 string
+              } as Item;
+            }
+          } catch {}
+          return it;
+        })
+      );
+      setCompleted(enriched);
     });
 
     return () => {
@@ -141,66 +185,6 @@ export default function CurrentChallengeList() {
       unsubCompleted();
     };
   }, []);
-
-  /* ---------- Subscribe joined + reward from public ---------- */
-  const joinedUnsubs = useRef<(() => void)[]>([]);
-  useEffect(() => {
-    joinedUnsubs.current.forEach((u) => u());
-    joinedUnsubs.current = [];
-
-    const attach = (
-      items: Item[],
-      setList: React.Dispatch<React.SetStateAction<Item[]>>
-    ) => {
-      items.forEach((it) => {
-        if (!it.category || !it.id) return;
-
-        const ref = doc(db, "challenges", it.category, "items", it.id);
-
-        // 读取一次 joined/rewardConfig
-        getDoc(ref)
-          .then((snap) => {
-            const data = snap.data();
-            const j = Number(data?.joined ?? 0);
-            const name = data?.rewardConfig?.name?.trim?.() || "";
-            setList((prev) =>
-              prev.map((x) =>
-                x.id === it.id
-                  ? { ...x, joined: Number.isFinite(j) ? j : 0, reward: name }
-                  : x
-              )
-            );
-          })
-          .catch(() => {});
-
-        // 订阅更新
-        const unsub = onSnapshot(ref, (snap) => {
-          const data = snap.data();
-          const j = Number(data?.joined ?? 0);
-          const name = data?.rewardConfig?.name?.trim?.() || "";
-          setList((prev) =>
-            prev.map((x) =>
-              x.id === it.id
-                ? { ...x, joined: Number.isFinite(j) ? j : 0, reward: name }
-                : x
-            )
-          );
-        });
-        joinedUnsubs.current.push(unsub);
-      });
-    };
-
-    attach(ongoing, setOngoing);
-    attach(completed, setCompleted);
-
-    return () => {
-      joinedUnsubs.current.forEach((u) => u());
-      joinedUnsubs.current = [];
-    };
-  }, [
-    JSON.stringify(ongoing.map((i) => [i.id, i.category])),
-    JSON.stringify(completed.map((i) => [i.id, i.category])),
-  ]);
 
   /* ---------- Search ---------- */
   const filtered = useMemo(() => {
@@ -214,7 +198,6 @@ export default function CurrentChallengeList() {
   }, [q, ongoing, completed]);
 
   /* ---------- Navigation ---------- */
-  // ✅ ongoing challenge: always open challengeCheckin
   const toCheckin = (c: Item) => {
     router.push({
       pathname: "/Challenge/challengeCheckin",
@@ -228,7 +211,6 @@ export default function CurrentChallengeList() {
     });
   };
 
-  // ✅ completed challenge: open completedChallenge page
   const toCompletedDetail = (c: Item) => {
     router.push({
       pathname: "/Challenge/completedChallenge",
@@ -310,11 +292,7 @@ export default function CurrentChallengeList() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.headerRow}>
-          <Pressable
-            hitSlop={10}
-            style={styles.backBtn}
-            onPress={() => router.back()}
-          >
+          <Pressable hitSlop={10} style={styles.backBtn} onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={24} color="#6B7AFF" />
           </Pressable>
           <Text style={styles.title}>My challenges</Text>
@@ -341,11 +319,7 @@ export default function CurrentChallengeList() {
 
         {/* Content */}
         {loading ? (
-          <ActivityIndicator
-            style={{ marginTop: 80 }}
-            color={DEEP}
-            size="large"
-          />
+          <ActivityIndicator style={{ marginTop: 80 }} color={DEEP} size="large" />
         ) : (
           <ScrollView
             contentContainerStyle={{ paddingBottom: BOTTOM_SPACER + 24 }}
@@ -358,9 +332,7 @@ export default function CurrentChallengeList() {
               filtered.ongoing.map((c) => renderCard(c, false))
             )}
 
-            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>
-              completed
-            </Text>
+            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>completed</Text>
             {filtered.completed.length === 0 ? (
               <Text style={styles.emptyText}>No completed challenge</Text>
             ) : (
@@ -424,8 +396,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 18,
     marginTop: 4,
     color: "#334155",
-    fontWeight: "600",
-  },
+    fontWeight: "600" },
   card: {
     marginHorizontal: 18,
     marginVertical: 10,

@@ -327,6 +327,11 @@ export default function ChallengeCheckin() {
 
   // Pick image then upload to Cloudinary; keep secure_url in photoUri for saving
   const onPickPhoto = async () => {
+    // ✅ 当天已打卡后，禁用添加图片
+    if (checkedToday) {
+      return;
+    }
+
     const picked = await pickOneImage();
     if (!picked) return;
 
@@ -400,6 +405,60 @@ export default function ChallengeCheckin() {
           : {}),
       });
 
+      /* === issue reward once when completed (writes to users/{uid}/rewards/{challengeId}) === */
+      try {
+        if (list.length >= td) {
+          const latest2 = await getDoc(ref);
+          const latestData = (latest2.data() || {}) as any;
+
+          if (!latestData.rewardIssued) {
+            const catForPub =
+              latestData.category ||
+              category ||
+              (typeof params.category === "string" ? params.category : "") ||
+              "";
+
+            // read rewardConfig (incl. logoUri) from public challenge
+            let rc: any = null;
+            if (catForPub) {
+              const pubRef = doc(db, "challenges", catForPub, "items", cid);
+              const pubSnap = await getDoc(pubRef);
+              if (pubSnap.exists()) {
+                rc = (pubSnap.data() as any)?.rewardConfig || null;
+              }
+            }
+
+            // write to users/{uid}/rewards/{challengeId} (idempotent)
+            const rewardRef = doc(db, "users", uid, "rewards", cid);
+            const rewardSnap = await getDoc(rewardRef);
+            if (!rewardSnap.exists()) {
+              await setDoc(rewardRef, {
+                title: rc?.name || title || "Challenge Reward",
+                subtitle: rc?.vendor || "",
+                description: rc?.description || "",
+                value: rc?.value || "",
+                validUntil: rc?.validUntil || "",
+                logoUri: rc?.logoUri || "", // <= from challenge.rewardConfig
+                challengeId: cid,
+                category: catForPub,
+                redeemed: false,
+                terms: [
+                  "One-time redemption",
+                  rc?.validUntil ? `Valid until ${rc.validUntil}` : undefined,
+                ].filter(Boolean),
+                issuedAt: serverTimestamp(),
+              });
+            }
+
+            // mark active to avoid duplicate issuing
+            await updateDoc(ref, { rewardIssued: true });
+          }
+        }
+      } catch (e) {
+        console.warn("Issue reward failed:", e);
+      }
+      /* === END NEW === */
+
       // Local optimistic update
       setProgressPct(pct);
       setCheckedToday(true);
@@ -416,6 +475,7 @@ export default function ChallengeCheckin() {
             title,
             totalDays: String(totalDaysNum),
             joined: String(joined),
+            category: category || (typeof params.category === "string" ? params.category : ""),
           },
         });
       } else {
@@ -431,6 +491,9 @@ export default function ChallengeCheckin() {
     0,
     totalDaysNum - Math.round((progressPct / 100) * totalDaysNum)
   );
+
+  // ✅ 统一锁定开关：当天已打卡 => 全页不可交互（UI外观不变）
+  const locked = checkedToday;
 
   /* ---------- Render ---------- */
   return (
@@ -557,7 +620,8 @@ export default function ChallengeCheckin() {
           <View style={[styles.inputBox, SHADOW]}>
             <TextInput
               value={note}
-              onChangeText={setNote}
+              onChangeText={locked ? undefined : setNote} // ✅ 锁定后不再响应输入
+              editable={!locked}                           // ✅ 文本框不可编辑
               placeholder="How did it go? Share your progress..."
               placeholderTextColor="#9CA3AF"
               multiline
@@ -566,7 +630,11 @@ export default function ChallengeCheckin() {
           </View>
 
           <Text style={[styles.label, { marginTop: 16 }]}>Add photo (Optional)</Text>
-          <Pressable onPress={onPickPhoto} style={[styles.photoBox, SHADOW]}>
+          <Pressable
+            onPress={locked || photoUploading ? undefined : onPickPhoto} // lock
+            disabled={locked || photoUploading}                          
+            style={[styles.photoBox, SHADOW]}
+          >
             {photoLocalPreview || photoUri ? (
               <Image
                 source={{ uri: photoLocalPreview || (photoUri as string) }}
@@ -595,12 +663,12 @@ export default function ChallengeCheckin() {
           ) : null}
 
           <Pressable
-            style={[styles.btn, (checkedToday || photoUploading) && { backgroundColor: "#A1A1AA" }]}
-            onPress={checkedToday || photoUploading ? undefined : onCheckIn}
-            disabled={checkedToday || photoUploading}
+            style={[styles.btn, (locked || photoUploading) && { backgroundColor: "#A1A1AA" }]}
+            onPress={locked || photoUploading ? undefined : onCheckIn}
+            disabled={locked || photoUploading}
           >
             <Text style={styles.btnText}>
-              {checkedToday ? "checked in" : photoUploading ? "uploading…" : "check in"}
+              {locked ? "checked in" : photoUploading ? "uploading…" : "check in"}
             </Text>
           </Pressable>
         </View>
