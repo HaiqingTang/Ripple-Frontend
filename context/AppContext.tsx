@@ -22,6 +22,11 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const [userName, setUserName] = useState<string>('user');
 	const [userId, setUserId] = useState<string>('');
   const [profilePictureUrl, setProfilePictureUrl] = useState<string>('');
+  
+  // Discussion stats state
+  const [postLikes, setPostLikes] = useState<Map<string, number>>(new Map());
+  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+  const [postCommentsCount, setPostCommentsCount] = useState<Map<string, number>>(new Map());
 
   const loadUserProfile = async (uid: string) => {
     try {
@@ -92,6 +97,49 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  // Discussion stats functions
+  const isPostLiked = (postId: string): boolean => {
+    return likedPosts.has(postId);
+  };
+
+  const getPostLikes = (postId: string): number => {
+    return postLikes.get(postId) ?? 0;
+  };
+
+  const togglePostLike = (postId: string): void => {
+    setLikedPosts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(postId)) {
+        newSet.delete(postId);
+        setPostLikes(prevLikes => {
+          const newMap = new Map(prevLikes);
+          newMap.set(postId, Math.max(0, (newMap.get(postId) ?? 0) - 1));
+          return newMap;
+        });
+      } else {
+        newSet.add(postId);
+        setPostLikes(prevLikes => {
+          const newMap = new Map(prevLikes);
+          newMap.set(postId, (newMap.get(postId) ?? 0) + 1);
+          return newMap;
+        });
+      }
+      return newSet;
+    });
+  };
+
+  const getPostComments = (postId: string): number => {
+    return postCommentsCount.get(postId) ?? 0;
+  };
+
+  const incrementPostComments = (postId: string, delta: number = 1): void => {
+    setPostCommentsCount(prev => {
+      const newMap = new Map(prev);
+      newMap.set(postId, (newMap.get(postId) ?? 0) + delta);
+      return newMap;
+    });
+  };
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -127,7 +175,16 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   );
 
   const value = useMemo(
-    () => ({ userId, userName, fullName, dayOfWeek, formattedDate, profilePictureUrl, refreshUserData, updateProfilePicture }),
+    () => ({ 
+      userId, 
+      userName, 
+      fullName, 
+      dayOfWeek, 
+      formattedDate, 
+      profilePictureUrl, 
+      refreshUserData, 
+      updateProfilePicture
+    }),
     [userId, userName, fullName, dayOfWeek, formattedDate, profilePictureUrl]
   );
 
