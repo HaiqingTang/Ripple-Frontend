@@ -50,9 +50,11 @@ export const sharedStyles = StyleSheet.create({
   
   heroImage: {
     height: 140,
+    width: '100%',
     borderRadius: 14,
     backgroundColor: COLORS.heroBackground,
     marginBottom: 10,
+    alignSelf: 'center',
   },
   
   heroContent: {
