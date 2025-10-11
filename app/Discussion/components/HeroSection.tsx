@@ -62,7 +62,7 @@ export const HeroSection = React.memo(() => {
           Started {formatTimeAgo(hottestPost.createdAt)}
         </Text>
         <Text style={sharedStyles.heroMeta}>
-          {hottestPost.likeCount} participants
+          {hottestPost.commentCount} participants
         </Text>
       </View>
     </TouchableOpacity>

@@ -27,6 +27,7 @@ type Comment = {
   authorId: string;
   text: string; 
   createdAt: string;
+  authorAvatar?: string;
 };
 
 type Post = { 
@@ -70,7 +71,7 @@ export const useDiscussion = () => {
 
 export default function DiscussionLayout() {
   const router = useRouter();
-  const { userId, fullName } = useAppContext();
+  const { userId, fullName, profilePictureUrl } = useAppContext();
   
   // Back button for index screen - goes to Interest tab
   const BackToTabButton = () => (
@@ -154,6 +155,7 @@ export default function DiscussionLayout() {
           author: data.author,
           authorId: data.authorId,
           text: data.text,
+          authorAvatar: data.authorAvatar,
           createdAt: data.createdAt instanceof Timestamp 
             ? data.createdAt.toDate().toISOString() 
             : data.createdAt,
@@ -225,12 +227,13 @@ export default function DiscussionLayout() {
   };
 
   // Add comment to Firebase
-  const addComment = async (c: Omit<Comment, "id" | "createdAt" | "author" | "authorId">): Promise<Comment> => {
+  const addComment = async (c: Omit<Comment, "id" | "createdAt" | "author" | "authorId" | "authorAvatar">): Promise<Comment> => {
     try {
       const commentData = {
         ...c,
         authorId: userId,
         author: fullName,
+        authorAvatar: profilePictureUrl,
         createdAt: new Date().toISOString(),
       };
       

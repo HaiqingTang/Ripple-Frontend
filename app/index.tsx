@@ -10,7 +10,7 @@ export default function LandingPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const handleLogin = () => {
-    router.push('/Discussion');
+    router.push('/auth/login');
   };
 
   const handleSignUp = () => {

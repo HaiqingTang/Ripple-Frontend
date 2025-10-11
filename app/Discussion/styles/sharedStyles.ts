@@ -167,6 +167,8 @@ export const sharedStyles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: COLORS.grayAvatar,
     marginRight: 10,
+    borderWidth: 1,
+    borderColor: COLORS.grayBorder,
   },
 
   // Input and buttons

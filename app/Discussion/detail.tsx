@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Image } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useDiscussion } from "./_layout";
+import { useAppContext } from "@/context/AppContext";
 import { sharedStyles, COLORS } from "./styles/sharedStyles";
 import { PostStats } from "./components/PostStats";
 
@@ -11,10 +12,18 @@ import { PostStats } from "./components/PostStats";
 const Comment = React.memo<{ 
   author: string; 
   text: string; 
-  createdAt: string; 
-}>(({ author, text, createdAt }) => (
+  createdAt: string;
+  authorAvatar?: string;
+}>(({ author, text, createdAt, authorAvatar }) => (
   <View style={sharedStyles.comment}>
-    <View style={sharedStyles.avatar} />
+    {authorAvatar ? (
+      <Image 
+        source={{ uri: authorAvatar }}
+        style={[sharedStyles.avatar, { borderRadius: 18 }]}
+      />
+    ) : (
+      <View style={sharedStyles.avatar} />
+    )}
     <View style={{ flex: 1 }}>
       <Text style={{ fontWeight: "700" }}>
         {author}{" "}
@@ -33,7 +42,8 @@ Comment.displayName = 'Comment';
  */
 export default function DiscussionDetail() {
   const { id } = useLocalSearchParams() as { id?: string };
-  const { getPost, getCommentsForPost, addComment } = useDiscussion(); 
+  const { getPost, getCommentsForPost, addComment } = useDiscussion();
+  const { profilePictureUrl } = useAppContext();
   const [text, setText] = useState("");
 
   const post = id ? getPost(String(id)) : undefined;
@@ -87,6 +97,7 @@ export default function DiscussionDetail() {
               author={comment.author}
               text={comment.text}
               createdAt={comment.createdAt}
+              authorAvatar={comment.authorAvatar}
             />
           ))}
           {comments.length === 0 && (
@@ -98,6 +109,14 @@ export default function DiscussionDetail() {
       </ScrollView>
 
       <View style={sharedStyles.inputBar}>
+        {profilePictureUrl ? (
+          <Image 
+            source={{ uri: profilePictureUrl }}
+            style={[sharedStyles.avatar, { borderRadius: 18 }]}
+          />
+        ) : (
+          <View style={sharedStyles.avatar} />
+        )}
         <TextInput
           placeholder="Add a comment..."
           value={text}
