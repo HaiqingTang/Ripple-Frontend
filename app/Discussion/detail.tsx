@@ -3,8 +3,8 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, Image } from "reac
 import { useLocalSearchParams } from "expo-router";
 import { useDiscussion } from "./_layout";
 import { useAppContext } from "@/context/AppContext";
-import { sharedStyles, COLORS } from "./styles/sharedStyles";
-import { PostStats } from "./components/PostStats";
+import { sharedStyles, COLORS } from "@/styles/sharedStyles";
+import PostStats from "./components/PostStats";
 
 /**
  * Memoized Comment component for better performance

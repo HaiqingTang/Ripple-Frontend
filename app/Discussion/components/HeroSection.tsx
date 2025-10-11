@@ -1,13 +1,13 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { sharedStyles } from '../styles/sharedStyles';
+import { sharedStyles } from '@/styles/sharedStyles';
 import { useDiscussion } from '../_layout';
 
 /**
  * Memoized Hero section component that displays the hottest post
  */
-export const HeroSection = React.memo(() => {
+const HeroSection = React.memo(() => {
   const router = useRouter();
   const { hottestPost } = useDiscussion();
 
@@ -70,3 +70,5 @@ export const HeroSection = React.memo(() => {
 });
 
 HeroSection.displayName = 'HeroSection';
+
+export default HeroSection;

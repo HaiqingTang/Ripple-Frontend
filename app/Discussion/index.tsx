@@ -1,10 +1,10 @@
 import React from "react";
 import { Text, ScrollView, ActivityIndicator, View } from "react-native";
 import { useDiscussion } from "./_layout";
-import { sharedStyles, COLORS } from "./styles/sharedStyles";
-import { HeroSection } from "./components/HeroSection";
-import { SearchBar } from "./components/SearchBar";
-import { PostCard } from "./components/PostCard";
+import { sharedStyles, COLORS } from "@/styles/sharedStyles";
+import HeroSection from "./components/HeroSection";
+import SearchBar from "./components/SearchBar";
+import PostCard from "./components/PostCard";
 
 /**
  * Optimized Discussion Index with memoized components

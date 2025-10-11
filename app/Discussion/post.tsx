@@ -7,7 +7,6 @@ import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { v4 as uuidv4 } from 'uuid';
 
 export default function CreatePostScreen() {
   const colorScheme = useColorScheme();
@@ -35,9 +34,8 @@ export default function CreatePostScreen() {
 
   // confirm publish
   const confirmPublish = () => {
-    const newPostId = uuidv4(); 
     const post = {
-      id: newPostId,
+      id: 'placeholder', // Firebase will generate this
       title,
       content,
       image,

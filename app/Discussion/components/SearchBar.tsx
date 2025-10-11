@@ -1,12 +1,12 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { sharedStyles, COLORS } from '../styles/sharedStyles';
+import { sharedStyles, COLORS } from '@/styles/sharedStyles';
 
 /**
  * Memoized SearchBar component with navigation
  */
-export const SearchBar = React.memo(() => {
+const SearchBar = React.memo(() => {
   const router = useRouter();
 
   const handleSearchPress = React.useCallback(() => {
@@ -36,3 +36,5 @@ export const SearchBar = React.memo(() => {
 });
 
 SearchBar.displayName = 'SearchBar';
+
+export default SearchBar;

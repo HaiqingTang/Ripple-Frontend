@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { sharedStyles, COLORS } from '../styles/sharedStyles';
+import { sharedStyles, COLORS } from '@/styles/sharedStyles';
 import { useDiscussion } from '../_layout';
 
 export interface PostStatsProps {
@@ -13,7 +13,7 @@ export interface PostStatsProps {
 /**
  * Memoized PostStats component for like/comment display
  */
-export const PostStats = React.memo<PostStatsProps>(({ 
+const PostStats = React.memo<PostStatsProps>(({ 
   postId, 
   commentCount, 
   size = 18 
@@ -55,3 +55,6 @@ export const PostStats = React.memo<PostStatsProps>(({
 });
 
 PostStats.displayName = 'PostStats';
+
+export { PostStats };
+export default PostStats;

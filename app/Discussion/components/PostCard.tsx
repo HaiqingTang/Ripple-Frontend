@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { sharedStyles, COLORS, createStatStyle } from '../styles/sharedStyles';
+import { sharedStyles, COLORS, createStatStyle } from '@/styles/sharedStyles';
 import { useDiscussion } from '../_layout';
 
 export interface PostCardProps {
@@ -16,7 +16,7 @@ export interface PostCardProps {
 /**
  * Optimized PostCard component with memoization
  */
-export const PostCard = React.memo<PostCardProps>(({ 
+const PostCard = React.memo<PostCardProps>(({ 
   id, 
   title, 
   author, 
@@ -77,3 +77,5 @@ export const PostCard = React.memo<PostCardProps>(({
 });
 
 PostCard.displayName = 'PostCard';
+
+export default PostCard;
