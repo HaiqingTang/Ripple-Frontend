@@ -14,8 +14,7 @@ import {
   arrayRemove,
   increment,
   Timestamp,
-  limit,
-  startAfter
+  limit
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAppContext } from "@/context/AppContext";
@@ -56,6 +55,9 @@ type DiscussionContextType = {
   togglePostLike: (postId: string) => Promise<void>;
   getPostComments: (postId: string) => number;
   refreshPosts: () => Promise<void>;
+  // Hottest post functionality:
+  hottestPost: Post | null;
+  loadHottestPost: () => Promise<void>;
 };
 
 const DiscussionContext = createContext<DiscussionContextType | null>(null);
@@ -96,6 +98,7 @@ export default function DiscussionLayout() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hottestPost, setHottestPost] = useState<Post | null>(null);
 
   // Load posts from Firebase
   const loadPosts = async () => {
@@ -160,6 +163,40 @@ export default function DiscussionLayout() {
       setComments(loadedComments);
     } catch (error) {
       console.error('Error loading comments:', error);
+    }
+  };
+
+  // Load hottest post from Firebase (post with most likes)
+  const loadHottestPost = async () => {
+    try {
+      const postsRef = collection(db, 'discussionPosts');
+      const q = query(
+        postsRef, 
+        orderBy('likeCount', 'desc'),
+        limit(1)  // Get only the hottest post
+      );
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        const data = doc.data();
+        const hottestPostData: Post = {
+          id: doc.id,
+          title: data.title,
+          content: data.content,
+          author: data.author,
+          authorId: data.authorId,
+          createdAt: data.createdAt instanceof Timestamp 
+            ? data.createdAt.toDate().toISOString() 
+            : data.createdAt,
+          likes: data.likes || [],
+          likeCount: data.likeCount || 0,
+          commentCount: data.commentCount || 0,
+        };
+        setHottestPost(hottestPostData);
+      }
+    } catch (error) {
+      console.error('Error loading hottest post:', error);
     }
   };
 
@@ -287,7 +324,7 @@ export default function DiscussionLayout() {
   };
 
   const refreshPosts = React.useCallback(async () => {
-    await Promise.all([loadPosts(), loadComments()]);
+    await Promise.all([loadPosts(), loadComments(), loadHottestPost()]);
   }, []);
 
   // Load data on mount
@@ -309,7 +346,9 @@ export default function DiscussionLayout() {
     getPostLikes,
     togglePostLike,
     getPostComments,
-    refreshPosts
+    refreshPosts,
+    hottestPost,
+    loadHottestPost
   };
 
   return (

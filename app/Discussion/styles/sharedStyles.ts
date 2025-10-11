@@ -55,6 +55,10 @@ export const sharedStyles = StyleSheet.create({
     marginBottom: 10,
   },
   
+  heroContent: {
+    // Container for hero text content
+  },
+  
   heroTitle: {
     fontSize: 18,
     fontWeight: '800',
@@ -64,6 +68,12 @@ export const sharedStyles = StyleSheet.create({
   heroSub: {
     color: COLORS.textSecondary,
     marginTop: 4,
+  },
+  
+  heroMeta: {
+    color: COLORS.textSecondary,
+    marginTop: 4,
+    fontSize: 12,
   },
 
   // Search and action row
