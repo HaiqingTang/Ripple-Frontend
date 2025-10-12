@@ -4,7 +4,8 @@ import {
   Alert, Platform, ActivityIndicator, Modal, Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from "../../../components/MapViewCompat";
+
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -154,7 +155,7 @@ export default function ManageMyMeetupEdit() {
         );
 
         setLocationName(String(data.location ?? ""));
-        setRegion((r) => ({
+        setRegion((r: Region) => ({
           ...r,
           latitude: data.locationGeo?.latitude ?? r.latitude,
           longitude: data.locationGeo?.longitude ?? r.longitude,
@@ -209,7 +210,7 @@ export default function ManageMyMeetupEdit() {
         typeof data.category === "string" && data.category ? data.category : "Lifestyle"
       );
       setLocationName(String(data.location ?? ""));
-      setRegion((r) => ({
+      setRegion((r: Region) => ({
         ...r,
         latitude: data.locationGeo?.latitude ?? r.latitude,
         longitude: data.locationGeo?.longitude ?? r.longitude,
@@ -257,7 +258,7 @@ export default function ManageMyMeetupEdit() {
       const results = await Location.geocodeAsync(q);
       if (results && results.length > 0) {
         const { latitude, longitude } = results[0];
-        setRegion((r) => ({ ...r, latitude, longitude }));
+        setRegion((r: Region) => ({ ...r, latitude, longitude }));
       } else {
         Alert.alert("Not found", "No coordinates found for this location.");
       }

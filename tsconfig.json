@@ -5,13 +5,12 @@
     "baseUrl": ".",
     "types": ["expo-router/types"],
     "moduleResolution": "bundler",
+
     "paths": {
-      "@/*": ["./*"],
-      "@firebase/auth": [
-        "./node_modules/firebase/node_modules/@firebase/auth/dist/index.rn.d.ts"
-      ]
+      "@/*": ["src/*"]
     }
   },
+
   "include": [
     "**/*.ts",
     "**/*.tsx",

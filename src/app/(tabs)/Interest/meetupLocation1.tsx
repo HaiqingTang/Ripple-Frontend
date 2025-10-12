@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker } from "../../../components/MapViewCompat";
 import {
   doc,
   onSnapshot,

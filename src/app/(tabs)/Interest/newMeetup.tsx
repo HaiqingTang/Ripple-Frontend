@@ -13,7 +13,7 @@ import {
   Image, // image upload - preview
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from "../../../components/MapViewCompat";
 import { useRouter, useNavigation } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";

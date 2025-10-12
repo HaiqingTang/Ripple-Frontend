@@ -1,22 +1,30 @@
-import { initializeApp } from "firebase/app";
+import { Platform } from "react-native";
+import { initializeApp, getApps } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { initializeAuth, getReactNativePersistence } from "firebase/auth";
+import { getStorage } from "firebase/storage";
+import { getAuth, type Auth } from "firebase/auth"; 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAINeU8cF1MGlfS_nnJY4bv7q8WvN_1DJA",
-  authDomain: "rp-wombat-ef8e6.firebaseapp.com",
-  projectId: "rp-wombat-ef8e6",
-  storageBucket: "rp-wombat-ef8e6.firebasestorage.app",
-  messagingSenderId: "514390289930",
-  appId: "1:514390289930:web:3d19b86edf0db93ae0f9f3"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "rp-wombat-ef8e6.appspot.com",
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+};
+
+const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+
+let _auth: Auth;
+
+if (Platform.OS === "web") {
+  _auth = getAuth(app);
+} else {
+  const { initializeAuth, getReactNativePersistence } = require("firebase/auth/react-native");
+  _auth = initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
 }
 
-const app = initializeApp(firebaseConfig);
-
-// Don't need to re-login every time
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
-
+export const auth = _auth;           
 export const db = getFirestore(app);
+export const storage = getStorage(app);
