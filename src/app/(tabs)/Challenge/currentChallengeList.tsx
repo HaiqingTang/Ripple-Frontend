@@ -1,3 +1,4 @@
+// app/(tabs)/Challenge/currentChallengeList.tsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   View,
@@ -21,6 +22,7 @@ import {
   doc,
   getDoc,
   deleteDoc,
+  setDoc, // for undo
 } from "firebase/firestore";
 import { Alert } from "react-native";
 
@@ -53,10 +55,36 @@ const TODAY = ymd();
 /* ---------- Component ---------- */
 export default function CurrentChallengeList() {
   const router = useRouter();
+
+  // raw search text + debounced text for filtering
   const [q, setQ] = useState("");
+  const [qDebounced, setQDebounced] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [ongoing, setOngoing] = useState<Item[]>([]);
   const [completed, setCompleted] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // inline banner for subscription errors
+  const [listError, setListError] = useState<string | null>(null);
+
+  // lightweight snackbar/undo for delete
+  const [undoData, setUndoData] = useState<{
+    uid: string;
+    docId: string;
+    docPath: string; // userChallenges/{uid}/active/{id}
+    payload: any;
+  } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // debounce search input (250ms)
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setQDebounced(q.trim().toLowerCase()), 250);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [q]);
 
   /* ---------- Subscribe userChallenges ---------- */
   useEffect(() => {
@@ -109,78 +137,104 @@ export default function CurrentChallengeList() {
     };
 
     // Ongoing real-time retrieval of joined/rewardConfig
-    const unsubOngoing = onSnapshot(ongoingQ, async (snap) => {
-      const raw = snap.docs.map((docSnap) => mapActive(docSnap.data(), docSnap.id));
-      const enriched: Item[] = await Promise.all(
-        raw.map(async (it) => {
-          if (!it.category || !it.id) return it;
-          try {
-            const ref = doc(db, "challenges", it.category, "items", it.id);
-            const s = await getDoc(ref);
-            if (s.exists()) {
-              const data = s.data() as any;
-              const j = Number(data?.joined ?? 0);
-              const name: string =
-                typeof data?.rewardConfig?.name === "string"
-                  ? data.rewardConfig.name.trim()
-                  : "";
-              return {
-                ...it,
-                joined: Number.isFinite(j) ? j : 0,
-                reward: name,
-              } as Item;
-            }
-          } catch {}
-          return it;
-        })
-      );
-      setOngoing(enriched);
-      setLoading(false);
-    });
+    const unsubOngoing = onSnapshot(
+      ongoingQ,
+      async (snap) => {
+        const raw = snap.docs.map((docSnap) =>
+          mapActive(docSnap.data(), docSnap.id)
+        );
+        const enriched: Item[] = await Promise.all(
+          raw.map(async (it) => {
+            if (!it.category || !it.id) return it;
+            try {
+              const ref = doc(db, "challenges", it.category, "items", it.id);
+              const s = await getDoc(ref);
+              if (s.exists()) {
+                const data = s.data() as any;
+                const j = Number(data?.joined ?? 0);
+                const name: string =
+                  typeof data?.rewardConfig?.name === "string"
+                    ? data.rewardConfig.name.trim()
+                    : "";
+                return {
+                  ...it,
+                  joined: Number.isFinite(j) ? j : 0,
+                  reward: name,
+                } as Item;
+              }
+            } catch {}
+            return it;
+          })
+        );
+        setOngoing(enriched);
+        setLoading(false);
+        setListError(null);
+      },
+      // error callback (subscription)
+      (err) => {
+        console.error("currentChallengeList ongoing onSnapshot error:", err);
+        setLoading(false);
+        setListError(
+          err?.message ||
+            "Failed to load ongoing challenges. Please check your connection or Firestore rules."
+        );
+      }
+    );
 
     // Completed real-time retrieval of joined/rewardConfig
-    const unsubCompleted = onSnapshot(completedQ, async (snap) => {
-      const raw: Item[] = snap.docs.map((docSnap) => {
-        const d = docSnap.data() as any;
-        return {
-          id: docSnap.id,
-          title: d.title || "Untitled Challenge",
-          icon: d.icon || "🏁",
-          days: Number(d.totalDays ?? d.days ?? 0),
-          joined: 0,
-          percent: 100,
-          reward: "",
-          category: d.category || "",
-          status: "completed",
-          checkedToday: toCheckedToday(d),
-        };
-      });
+    const unsubCompleted = onSnapshot(
+      completedQ,
+      async (snap) => {
+        const raw: Item[] = snap.docs.map((docSnap) => {
+          const d = docSnap.data() as any;
+          return {
+            id: docSnap.id,
+            title: d.title || "Untitled Challenge",
+            icon: d.icon || "🏁",
+            days: Number(d.totalDays ?? d.days ?? 0),
+            joined: 0,
+            percent: 100,
+            reward: "",
+            category: d.category || "",
+            status: "completed",
+            checkedToday: toCheckedToday(d),
+          };
+        });
 
-      const enriched: Item[] = await Promise.all(
-        raw.map(async (it) => {
-          if (!it.category || !it.id) return it;
-          try {
-            const ref = doc(db, "challenges", it.category, "items", it.id);
-            const s = await getDoc(ref);
-            if (s.exists()) {
-              const data = s.data() as any;
-              const j = Number(data?.joined ?? 0);
-              const name: string =
-                typeof data?.rewardConfig?.name === "string"
-                  ? data.rewardConfig.name.trim()
-                  : "";
-              return {
-                ...it,
-                joined: Number.isFinite(j) ? j : 0,
-                reward: name, // ✅ 明确 string
-              } as Item;
-            }
-          } catch {}
-          return it;
-        })
-      );
-      setCompleted(enriched);
-    });
+        const enriched: Item[] = await Promise.all(
+          raw.map(async (it) => {
+            if (!it.category || !it.id) return it;
+            try {
+              const ref = doc(db, "challenges", it.category, "items", it.id);
+              const s = await getDoc(ref);
+              if (s.exists()) {
+                const data = s.data() as any;
+                const j = Number(data?.joined ?? 0);
+                const name: string =
+                  typeof data?.rewardConfig?.name === "string"
+                    ? data.rewardConfig.name.trim()
+                    : "";
+                return {
+                  ...it,
+                  joined: Number.isFinite(j) ? j : 0,
+                  reward: name,
+                } as Item;
+              }
+            } catch {}
+            return it;
+          })
+        );
+        setCompleted(enriched);
+        setListError(null);
+      },
+      (err) => {
+        console.error("currentChallengeList completed onSnapshot error:", err);
+        setListError(
+          err?.message ||
+            "Failed to load completed challenges. Please check your connection or Firestore rules."
+        );
+      }
+    );
 
     return () => {
       unsubOngoing();
@@ -188,16 +242,16 @@ export default function CurrentChallengeList() {
     };
   }, []);
 
-  /* ---------- Search ---------- */
+  /* ---------- Search (uses debounced query) ---------- */
   const filtered = useMemo(() => {
-    const kw = q.trim().toLowerCase();
+    const kw = qDebounced;
     if (!kw) return { ongoing, completed };
     const match = (x: Item) => x.title.toLowerCase().includes(kw);
     return {
       ongoing: ongoing.filter(match),
       completed: completed.filter(match),
     };
-  }, [q, ongoing, completed]);
+  }, [qDebounced, ongoing, completed]);
 
   /* ---------- Navigation ---------- */
   const toCheckin = (c: Item) => {
@@ -226,6 +280,7 @@ export default function CurrentChallengeList() {
     });
   };
 
+  /* ---------- Delete completed with undo ---------- */
   const handleDeleteCompleted = async (c: Item) => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
@@ -244,11 +299,44 @@ export default function CurrentChallengeList() {
 
     if (!confirm) return;
 
+    const ref = doc(db, "userChallenges", uid, "active", c.id);
+
     try {
-      await deleteDoc(doc(db, "userChallenges", uid, "active", c.id));
-      // onSnapshot 会自动刷新 UI
-    } catch (e) {
-      Alert.alert("Delete failed", "Please try again later.");
+      // read payload before delete to support undo
+      const snap = await getDoc(ref);
+      const payload = snap.exists() ? snap.data() : null;
+
+      await deleteDoc(ref);
+
+      // show inline snackbar with undo (auto-dismiss in 6s)
+      if (payload) {
+        setUndoData({
+          uid,
+          docId: c.id,
+          docPath: `userChallenges/${uid}/active/${c.id}`,
+          payload,
+        });
+        if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = setTimeout(() => setUndoData(null), 6000);
+      }
+    } catch (e: any) {
+      // permission-denied or other errors
+      const msg =
+        e?.code === "permission-denied"
+          ? "You do not have permission to delete this challenge."
+          : "Delete failed. Please try again later.";
+      Alert.alert("Delete failed", msg);
+    }
+  };
+
+  const undoDelete = async () => {
+    if (!undoData) return;
+    try {
+      const { uid, docId, payload } = undoData;
+      await setDoc(doc(db, "userChallenges", uid, "active", docId), payload);
+    } finally {
+      setUndoData(null);
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     }
   };
 
@@ -337,7 +425,7 @@ export default function CurrentChallengeList() {
           <View style={{ width: 24 }} />
         </View>
 
-        {/* Search */}
+        {/* Search (with clear button) */}
         <View style={styles.searchWrap}>
           <Ionicons
             name="search"
@@ -353,7 +441,32 @@ export default function CurrentChallengeList() {
             returnKeyType="search"
             style={styles.searchInput}
           />
+          {q.length > 0 && (
+            <Pressable onPress={() => setQ("")} hitSlop={10} style={{ paddingHorizontal: 10 }}>
+              <Ionicons name="close-circle" size={18} color="#99A2C0" />
+            </Pressable>
+          )}
         </View>
+
+        {/* Error banner (subscription issues) */}
+        {!!listError && (
+          <View style={styles.errorBar}>
+            <Ionicons name="warning-outline" size={16} color="#fff" />
+            <Text style={styles.errorText} numberOfLines={2}>
+              {listError}
+            </Text>
+            <Pressable
+              onPress={() => {
+                // simplest: re-trigger subscriptions by toggling error off;
+                // snapshots are live; user can also pull-to-refresh in future
+                setListError(null);
+              }}
+              hitSlop={8}
+            >
+              <Text style={styles.errorAction}>Dismiss</Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* Content */}
         {loading ? (
@@ -379,6 +492,18 @@ export default function CurrentChallengeList() {
 
             <View style={{ height: BOTTOM_SPACER }} />
           </ScrollView>
+        )}
+
+        {/* Snackbar / Undo for delete */}
+        {!!undoData && (
+          <View style={styles.snackbar}>
+            <Text style={styles.snackbarText} numberOfLines={2}>
+              Deleted. Undo?
+            </Text>
+            <Pressable onPress={undoDelete} hitSlop={8}>
+              <Text style={styles.snackbarAction}>UNDO</Text>
+            </Pressable>
+          </View>
         )}
       </View>
     </SafeAreaView>
@@ -420,9 +545,25 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   searchInput: { flex: 1, height: "100%", fontSize: 16, color: "#223" },
+
+  // error banner
+  errorBar: {
+    marginHorizontal: 18,
+    backgroundColor: "#EF4444",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  errorText: { color: "#fff", fontWeight: "700", flex: 1 },
+  errorAction: { color: "#fff", fontWeight: "900" },
+
   sectionTitle: {
     fontSize: 24,
     fontWeight: "900",
@@ -434,7 +575,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 18,
     marginTop: 4,
     color: "#334155",
-    fontWeight: "600" },
+    fontWeight: "600",
+  },
   card: {
     marginHorizontal: 18,
     marginVertical: 10,
@@ -492,4 +634,30 @@ const styles = StyleSheet.create({
   deleteBtn: {
     backgroundColor: "#DC2626",
   },
+
+  // snackbar
+  snackbar: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: 18,
+    backgroundColor: "#111827",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOpacity: 0.2,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 4 },
+      },
+      android: { elevation: 6 },
+    }),
+  },
+  snackbarText: { color: "#fff", fontWeight: "700", flex: 1 },
+  snackbarAction: { color: "#60A5FA", fontWeight: "900" },
 });

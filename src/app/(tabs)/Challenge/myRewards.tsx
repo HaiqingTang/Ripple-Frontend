@@ -33,54 +33,82 @@ export default function MyRewards() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
 
+  // error state for list subscription + manual retry tick
+  const [listError, setListError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
+    setLoading(true);
+    setListError(null);
+
     const ref = collection(db, "users", uid, "rewards");
     const qRef = query(ref, orderBy("issuedAt", "desc"));
-    const unsub = onSnapshot(qRef, (snap) => {
-      const items: Reward[] = [];
-      snap.forEach((docSnap) => {
-        const d = docSnap.data() as any;
-        items.push({
-          id: docSnap.id,
-          title: d.title || "Untitled Reward",
-          subtitle: d.subtitle || "",
-          logoUri:
-            d.logoUri ||
-            "https://cdn-icons-png.flaticon.com/512/1047/1047711.png",
-          description: d.description || "",
-          validUntil: d.validUntil || "",
-          value: d.value || "",
-          redeemed: d.redeemed || false,
-          terms: Array.isArray(d.terms) ? d.terms : undefined,
+    const unsub = onSnapshot(
+      qRef,
+      (snap) => {
+        const items: Reward[] = [];
+        snap.forEach((docSnap) => {
+          const d = docSnap.data() as any;
+          items.push({
+            id: docSnap.id,
+            title: d.title || "Untitled Reward",
+            subtitle: d.subtitle || "",
+            logoUri:
+              d.logoUri ||
+              "https://cdn-icons-png.flaticon.com/512/1047/1047711.png",
+            description: d.description || "",
+            validUntil: d.validUntil || "",
+            value: d.value || "",
+            redeemed: d.redeemed || false,
+            terms: Array.isArray(d.terms) ? d.terms : undefined,
+          });
         });
-      });
-      setRewards(items);
-      setLoading(false);
-    });
+        setRewards(items);
+        setLoading(false);
+        setListError(null);
+      },
+      // error callback: capture message and stop loading
+      (err) => {
+        console.error("myRewards onSnapshot error:", err);
+        setLoading(false);
+        setListError(
+          err?.message ||
+            "Failed to load rewards. Please check your connection or Firestore rules/indexes."
+        );
+      }
+    );
 
     return () => unsub();
-  }, []);
+  }, [reloadTick]); // re-subscribe on retry
+
+  // diacritic-insensitive lowercasing
+  const diacriticFold = (s: string) =>
+    (s || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
 
   // filter and grouping
   const { activeList, expiredList } = useMemo(() => {
     const now = new Date().getTime();
-    const norm = (s: string) => s.toLowerCase();
-    const queryText = norm(q);
+    const queryText = diacriticFold(q);
 
     const match = (r: Reward) =>
       !queryText ||
-      norm(r.title).includes(queryText) ||
-      norm(r.subtitle).includes(queryText) ||
-      norm(r.description).includes(queryText);
+      diacriticFold(r.title).includes(queryText) ||
+      diacriticFold(r.subtitle).includes(queryText) ||
+      diacriticFold(r.description).includes(queryText);
 
     const act: Reward[] = [];
     const exp: Reward[] = [];
     for (const r of rewards) {
       if (!match(r)) continue;
-      const until = r.validUntil ? new Date(r.validUntil).getTime() : Number.POSITIVE_INFINITY;
+      const until = r.validUntil
+        ? new Date(r.validUntil).getTime()
+        : Number.POSITIVE_INFINITY;
       const isExpired = r.redeemed === true || until < now;
       (isExpired ? exp : act).push(r);
     }
@@ -104,7 +132,7 @@ export default function MyRewards() {
             title: r.title,
             subtitle: r.subtitle,
             description: r.description,
-            logoUri: r.logoUri,          
+            logoUri: r.logoUri,
             validUntil: r.validUntil,
             value: r.value ?? "",
             terms: r.terms ? JSON.stringify(r.terms) : undefined,
@@ -119,8 +147,7 @@ export default function MyRewards() {
           {r.subtitle ? <Text style={styles.subtitle}>{r.subtitle}</Text> : null}
           {r.validUntil ? (
             <Text style={styles.valid}>
-              Valid until{" "}
-              {new Date(r.validUntil).toLocaleDateString("en-AU")}
+              Valid until {new Date(r.validUntil).toLocaleDateString("en-AU")}
             </Text>
           ) : null}
         </View>
@@ -159,8 +186,32 @@ export default function MyRewards() {
         />
       </View>
 
-      {loading ? (
-        <ActivityIndicator style={{ marginTop: 50 }} color="#6B7AFF" size="large" />
+      {/* error empty-state with retry */}
+      {!!listError && !loading ? (
+        <View style={styles.emptyBox}>
+          <Ionicons name="warning-outline" size={54} color="#EF4444" />
+          <Text style={[styles.emptyText, { marginTop: 10 }]}>
+            {listError}
+          </Text>
+          <Pressable
+            onPress={() => setReloadTick((t) => t + 1)}
+            style={{
+              marginTop: 14,
+              backgroundColor: "#6B7AFF",
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderRadius: 10,
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "800" }}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : loading ? (
+        <ActivityIndicator
+          style={{ marginTop: 50 }}
+          color="#6B7AFF"
+          size="large"
+        />
       ) : (activeList.length + expiredList.length) === 0 ? (
         <View style={styles.emptyBox}>
           <Ionicons name="sparkles-outline" size={60} color="#A0A0A0" />
@@ -169,9 +220,7 @@ export default function MyRewards() {
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
           {/* Active */}
-          <Text style={styles.sectionTitle}>
-            Active ({activeList.length})
-          </Text>
+          <Text style={styles.sectionTitle}>Active ({activeList.length})</Text>
           {activeList.map((r) => renderCard(r, false))}
 
           {/* Expired */}
@@ -237,8 +286,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 80,
+    paddingHorizontal: 22,
   },
-  emptyText: { color: "#777", marginTop: 12, fontWeight: "600" },
+  emptyText: { color: "#777", marginTop: 12, fontWeight: "600", textAlign: "center" },
 
   card: {
     backgroundColor: "#EEF3FF",

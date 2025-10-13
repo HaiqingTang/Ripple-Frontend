@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -11,6 +11,8 @@ import {
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { auth, db } from "../../../firebase";
+import { doc, onSnapshot } from "firebase/firestore";
 
 type ChallengeItem = {
   key: string;
@@ -21,73 +23,56 @@ type ChallengeItem = {
 };
 
 const LIST: ChallengeItem[] = [
-  {
-    key: "meditation",
-    title: "Meditation challenge",
-    taglineLeft: "Calm mind,\nclear focus",
-    imageUri:
-      "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop",
-  },
-  {
-    key: "nutrition",
-    title: "Nutrition challenge",
-    taglineRight: "Healthy plate,\nhealthier you",
-    imageUri:
-      "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=800&auto=format&fit=crop",
-  },
-  {
-    key: "tech",
-    title: "Tech challenge",
-    taglineLeft: "Stay smart,\nlive connected",
-    imageUri:
-      "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=800&auto=format&fit=crop",
-  },
-  {
-    key: "fitness",
-    title: "Fitness challenge",
-    taglineRight: "Move more,\nfeel stronger",
-    imageUri:
-      "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=800&auto=format&fit=crop",
-  },
-  {
-    key: "art",
-    title: "Art challenge",
-    taglineLeft: "Create with joy",
-    imageUri:
-      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=800&auto=format&fit=crop",
-  },
+  { key: "meditation", title: "Meditation challenge", taglineLeft: "Calm mind,\nclear focus",
+    imageUri: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop" },
+  { key: "nutrition", title: "Nutrition challenge", taglineRight: "Healthy plate,\nhealthier you",
+    imageUri: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?q=80&w=800&auto=format&fit=crop" },
+  { key: "tech", title: "Tech challenge", taglineLeft: "Stay smart,\nlive connected",
+    imageUri: "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=800&auto=format&fit=crop" },
+  { key: "fitness", title: "Fitness challenge", taglineRight: "Move more,\nfeel stronger",
+    imageUri: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=800&auto=format&fit=crop" },
+  { key: "art", title: "Art challenge", taglineLeft: "Create with joy",
+    imageUri: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=800&auto=format&fit=crop" },
 ];
 
-/**
- * Route mapping for each card.
- * Note: do NOT include the (tabs) group in pathname.
- * All categories reuse the same list screen, passing { category } as a param.
- */
-const ROUTE_BY_KEY: Record<
-  string,
-  { pathname: string; params: { category: string } } | undefined
-> = {
+/** Route mapping (unknown keys => no-op). */
+const ROUTE_BY_KEY: Record<string, { pathname: string; params: { category: string } } | undefined> = {
   nutrition: { pathname: "/Challenge/nutritionChallengeList", params: { category: "nutrition" } },
-  fitness: { pathname: "/Challenge/nutritionChallengeList", params: { category: "fitness" } },
-  meditation: { pathname: "/Challenge/nutritionChallengeList", params: { category: "meditation" } },
-  tech: { pathname: "/Challenge/nutritionChallengeList", params: { category: "tech" } },
-  art: { pathname: "/Challenge/nutritionChallengeList", params: { category: "art" } },
+  fitness:   { pathname: "/Challenge/nutritionChallengeList", params: { category: "fitness" } },
+  meditation:{ pathname: "/Challenge/nutritionChallengeList", params: { category: "meditation" } },
+  tech:      { pathname: "/Challenge/nutritionChallengeList", params: { category: "tech" } },
+  art:       { pathname: "/Challenge/nutritionChallengeList", params: { category: "art" } },
 };
 
 export default function ChallengeIndex() {
   const router = useRouter();
 
-  const openMyChallenges = () => {
-    router.push("/Challenge/currentChallengeList");
-  };
+  // display name from Firestore users
+  const [displayName, setDisplayName] = useState<string>(
+    auth.currentUser?.displayName?.trim().split(/\s+/)[0] || "there"
+  );
 
-  const openMyRewards = () => {
-    router.push("/Challenge/myRewards");
-  };
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const ref = doc(db, "users", uid);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const dn = (snap.data() as any)?.displayName as string | undefined;
+        if (dn && typeof dn === "string") {
+          setDisplayName(dn.trim().split(/\s+/)[0] || "there");
+        }
+      },
+      // keep silent on error to avoid UI churn; header will keep current fallback
+      () => {}
+    );
+    return () => unsub();
+  }, []);
 
-  const onCustomize = () => {
-    router.push("/Challenge/createChallenge");
-  };
+  const openMyChallenges = () => router.push("/Challenge/currentChallengeList");
+  const openMyRewards = () => router.push("/Challenge/myRewards");
+  const onCustomize = () => router.push("/Challenge/createChallenge");
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -96,12 +81,10 @@ export default function ChallengeIndex() {
         <View style={styles.header}>
           <View style={styles.headerRow}>
             <Text style={styles.headerTitle}>
-              Hey username,{"\n"}Ready for some <Text style={styles.headerTitleEm}>challenge?</Text>
+              Hey {displayName},{"\n"}Ready for some <Text style={styles.headerTitleEm}>challenge?</Text>
             </Text>
             <Image
-              source={{
-                uri: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=200&auto=format&fit=crop",
-              }}
+              source={{ uri: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=200&auto=format&fit=crop" }}
               style={styles.headerImage}
             />
           </View>
@@ -124,7 +107,6 @@ export default function ChallengeIndex() {
               <Text style={styles.quickText}>My challenges</Text>
             </View>
           </Pressable>
-
           <Pressable style={styles.quickCard} onPress={openMyRewards} hitSlop={8}>
             <View style={styles.quickInner}>
               <Ionicons name="trophy-outline" size={20} color="#FACC15" />
@@ -141,9 +123,8 @@ export default function ChallengeIndex() {
             keyboardShouldPersistTaps="handled"
           >
             {LIST.map((it) => {
-              const href = ROUTE_BY_KEY[it.key];
+              const href = ROUTE_BY_KEY[it.key] ?? undefined;
 
-              // If the card has a route configured, wrap with Link to keep navigation declarative.
               const CardBody = (
                 <>
                   <Text style={styles.cardTitle}>{it.title}</Text>
@@ -176,8 +157,6 @@ export default function ChallengeIndex() {
                   </Link>
                 );
               }
-
-              // Cards without route still render but do not navigate.
               return (
                 <Pressable key={it.key} style={styles.card} hitSlop={8}>
                   {CardBody}
@@ -204,12 +183,7 @@ const BODY_TEXT = "#374151";
 
 const SHADOW =
   Platform.OS === "ios"
-    ? {
-        shadowColor: "#000",
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 6 },
-      }
+    ? { shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }
     : { elevation: 3 };
 
 const styles = StyleSheet.create({
@@ -246,13 +220,7 @@ const styles = StyleSheet.create({
     ...SHADOW,
   },
   customizeBtn: { flex: 1 },
-  customizeText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-    lineHeight: 24,
-    textAlign: "center",
-  },
+  customizeText: { color: "#fff", fontWeight: "700", fontSize: 16, lineHeight: 24, textAlign: "center" },
   dayBox: {
     backgroundColor: DAY_BOX_BG,
     borderRadius: 12,
@@ -282,38 +250,11 @@ const styles = StyleSheet.create({
   listHolder: { flex: 1 },
   listContent: { paddingBottom: 100 },
 
-  card: {
-    backgroundColor: CARD_BG,
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    marginBottom: 14,
-    ...SHADOW,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: TITLE_BLUE,
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  cardInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: INNER_BG,
-    borderRadius: 12,
-    padding: 10,
-    gap: 12,
-    minHeight: 92,
-  },
+  card: { backgroundColor: CARD_BG, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 14, marginBottom: 14, ...SHADOW },
+  cardTitle: { fontSize: 18, fontWeight: "800", color: TITLE_BLUE, marginBottom: 10, textAlign: "center" },
+  cardInner: { flexDirection: "row", alignItems: "center", backgroundColor: INNER_BG, borderRadius: 12, padding: 10, gap: 12, minHeight: 92 },
   cardImage: { width: 110, height: 72, borderRadius: 10, resizeMode: "cover" },
   flexBox: { flex: 1, justifyContent: "center", alignItems: "center" },
   flexSpacer: { width: 0 },
-  tagText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: BODY_TEXT,
-    lineHeight: 16,
-    textAlign: "center",
-  },
+  tagText: { fontSize: 12, fontWeight: "600", color: BODY_TEXT, lineHeight: 16, textAlign: "center" },
 });
