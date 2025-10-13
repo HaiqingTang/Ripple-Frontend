@@ -234,10 +234,10 @@ export default function LogEntriesPage() {
               alignItems: "center",
             }}
           >
-            <Text style={{ fontWeight: "600", color: "#2e8adaff"}}>
+            <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
 				        {emojis[(item.selectedEmoji || 1) - 1]}
             </Text>
-            <Text style={{ fontSize: 11, color: "#666" }}>Emotion</Text>
+            <Text style={{ fontSize: 11, color: "#666"}}>Emotion</Text>
           </View>
         </View>
 
@@ -447,7 +447,7 @@ export default function LogEntriesPage() {
                       }}
                     >
                       <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
-                        {selectedLog.moodRating || "N/A"}h
+                        {selectedLog.moodRating || "N/A"}/10
                       </Text>
                       <Text style={{ fontSize: 11, color: "#666" }}>Mood Rating</Text>
                     </View>
@@ -462,24 +462,13 @@ export default function LogEntriesPage() {
                         alignItems: "center",
                       }}
                     >
-                      <Text style={{ fontWeight: "600", color: "#2e8adaff"}}>
+                      <Text style={{ fontWeight: "600", color: "#2e8adaff",marginBottom: 6}}>
 					  	          {emojis[(selectedLog.selectedEmoji || 1) - 1]}
                       </Text>
                       <Text style={{ fontSize: 11, color: "#666" }}>Emotion</Text>
                     </View>
                   </View>
 
-                {/* Image */}
-                {(selectedLog.journalPhoto || selectedLog.imageBase64) && (
-                  <View style={{ marginBottom: 20, borderRadius: 12, overflow: "hidden" }}>
-                    <Image
-                      source={{ uri: createDataUri(selectedLog.journalPhoto || selectedLog.imageBase64) }}
-                      style={{ width: "100%", height: 300, borderRadius: 12 }}
-                      contentFit="cover"
-                      transition={200}
-                    />
-                  </View>
-                )}
 
                   {/* Sleep */}
                   <Text style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>SLEEP</Text>
@@ -494,7 +483,7 @@ export default function LogEntriesPage() {
                         marginBottom: 20,
                         alignItems: "center",
                       }}
-                    >
+                      >
                       <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
                         {selectedLog.sleepDuration || "N/A"}h
                       </Text>
@@ -510,7 +499,7 @@ export default function LogEntriesPage() {
                         marginBottom: 20,
                         alignItems: "center",
                       }}
-                    >
+                      >
                       <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
                         {selectedLog.sleepQuality || "N/A"}/10
                       </Text>
@@ -523,6 +512,18 @@ export default function LogEntriesPage() {
                   <Text style={{ fontSize: 12, color: "#666" }}>DAILY REFLECTION</Text>
                   <View style={{ flexDirection: "row", marginBottom: 6 }}></View>
                   <Text style={{ marginBottom: 20 }}>{selectedLog.journalText || "-"}</Text>
+
+                  {/* Image */}
+                  {(selectedLog.journalPhoto || selectedLog.imageBase64) && (
+                    <View style={{ marginBottom: 20, borderRadius: 12, overflow: "hidden" }}>
+                      <Image
+                        source={{ uri: createDataUri(selectedLog.journalPhoto || selectedLog.imageBase64) }}
+                        style={{ width: "100%", height: 300, borderRadius: 12 }}
+                        contentFit="cover"
+                        transition={200}
+                      />
+                    </View>
+                  )}
 
                   {/* Tags */}
                   <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 8 }}>
