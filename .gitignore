@@ -48,3 +48,4 @@ yarn-error.*
 
 # example assets (如果项目里没有这个文件夹，可删掉此行)
 app-example
+.vercel
