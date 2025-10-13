@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   Modal,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { collection, getDocs, query, where } from "@firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -19,6 +20,23 @@ const WHITE = "#FFFFFF";
 const HEADER_HEIGHT = 155;
 
 const emojis = ['😢', '😕', '😐', '😊', '😄'];
+
+// Helper function to normalize Firestore timestamps to Date objects
+const toDate = (ts: any): Date | null => {
+  if (!ts) return null;
+  if (ts.toDate && typeof ts.toDate === "function") return ts.toDate();
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+// Helper function to get rating color
+const getRatingColor = (rating: number): string => {
+  if (rating >= 8) return "#4CAF50"; // Green
+  if (rating >= 6) return "#8BC34A"; // Light green
+  if (rating >= 4) return "#FFC107"; // Amber
+  if (rating >= 2) return "#FF9800"; // Orange
+  return "#F44336"; // Red
+};
 
 const getTagColor = (tag: string) => {
   const palette = [
@@ -38,40 +56,49 @@ export default function LogEntriesPage() {
   const [filter, setFilter] = useState<"All" | "Week" | "Month">("All");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [selectedLog, setSelectedLog] = useState<any>(null);
-  const [logs, setLogs] = useState<any[]>([]); // State to store fetched logs
-  const [userTags, setUserTags] = useState<string[]>([]); // State to store unique tags from logs
-  const { userId, fullName } = useAppContext(); // Fetch userId and fullName from AppContext
+  const [logs, setLogs] = useState<any[]>([]);
+  const [userTags, setUserTags] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { userId, fullName } = useAppContext();
   const router = useRouter();
 
   // Fetch logs from Firebase
   useEffect(() => {
     const fetchLogs = async () => {
       try {
+        setLoading(true);
         const logsRef = collection(db, "personalLogs");
-        const q = query(logsRef, where("userId", "==", userId)); // Use userId from AppContext
+        const q = query(logsRef, where("userId", "==", userId));
         const querySnapshot = await getDocs(q);
         const fetchedLogs = querySnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
 
-        // Sort logs by the timestamp field in descending order (most recent first)
-        const sortedLogs = fetchedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        // Sort logs by timestamp in descending order using toDate helper
+        const sortedLogs = fetchedLogs.sort((a, b) => {
+          const dateA = toDate(b.timestamp)?.getTime() || 0;
+          const dateB = toDate(a.timestamp)?.getTime() || 0;
+          return dateA - dateB;
+        });
         setLogs(sortedLogs);
 
-        // Extract unique tags from logs
+        // Extract unique tags from logs with defensive checks
         const tags = new Set<string>();
         sortedLogs.forEach((log) => {
-          log.tags.forEach((tag: string) => tags.add(tag));
+          const logTags = Array.isArray(log.tags) ? log.tags : [];
+          logTags.forEach((tag: string) => tags.add(tag));
         });
-        setUserTags(Array.from(tags)); // Convert Set to Array
+        setUserTags(Array.from(tags));
       } catch (error) {
         console.error("Error fetching logs:", error);
+      } finally {
+        setLoading(false);
       }
     };
 
     if (userId) {
-      fetchLogs(); // Fetch logs only if userId is available
+      fetchLogs();
     }
   }, [userId]);
 
@@ -81,7 +108,10 @@ export default function LogEntriesPage() {
 
     // Filter by tag
     if (tagFilter) {
-      filtered = filtered.filter((log) => log.tags.includes(tagFilter));
+      filtered = filtered.filter((log) => {
+        const logTags = Array.isArray(log.tags) ? log.tags : [];
+        return logTags.includes(tagFilter);
+      });
     }
 
     // Filter by time
@@ -91,13 +121,13 @@ export default function LogEntriesPage() {
         const oneWeekAgo = new Date(today);
         oneWeekAgo.setDate(today.getDate() - 7);
         filtered = filtered.filter((log) => {
-          const logDay = new Date(log.date);
+          const logDay = toDate(log.timestamp) || new Date();
           return logDay >= oneWeekAgo && logDay <= today;
         });
       }
       if (filter === "Month") {
         filtered = filtered.filter((log) => {
-          const logDay = new Date(log.date);
+          const logDay = toDate(log.timestamp) || new Date();
           return (
             logDay.getMonth() === today.getMonth() &&
             logDay.getFullYear() === today.getFullYear()
@@ -109,137 +139,148 @@ export default function LogEntriesPage() {
     return filtered;
   };
 
-  const renderLogCard = ({ item }: { item: any }) => (
-    <View
-      style={{
-        backgroundColor: WHITE,
-        marginHorizontal: 16,
-        marginTop: 12,
-        borderRadius: 12,
-        padding: 16,
-        shadowColor: "#000",
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
-      }}
-    >
-      {/* Mood and Emoji */}
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ fontWeight: "bold", fontSize: 16 }}>
-          {new Date(item.date).toLocaleDateString("en-US", {
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-          })}
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
+  const renderLogCard = ({ item }: { item: any }) => {
+    const displayDate = toDate(item.timestamp) || new Date();
+    const logTags = Array.isArray(item.tags) ? item.tags : [];
+    const ratingColor = getRatingColor(item.dayRating || 0);
+
+    return (
+      <View
+        style={{
+          backgroundColor: WHITE,
+          marginHorizontal: 16,
+          marginTop: 12,
+          borderRadius: 12,
+          padding: 16,
+          shadowColor: "#000",
+          shadowOpacity: 0.05,
+          shadowRadius: 3,
+        }}
+      >
+        {/* Dates */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+            {displayDate.toLocaleDateString("en-US", {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </Text>
+        </View>
+
+        {/* Weekday and Timestamp */}
+        <View style={{ flexDirection: "row", marginBottom: 25 }}>
+          <Text style={{ color: "#666", marginRight: 8 }}>
+            {item.weekday || "N/A"}
+          </Text>
+          <Text style={{ color: "#666" }}>
+            {displayDate.toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            })}
+          </Text>
+        </View>
+
+        {/* Overall Rating */}
+        <Text style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>OVERALL</Text>
+        <View style={{ 
+          backgroundColor: "#F9F9F9", 
+          padding: 12, 
+          borderRadius: 8, 
+          marginBottom: 16,
+          alignItems: "center",
+        }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={{ 
+              fontSize: 24, 
+              fontWeight: "bold", 
+              color: ratingColor,
+              marginRight: 6,
+            }}>
+              {item.dayRating || "N/A"}
+            </Text>
+            <Text style={{ fontSize: 16, color: "#666" }}>/10</Text>
+          </View>
+        </View>
+
+        {/* Mood info */}
+        <Text style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>MOOD</Text>
+        <View style={{ flexDirection: "row", marginBottom: 6 }}>
           <View
             style={{
-              backgroundColor: "#4A90E2",
-              width: 28,
-              height: 28,
-              borderRadius: 14,
-              justifyContent: "center",
+              flex: 1,
+              backgroundColor: "#F9F9F9",
+              padding: 12,
+              borderRadius: 8,
+              marginRight: 8,
               alignItems: "center",
-              marginRight: 6,
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>
-              {item.moodRating}
+            <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
+              {item.moodRating}/10
             </Text>
+            <Text style={{ fontSize: 11, color: "#666" }}>Mood Rating</Text>
           </View>
-          <Text style={{ fontSize: 20 }}>{emojis[(item.selectedEmoji || 1) - 1]}</Text>
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "#F9F9F9",
+              padding: 12,
+              borderRadius: 8,
+              marginRight: 8,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ fontWeight: "600", color: "#2e8adaff"}}>
+				        {emojis[(item.selectedEmoji || 1) - 1]}
+            </Text>
+            <Text style={{ fontSize: 11, color: "#666" }}>Emotion</Text>
+          </View>
         </View>
-      </View>
 
-      {/* Weekday and Timestamp */}
-      <View style={{ flexDirection: "row", marginBottom: 6 }}>
-        <Text style={{ color: "#666", marginRight: 8 }}>
-          {item.weekday || "N/A"}
-        </Text>
-        <Text style={{ color: "#666" }}>
-          {new Date(item.timestamp).toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true, // Ensures AM/PM format
+        {/* Tags */}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 5, marginBottom: 15 }}>
+          {logTags.map((tag: string, idx: number) => {
+            const colors = getTagColor(tag);
+            return (
+              <View
+                key={idx}
+                style={{
+                  backgroundColor: colors.bg,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 12,
+                  marginRight: 6,
+                  marginTop: 6,
+                }}
+              >
+                <Text style={{ color: colors.text, fontWeight: "500" }}>{tag}</Text>
+              </View>
+            );
           })}
-        </Text>
-      </View>
-
-      <Text style={{ fontSize: 12, color: "#666" }}>DAILY REFLECTION</Text>
-      <View style={{ flexDirection: "row", marginBottom: 8 }}></View>
-
-      <Text style={{ marginBottom: 16 }} numberOfLines={3}>
-        {item.journalText || "-"}
-      </Text>
-
-      {/* Sleep info */}
-      <Text style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>SLEEP</Text>
-      <View style={{ flexDirection: "row", marginBottom: 6 }}>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "#F9F9F9",
-            padding: 12,
-            borderRadius: 8,
-            marginRight: 8,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
-            {item.sleepDuration}h
-          </Text>
-          <Text style={{ fontSize: 11, color: "#666" }}>Duration</Text>
         </View>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "#F9F9F9",
-            padding: 12,
-            borderRadius: 8,
-            marginRight: 8,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
-            {item.sleepQuality}/10
+
+        <TouchableOpacity onPress={() => setSelectedLog(item)}>
+          <Text style={{ color: "#4A90E2", fontWeight: "500" }}>
+            Show more details
           </Text>
-          <Text style={{ fontSize: 11, color: "#666" }}>Quality</Text>
-        </View>
+        </TouchableOpacity>
       </View>
+    );
+  };
 
-      {/* Tags */}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 5, marginBottom: 15 }}>
-        {item.tags.map((tag: string, idx: number) => {
-          const colors = getTagColor(tag);
-          return (
-            <View
-              key={idx}
-              style={{
-                backgroundColor: colors.bg,
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 12,
-                marginRight: 6,
-                marginTop: 6,
-              }}
-            >
-              <Text style={{ color: colors.text, fontWeight: "500" }}>{tag}</Text>
-            </View>
-          );
-        })}
-      </View>
-
-      <TouchableOpacity onPress={() => setSelectedLog(item)}>
-        <Text style={{ color: "#4A90E2", fontWeight: "500" }}>
-          Show more details
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: BLUE_BG, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#4A90E2" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: BLUE_BG }}>
-      <View style={{ height: HEADER_HEIGHT}}>
+      <View style={{ height: HEADER_HEIGHT }}>
         {/* Top header */}
         <View
           style={{
@@ -277,7 +318,7 @@ export default function LogEntriesPage() {
                 paddingVertical: 8,
                 borderRadius: 20,
                 marginHorizontal: 6,
-                marginBottom: 5
+                marginBottom: 5,
               }}
             >
               <Text
@@ -337,113 +378,168 @@ export default function LogEntriesPage() {
       <Modal visible={!!selectedLog} animationType="slide">
         <SafeAreaView style={{ flex: 1, backgroundColor: BLUE_BG }}>
           <ScrollView style={{ flex: 1, padding: 20 }}>
-            {selectedLog && (
-              <View style={{ backgroundColor: WHITE, borderRadius: 12, padding: 16 }}>
-                {/* Mood + Emoji */}
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ fontWeight: "bold", fontSize: 18 }}>
-                    {new Date(selectedLog.date).toLocaleDateString("en-US", {
-                      month: "long",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+            {selectedLog && (() => {
+              const displayDate = toDate(selectedLog.timestamp) || new Date();
+              const logTags = Array.isArray(selectedLog.tags) ? selectedLog.tags : [];
+              const ratingColor = getRatingColor(selectedLog.dayRating);
+              
+              return (
+                <View style={{ backgroundColor: WHITE, borderRadius: 12, padding: 16 }}>
+                  {/* Mood + Emoji */}
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ fontWeight: "bold", fontSize: 18 }}>
+                      {displayDate.toLocaleDateString("en-US", {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: "row", marginBottom: 40 }}>
+                    <Text style={{ color: "#666", marginRight: 8 }}>
+                      {selectedLog.weekday || "N/A"}
+                    </Text>
+                    <Text style={{ color: "#666" }}>
+                      {displayDate.toLocaleTimeString("en-US", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: true,
+                      })}
+                    </Text>
+                  </View>
+
+                  {/* Overall Rating */}
+                  <Text style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>OVERALL</Text>
+                  <View style={{ 
+                    backgroundColor: "#F9F9F9", 
+                    padding: 16, 
+                    borderRadius: 8, 
+                    marginBottom: 20,
+                    alignItems: "center",
+                  }}>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Text style={{ 
+                        fontSize: 32, 
+                        fontWeight: "bold", 
+                        color: ratingColor,
+                        marginRight: 6,
+                      }}>
+                        {selectedLog.dayRating || "N/A"}
+                      </Text>
+                      <Text style={{ fontSize: 20, color: "#666" }}>/10</Text>
+                    </View>
+                  </View>
+
+				  {/* Mood */}
+                  <Text style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>MOOD</Text>
+                  <View style={{ flexDirection: "row", marginBottom: 6 }}>
                     <View
                       style={{
-                        backgroundColor: "#4A90E2",
-                        width: 28,
-                        height: 28,
-                        borderRadius: 14,
-                        justifyContent: "center",
+                        flex: 1,
+                        backgroundColor: "#F9F9F9",
+                        padding: 12,
+                        borderRadius: 8,
+                        marginRight: 10,
+                        marginBottom: 20,
                         alignItems: "center",
-                        marginRight: 6,
                       }}
                     >
-                      <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>
-                        {selectedLog.moodRating || "N/A"}
+                      <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
+                        {selectedLog.moodRating || "N/A"}h
                       </Text>
+                      <Text style={{ fontSize: 11, color: "#666" }}>Mood Rating</Text>
                     </View>
-                    <Text style={{ fontSize: 20 }}>{emojis[(selectedLog.selectedEmoji || 1) - 1]}</Text>
+                    <View
+                      style={{
+                        flex: 1,
+                        backgroundColor: "#F9F9F9",
+                        padding: 12,
+                        borderRadius: 8,
+                        marginRight: 6,
+                        marginBottom: 20,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text style={{ fontWeight: "600", color: "#2e8adaff"}}>
+					  	          {emojis[(selectedLog.selectedEmoji || 1) - 1]}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: "#666" }}>Emotion</Text>
+                    </View>
                   </View>
-                </View>
-                <View style={{ flexDirection: "row", marginBottom: 6 }}>
-                <Text style={{ color: "#666", marginRight: 8 }}>
-                {selectedLog.weekday || "N/A"}
-                </Text>
-                <Text style={{ color: "#666" }}>
-                {new Date(selectedLog.timestamp).toLocaleTimeString("en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: true, // Ensures AM/PM format
-                })}
-                </Text>
-            </View>
-                {/* Reflection */}
-                <Text style={{ fontSize: 12, color: "#666" }}>DAILY REFLECTION</Text>
-                <View style={{ flexDirection: "row", marginBottom: 6 }}></View>
-                <Text style={{ marginBottom: 20 }}>{selectedLog.journalText || "-"}</Text>
 
-                {/* Sleep */}
-                <Text style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>SLEEP</Text>
-                <View style={{ flexDirection: "row", marginBottom: 6 }}>
-                  <View
-                    style={{
-                      flex: 1,
-                      backgroundColor: "#F9F9F9",
-                      padding: 12,
-                      borderRadius: 8,
-                      marginRight: 10,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
-                      {selectedLog.sleepDuration || "N/A"}h
-                    </Text>
-                    <Text style={{ fontSize: 11, color: "#666" }}>Duration</Text>
+                  {/* Sleep */}
+                  <Text style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>SLEEP</Text>
+                  <View style={{ flexDirection: "row", marginBottom: 6 }}>
+                    <View
+                      style={{
+                        flex: 1,
+                        backgroundColor: "#F9F9F9",
+                        padding: 12,
+                        borderRadius: 8,
+                        marginRight: 10,
+                        marginBottom: 20,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
+                        {selectedLog.sleepDuration || "N/A"}h
+                      </Text>
+                      <Text style={{ fontSize: 11, color: "#666" }}>Duration</Text>
+                    </View>
+                    <View
+                      style={{
+                        flex: 1,
+                        backgroundColor: "#F9F9F9",
+                        padding: 12,
+                        borderRadius: 8,
+                        marginRight: 6,
+                        marginBottom: 20,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
+                        {selectedLog.sleepQuality || "N/A"}/10
+                      </Text>
+                      <Text style={{ fontSize: 11, color: "#666" }}>Quality</Text>
+                    </View>
                   </View>
-                  <View
-                    style={{
-                      flex: 1,
-                      backgroundColor: "#F9F9F9",
-                      padding: 12,
-                      borderRadius: 8,
-                      marginRight: 6,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
-                      {selectedLog.sleepQuality || "N/A"}/10
-                    </Text>
-                    <Text style={{ fontSize: 11, color: "#666" }}>Quality</Text>
+
+
+                  {/* Reflection */}
+                  <Text style={{ fontSize: 12, color: "#666" }}>DAILY REFLECTION</Text>
+                  <View style={{ flexDirection: "row", marginBottom: 6 }}></View>
+                  <Text style={{ marginBottom: 20 }}>{selectedLog.journalText || "-"}</Text>
+
+                  {/* Tags */}
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 8 }}>
+                    {logTags.length > 0 ? (
+                      logTags.map((tag: string, idx: number) => {
+                        const colors = getTagColor(tag);
+                        return (
+                          <View
+                            key={idx}
+                            style={{
+                              backgroundColor: colors.bg,
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                              borderRadius: 12,
+                              marginRight: 6,
+                              marginTop: 6,
+                            }}
+                          >
+                            <Text style={{ color: colors.text, fontWeight: "500" }}>{tag}</Text>
+                          </View>
+                        );
+                      })
+                    ) : (
+                      <Text style={{ color: "#666" }}>No tags available.</Text>
+                    )}
                   </View>
                 </View>
-              
-                {/* Tags */}
-                <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 8 }}>
-                  {selectedLog.tags?.map((tag: string, idx: number) => {
-                    const colors = getTagColor(tag);
-                    return (
-                      <View
-                        key={idx}
-                        style={{
-                          backgroundColor: colors.bg,
-                          paddingHorizontal: 10,
-                          paddingVertical: 4,
-                          borderRadius: 12,
-                          marginRight: 6,
-                          marginTop: 6,
-                        }}
-                      >
-                        <Text style={{ color: colors.text, fontWeight: "500" }}>{tag}</Text>
-                      </View>
-                    );
-                  }) || <Text style={{ color: "#666" }}>No tags available.</Text>}
-                </View>
-              </View>
-            )}
+              );
+            })()}
           </ScrollView>
-          
+
           <TouchableOpacity
             style={{
               backgroundColor: "#4A90E2",
@@ -463,6 +559,6 @@ export default function LogEntriesPage() {
           </TouchableOpacity>
         </SafeAreaView>
       </Modal>
-      </SafeAreaView>
+    </SafeAreaView>
   );
 }
