@@ -105,7 +105,7 @@ export default function PersonalLog() {
 	const handleViewPreviousEntries = () => {
 		// TODO: Navigate to previous entries screen
 		console.log('Viewing previous entries...');
-		router.push('/journal/entries')
+		router.push('/journal/entries');
 	};
 
 	const openJournal = () => {

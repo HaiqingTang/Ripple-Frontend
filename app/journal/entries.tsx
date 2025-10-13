@@ -16,6 +16,7 @@ import { useAppContext } from "@/context/AppContext";
 
 const BLUE_BG = "#DDE7FF";
 const WHITE = "#FFFFFF";
+const HEADER_HEIGHT = 155;
 
 const emojis = ['😢', '😕', '😐', '😊', '😄'];
 
@@ -28,8 +29,7 @@ const getTagColor = (tag: string) => {
     { bg: '#FCE4EC', text: '#AD1457' }, // pink
     { bg: '#E3F2FD', text: '#1565C0' }, // blue
   ];
-  let sum = 0;
-  for (let i = 0; i < tag.length; i++) sum += tag.charCodeAt(i);
+  const sum = Array.from(tag).reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const idx = sum % palette.length;
   return palette[idx];
 };
@@ -239,7 +239,7 @@ export default function LogEntriesPage() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: BLUE_BG }}>
-      <View style={{ height: 155}}>
+      <View style={{ height: HEADER_HEIGHT}}>
         {/* Top header */}
         <View
           style={{
@@ -250,7 +250,7 @@ export default function LogEntriesPage() {
             paddingBottom: 8,
           }}
         >
-          <TouchableOpacity onPress={() => router.push("/(tabs)/personalLog ")}>
+          <TouchableOpacity onPress={() => router.push("/(tabs)/personalLog")}>
             <Ionicons name="arrow-back" size={24} color="#4A90E2" />
           </TouchableOpacity>
           <Text style={{ fontSize: 20, fontWeight: "bold", marginBottom: 18 }}>
@@ -422,7 +422,7 @@ export default function LogEntriesPage() {
                 {/* Tags */}
                 <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 8 }}>
                   {selectedLog.tags?.map((tag: string, idx: number) => {
-                    const colors = getTagColor(tag) || { bg: "#EAF2FF", text: "#1E63E9" };
+                    const colors = getTagColor(tag);
                     return (
                       <View
                         key={idx}
