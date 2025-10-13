@@ -88,6 +88,12 @@ export default function JournalPage() {
 
 	const isSubmitDisabled = !journalText.trim();
 
+	const addTag = (tag: string) => {
+		if (!selectedTags.includes(tag)) {
+			setSelectedTags([...selectedTags, tag]);
+		}
+	};
+
 	return (
 		<SafeAreaView style={styles.container}>
 			{/* Header */}
