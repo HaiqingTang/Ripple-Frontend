@@ -36,44 +36,83 @@ export default function NutritionChallengeList() {
   const [loading, setLoading] = useState(true);
   const [joinedIds, setJoinedIds] = useState<string[]>([]);
 
-  // Fetch user's joined challenges
+  // List subscription error (UX feedback)
+  const [listError, setListError] = useState<string | null>(null);
+
+  // Fetch user's joined challenges (merge active + completed)
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
-    const ref = collection(db, "userChallenges", uid, "active");
-    return onSnapshot(ref, (snap) => {
-      const arr: string[] = [];
-      snap.forEach((d) => arr.push(d.id));
-      setJoinedIds(arr);
+
+    const activeRef = collection(db, "userChallenges", uid, "active");
+    const completedRef = collection(db, "userChallenges", uid, "completed");
+
+    // collect ids from both collections and merge (set-based)
+    const activeIds = new Set<string>();
+    const completedIds = new Set<string>();
+
+    const unsubActive = onSnapshot(activeRef, (snap) => {
+      activeIds.clear();
+      snap.forEach((d) => activeIds.add(d.id));
+      setJoinedIds((prev) => {
+        const merged = new Set<string>([...activeIds, ...completedIds]);
+        return Array.from(merged);
+      });
     });
+
+    const unsubCompleted = onSnapshot(completedRef, (snap) => {
+      completedIds.clear();
+      snap.forEach((d) => completedIds.add(d.id));
+      setJoinedIds((prev) => {
+        const merged = new Set<string>([...activeIds, ...completedIds]);
+        return Array.from(merged);
+      });
+    });
+
+    return () => {
+      unsubActive();
+      unsubCompleted();
+    };
   }, []);
 
-  // Fetch challenge list from Firestore
+  // Fetch challenge list from Firestore (with error callback + UX)
   useEffect(() => {
     const ref = collection(db, "challenges", category, "items");
     const qRef = query(ref, orderBy("createdAt", "desc"));
 
-    const unsub = onSnapshot(qRef, (snap) => {
-      const arr: Challenge[] = [];
-      snap.forEach((docSnap) => {
-        const d = docSnap.data() as any;
-        arr.push({
-          id: docSnap.id,
-          title: d.title || "Untitled Challenge",
-          desc: d.desc || "",
-          days: d.days || 0,
-          joined: d.joined || 0,
-          reward: d.rewardConfig?.name || d.reward || "",
-          cover:
-            d.rewardConfig?.logoUri ||
-            d.cover ||
-            "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=800&auto=format&fit=crop",
-          category: d.category || category,
+    const unsub = onSnapshot(
+      qRef,
+      (snap) => {
+        const arr: Challenge[] = [];
+        snap.forEach((docSnap) => {
+          const d = docSnap.data() as any;
+          arr.push({
+            id: docSnap.id,
+            title: d.title || "Untitled Challenge",
+            desc: d.desc || "",
+            days: d.days || 0,
+            joined: d.joined || 0,
+            reward: d.rewardConfig?.name || d.reward || "",
+            cover:
+              d.rewardConfig?.logoUri ||
+              d.cover ||
+              "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=800&auto=format&fit=crop",
+            category: d.category || category,
+          });
         });
-      });
-      setList(arr);
-      setLoading(false);
-    });
+        setList(arr);
+        setLoading(false);
+        setListError(null); // clear any previous error on success
+      },
+      (err) => {
+        console.error("nutritionChallengeList onSnapshot error:", err);
+        setLoading(false);
+        setListError(
+          err?.message ||
+            "Failed to load challenges. Please check your connection or Firestore rules/indexes."
+        );
+      }
+    );
 
     return () => unsub();
   }, [category]);
@@ -98,7 +137,7 @@ export default function NutritionChallengeList() {
     } as any);
   };
 
-  // Create new challenge (dev only)
+  // Create new challenge (dev only): gate behind __DEV__
   const createNew = () => {
     router.push("/Challenge/createChallenge");
   };
@@ -149,12 +188,23 @@ export default function NutritionChallengeList() {
         />
       </View>
 
+      {/* Error banner for list subscription */}
+      {!!listError && (
+        <View style={styles.errorBar}>
+          <Ionicons name="warning-outline" size={16} color="#fff" />
+          <Text style={styles.errorText} numberOfLines={2}>
+            {listError}
+          </Text>
+        </View>
+      )}
+
       {/* List */}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 50 }} color="#6B7AFF" size="large" />
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
           {filtered.map((c) => {
+            // joined state considers both active and completed
             const isJoined = joinedIds.includes(c.id);
             return (
               <View key={c.id} style={styles.card}>
@@ -207,10 +257,12 @@ export default function NutritionChallengeList() {
         </ScrollView>
       )}
 
-      {/* New */}
-      <Pressable onPress={createNew} style={styles.fab} accessibilityRole="button">
-        <Ionicons name="add" size={40} color="#fff" />
-      </Pressable>
+      {/* New (dev only): hidden in production */}
+      {__DEV__ && (
+        <Pressable onPress={createNew} style={styles.fab} accessibilityRole="button">
+          <Ionicons name="add" size={40} color="#fff" />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -261,6 +313,21 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   searchInput: { flex: 1, height: "100%", fontSize: 16, color: "#223" },
+
+  // error banner
+  errorBar: {
+    marginHorizontal: 18,
+    backgroundColor: "#EF4444",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  errorText: { color: "#fff", fontWeight: "700", flex: 1 },
+
   card: {
     marginHorizontal: 18,
     marginVertical: 10,

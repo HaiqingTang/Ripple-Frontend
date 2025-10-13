@@ -19,16 +19,31 @@ import { doc, onSnapshot, updateDoc, serverTimestamp } from "firebase/firestore"
 const PAGE_BG = "#C6DBFA";
 const TITLE_BLUE = "#3C7BD6";
 
-// format helper for "Valid until DD Month YYYY"
-function formatValid(d: Date) {
-  const months = [
-    "January","February","March","April","May","June",
-    "July","August","September","October","November","December"
-  ];
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = months[d.getMonth()];
-  const yyyy = d.getFullYear();
-  return `Valid until ${dd} ${mm} ${yyyy}`;
+/** Format "Valid until DD Month YYYY" with a fixed locale (UTC to avoid TZ drift). */
+function formatValidLocale(date: Date, locale: string = "en-AU") {
+  const core = date.toLocaleDateString(locale, {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return `Valid until ${core}`;
+}
+
+/** Safer ISO parsing:
+ *  - If "YYYY-MM-DD", treat as date-only at UTC midnight.
+ *  - Else parse normally; return null on invalid.
+ */
+function parseISODateSafe(iso: string): Date | null {
+  if (!iso) return null;
+  const ymd = iso.match(/^\d{4}-\d{2}-\d{2}$/);
+  try {
+    if (ymd) return new Date(`${iso}T00:00:00.000Z`);
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
 }
 
 type RewardDoc = {
@@ -36,18 +51,18 @@ type RewardDoc = {
   subtitle?: string;
   description?: string;
   logoUri?: string;
-  validUntil?: string;     // ISO string
+  validUntil?: string; // ISO string
   value?: string;
   redeemed?: boolean;
   issuedAt?: any;
   redeemedAt?: any;
-  terms?: string[];     
+  terms?: string[];
 };
 
 const DEFAULT_TERMS = [
   "Redeemable at participating locations.",
   "Not valid with other discounts or promotions.",
-  "No cash value."
+  "No cash value.",
 ];
 
 export default function RewardDetail() {
@@ -69,7 +84,14 @@ export default function RewardDetail() {
   const [loading, setLoading] = useState<boolean>(!!rewardId);
   const [docData, setDocData] = useState<RewardDoc | null>(null);
 
-  // Firestore read
+  // diagnostics (distinct error code/log for empty/error states)
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // prevent accidental double redemption
+  const [redeemPending, setRedeemPending] = useState(false);
+
+  // Firestore read (unchanged except error diagnostics)
   useEffect(() => {
     if (!rewardId || !uid) return;
     const ref = doc(db, "users", uid, "rewards", rewardId);
@@ -81,6 +103,8 @@ export default function RewardDetail() {
       },
       (err) => {
         console.error("rewardDetail onSnapshot error:", err);
+        setErrorCode("RD_SNAPSHOT_ERR");
+        setErrorMsg(err?.message || "Snapshot listener failed.");
         setLoading(false);
       }
     );
@@ -95,52 +119,79 @@ export default function RewardDetail() {
     }
   })();
 
-// Merge data sources (Firestore>Routing>Default)
+  // Merge sources (Firestore > route params > defaults)
   const title = docData?.title ?? (params.title as string) ?? "";
   const subtitle = docData?.subtitle ?? (params.subtitle as string) ?? "";
-  const description = docData?.description ?? (params.description as string) ?? "";
+  const description =
+    docData?.description ?? (params.description as string) ?? "";
   const logo = docData?.logoUri ?? (params.logoUri as string) ?? "";
-  const validUntilISO = docData?.validUntil ?? (params.validUntil as string) ?? "";
-  const terms: string[] =
-    docData?.terms ?? routeTerms ?? DEFAULT_TERMS;
+  const validUntilISO =
+    docData?.validUntil ?? (params.validUntil as string) ?? "";
+  const terms: string[] = docData?.terms ?? routeTerms ?? DEFAULT_TERMS;
 
-  // Error/empty status: If there is neither Firestore document nor any key fields, an error message will be prompted and a return will be provided
+  // Detect true "no data" and record a diagnostic code
   const noData =
-    !docData &&
-    !title &&
-    !subtitle &&
-    !description &&
-    !logo &&
-    !validUntilISO;
+    !docData && !title && !subtitle && !description && !logo && !validUntilISO;
 
-  // Format with ISO, otherwise provide a 30 day fallback period
+  useEffect(() => {
+    if (loading) return;
+    if (noData && !errorCode) {
+      console.error("RewardDetail no data", {
+        uid: uid ?? null,
+        rewardId: rewardId ?? null,
+        paramKeys: Object.keys(params || {}),
+      });
+      setErrorCode("RD_NO_DATA");
+      setErrorMsg("No reward data from Firestore or route params.");
+    }
+  }, [loading, noData, errorCode, params, rewardId, uid]);
+
+  // Locale-stable "Valid until ..." text with 30-day fallback
   const validUntilText = useMemo(() => {
-    try {
-      if (validUntilISO) return formatValid(new Date(validUntilISO));
-    } catch {}
+    const parsed = (validUntilISO && parseISODateSafe(validUntilISO)) || null;
+    if (parsed) return formatValidLocale(parsed, "en-AU");
     const fallback = new Date();
-    fallback.setDate(fallback.getDate() + 30);
-    return formatValid(fallback);
+    fallback.setUTCDate(fallback.getUTCDate() + 30);
+    return formatValidLocale(fallback, "en-AU");
   }, [validUntilISO]);
 
-  const markRedeemed = async () => {
+  // Confirm + disable while pending (no accidental taps)
+  const markRedeemed = () => {
     if (!uid || !rewardId) {
       Alert.alert("Action not available", "Missing user or reward id.");
       return;
     }
-    try {
-      await updateDoc(doc(db, "users", uid, "rewards", rewardId), {
-        redeemed: true,
-        redeemedAt: serverTimestamp(),
-      });
-      Alert.alert("Success", "Reward marked as redeemed.");
-    } catch (e: any) {
-      console.error("markRedeemed error:", e);
-      Alert.alert("Error", e?.message || "Failed to update reward.");
-    }
+    if (redeemPending) return;
+
+    Alert.alert(
+      "Confirm redemption",
+      "Are you sure you want to mark this reward as redeemed? This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Confirm",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setRedeemPending(true);
+              await updateDoc(doc(db, "users", uid, "rewards", rewardId), {
+                redeemed: true,
+                redeemedAt: serverTimestamp(),
+              });
+              Alert.alert("Success", "Reward marked as redeemed.");
+            } catch (e: any) {
+              console.error("markRedeemed error:", e);
+              Alert.alert("Error", e?.message || "Failed to update reward.");
+            } finally {
+              setRedeemPending(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
-  // 固定返回到 MyRewards（Challenge 目录）
+  // Fixed return target to MyRewards
   const goBackToMyRewards = () => {
     router.replace("/(tabs)/Challenge/myRewards");
   };
@@ -149,7 +200,11 @@ export default function RewardDetail() {
     <SafeAreaView style={styles.safe}>
       {/* header */}
       <View style={styles.header}>
-        <Pressable onPress={goBackToMyRewards} hitSlop={8} style={{ padding: 4, borderRadius: 8 }}>
+        <Pressable
+          onPress={goBackToMyRewards}
+          hitSlop={8}
+          style={{ padding: 4, borderRadius: 8 }}
+        >
           <Ionicons name="chevron-back" size={22} color={TITLE_BLUE} />
         </Pressable>
         <Text style={styles.headerTitle}>Reward Details</Text>
@@ -161,7 +216,14 @@ export default function RewardDetail() {
           <ActivityIndicator size="large" color={TITLE_BLUE} />
         </View>
       ) : noData ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 24,
+          }}
+        >
           <Ionicons name="alert-circle-outline" size={40} color="#ef4444" />
           <Text style={{ marginTop: 10, fontWeight: "800", color: "#ef4444" }}>
             Unable to load this reward.
@@ -169,8 +231,32 @@ export default function RewardDetail() {
           <Text style={{ marginTop: 6, color: "#4b5563", textAlign: "center" }}>
             The reward data is missing. Please go back and try again.
           </Text>
-          <Pressable onPress={goBackToMyRewards} style={{ marginTop: 16, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#3C7BD6", borderRadius: 10 }}>
-            <Text style={{ color: "#fff", fontWeight: "800" }}>Back to My Rewards</Text>
+          {!!errorCode && (
+            <Text
+              style={{
+                marginTop: 8,
+                color: "#6b7280",
+                fontSize: 12,
+                textAlign: "center",
+              }}
+            >
+              {errorCode}
+              {errorMsg ? ` · ${errorMsg}` : ""}
+            </Text>
+          )}
+          <Pressable
+            onPress={goBackToMyRewards}
+            style={{
+              marginTop: 16,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              backgroundColor: "#3C7BD6",
+              borderRadius: 10,
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "800" }}>
+              Back to My Rewards
+            </Text>
           </Pressable>
         </View>
       ) : (
@@ -183,11 +269,15 @@ export default function RewardDetail() {
           <View style={styles.ticketWrap}>
             {/* top content */}
             <View style={styles.topBox}>
-              {/* 封面图（从 Firestore 或路由） */}
+              {/* logo + title */}
               <View style={styles.row}>
                 <View style={styles.leftCol}>
                   <Image
-                    source={{ uri: logo || "https://cdn-icons-png.flaticon.com/512/1047/1047711.png" }}
+                    source={{
+                      uri:
+                        logo ||
+                        "https://cdn-icons-png.flaticon.com/512/1047/1047711.png",
+                    }}
                     style={styles.heroImg}
                   />
                 </View>
@@ -197,7 +287,6 @@ export default function RewardDetail() {
                 </View>
               </View>
 
-              {/* tagline */}
               {!!description && (
                 <Text style={styles.descStrong}>{description}</Text>
               )}
@@ -233,13 +322,27 @@ export default function RewardDetail() {
 
               {docData?.redeemed ? (
                 <View style={styles.redeemedTag}>
-                  <Ionicons name="checkmark-done-circle-outline" size={18} color="#16a34a" />
+                  <Ionicons
+                    name="checkmark-done-circle-outline"
+                    size={18}
+                    color="#16a34a"
+                  />
                   <Text style={styles.redeemedText}>Redeemed</Text>
                 </View>
               ) : rewardId ? (
-                <Pressable style={styles.redeemBtn} onPress={markRedeemed}>
-                  <Ionicons name="gift-outline" size={18} color="#fff" />
-                  <Text style={styles.redeemText}>Mark as redeemed</Text>
+                <Pressable
+                  style={[styles.redeemBtn, redeemPending && { opacity: 0.6 }]}
+                  onPress={markRedeemed}
+                  disabled={redeemPending}
+                >
+                  {redeemPending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="gift-outline" size={18} color="#fff" />
+                  )}
+                  <Text style={styles.redeemText}>
+                    {redeemPending ? "Processing..." : "Mark as redeemed"}
+                  </Text>
                 </Pressable>
               ) : null}
             </View>
@@ -340,7 +443,11 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
   },
 
-  bottomBox: { alignItems: "center", paddingVertical: 18, paddingHorizontal: 12 },
+  bottomBox: {
+    alignItems: "center",
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+  },
   qr: { width: 160, height: 160, resizeMode: "contain", marginTop: 6, marginBottom: 8 },
   valid: { fontSize: 11, color: "#9CA3AF" },
 
@@ -356,7 +463,7 @@ const styles = StyleSheet.create({
   notchLeft: { left: -9 },
   notchRight: { right: -9 },
 
-  // redeem styles
+  // redeem UI
   redeemBtn: {
     marginTop: 10,
     backgroundColor: "#3C7BD6",
