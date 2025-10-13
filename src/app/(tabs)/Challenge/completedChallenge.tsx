@@ -147,7 +147,15 @@ export default function CompletedChallenge() {
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    auth.currentUser?.uid,
+    params.challengeId,
+    params.category,
+    params.dateISO,
+    params.title,
+    params.totalDays,
+    params.joined
+  ]);
 
   // Calculate highlights for the month
   const markedDays = useMemo(() => {
@@ -190,10 +198,11 @@ export default function CompletedChallenge() {
 
   const title = active?.title || params.title || "Daily 10k steps";
   const totalDays = Math.max(1, Number(active?.totalDays ?? params.totalDays ?? 20) || 20);
-  const completedCount = (active?.checkins || []).length || 1;
-  const progressPctRaw = Math.round((completedCount / totalDays) * 100);
-  const progressPct = isFinite(progressPctRaw) ? Math.min(100, Math.max(0, progressPctRaw)) : 100;
+  const completedCount = Array.isArray(active?.checkins) ? active!.checkins.length : 0;
+  const progressPctRaw = totalDays > 0 ? Math.round((completedCount / totalDays) * 100) : 0;
+  const progressPct = Math.min(100, Math.max(0, progressPctRaw));
   const joined = Math.max(0, Number(active?.joined ?? params.joined ?? 0) || 0);
+  const remaining = Math.max(0, totalDays - completedCount);
 
   if (loading) {
     return (
@@ -246,7 +255,7 @@ export default function CompletedChallenge() {
           </View>
           <Text style={styles.progressPct}>{progressPct}%</Text>
           <Text style={[styles.small, { marginTop: 6 }]}>
-            {Math.max(0, totalDays - completedCount)} day{totalDays - completedCount === 1 ? "" : "s"} remaining
+            {remaining} day{remaining === 1 ? "" : "s"} remaining
           </Text>
 
           <View style={styles.congratsBox}>

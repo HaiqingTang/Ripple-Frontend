@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, {useMemo, useState, useRef} from "react";
 import {
   SafeAreaView,
   View,
@@ -95,6 +95,16 @@ const CLOUDINARY = {
   FOLDER_REWARD: "challenge_rewards",
 };
 
+const fetchWithTimeout = async (url: string, options: any = {}, timeoutMs = 15000) => {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(t);
+  }
+};
+
 export default function CreateChallenge() {
   const router = useRouter();
 
@@ -133,13 +143,27 @@ export default function CreateChallenge() {
   const TITLE_MAX = 30;
   const DESC_MAX = 360;
 
+  const [coverCancelling, setCoverCancelling] = useState(false);
+  const [rewardCancelling, setRewardCancelling] = useState(false);
+
+  const coverIgnoreRef = useRef(false);
+  const rewardIgnoreRef = useRef(false);
+
+  // positive integer parser
+  const toPositiveInt = (v: string | number | null | undefined) => {
+    const n = typeof v === "string" ? parseInt(v, 10) : Number(v);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+
   const isValid = useMemo(() => {
+    const cap = toPositiveInt(capacity);
+    const dur = toPositiveInt(duration);
     return (
       title.trim().length > 0 &&
       description.trim().length > 0 &&
       theme !== null &&
-      Number(capacity) > 0 &&
-      Number(duration) > 0 &&
+      cap > 0 &&
+      dur > 0 &&
       rewardName.trim().length > 0 &&
       rewardType !== null
     );
@@ -228,7 +252,7 @@ export default function CreateChallenge() {
         form.append("file", { uri: localUri, name: filename, type: mt } as any);
       }
 
-      const res = await fetch(endpoint, { method: "POST", body: form as any });
+      const res = await fetchWithTimeout(endpoint, { method: "POST", body: form as any }, 15000);
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`Cloudinary upload failed: ${text}`);
@@ -246,6 +270,24 @@ export default function CreateChallenge() {
   const onSubmit = async () => {
     if (!isValid) {
       Alert.alert("Incomplete", "Please fill all required fields before publishing.");
+      return;
+    }
+
+    const capInt = toPositiveInt(capacity);
+    const durInt = toPositiveInt(duration);
+    if (capInt === 0 || durInt === 0) {
+      Alert.alert("Invalid input", "Capacity and Duration must be positive integers.");
+      return;
+    }
+
+    const titleTrim = title.trim();
+    const descTrim = description.trim();
+    if (titleTrim.length === 0 || descTrim.length === 0) {
+      Alert.alert("Incomplete", "Title and Description cannot be empty.");
+      return;
+    }
+    if (titleTrim.length > TITLE_MAX || descTrim.length > DESC_MAX) {
+      Alert.alert("Too long", `Title ≤ ${TITLE_MAX} chars, description ≤ ${DESC_MAX} chars.`);
       return;
     }
 
@@ -269,7 +311,7 @@ export default function CreateChallenge() {
           coverMime,
           CLOUDINARY.FOLDER_COVER,
           setCoverUploading,
-          (u) => setCoverUploadedUrl(u),
+          (u) => { if (!coverIgnoreRef.current) setCoverUploadedUrl(u); },
           uid
         );
       }
@@ -282,7 +324,7 @@ export default function CreateChallenge() {
           rewardMime,
           CLOUDINARY.FOLDER_REWARD,
           setRewardUploading,
-          (u) => setRewardUploadedUrl(u),
+          (u) => { if (!rewardIgnoreRef.current) setRewardUploadedUrl(u); },
           uid
         );
       }
@@ -294,9 +336,16 @@ export default function CreateChallenge() {
       const rewardLogo = finalRewardLogoUrl || cover;
 
       // Reward expiry
-      const rewardDays =
-        Number(rewardExpiryDays) > 0 ? Number(rewardExpiryDays) : Number(duration);
-      const validUntilISO = toValidUntilISO(rewardDays);
+      const rewardDaysInt = toPositiveInt(rewardExpiryDays);
+      const fallbackDur = toPositiveInt(duration);
+      const finalRewardDays = rewardDaysInt > 0 ? rewardDaysInt : fallbackDur;
+
+      if (finalRewardDays === 0) {
+        Alert.alert("Invalid reward expiry", "Reward expiry days or duration must be a positive integer.");
+        return;
+      }
+
+      const validUntilISO = toValidUntilISO(finalRewardDays);
 
       const terms = parseTerms();
       const quantityNum = Math.max(0, Number(rewardQuantity) || 0);
@@ -304,12 +353,12 @@ export default function CreateChallenge() {
       // Firestore write
       const challengeRef = doc(collection(db, "challenges", theme, "items"));
       await setDoc(challengeRef, {
-        title: title.trim(),
-        desc: description.trim(),
+        title: titleTrim,
+        desc: descTrim,
         category: theme,
         creatorId: uid,
-        capacity: Number(capacity),
-        days: Number(duration),
+        capacity: capInt,
+        days: durInt,
         joined: 0,
         active: true,
         cover,
@@ -417,7 +466,7 @@ export default function CreateChallenge() {
           <FieldLabel text="Capacity" top={18} />
           <InputBox
             value={capacity}
-            onChangeText={(t) => setCapacity(t.replace(/[^\d]/g, ""))}
+            onChangeText={(t) => setCapacity(t.replace(/[^\d]/g, "").replace(/^0+/, ""))}
             placeholder="Enter max capacity"
             keyboardType="number-pad"
           />
@@ -426,7 +475,7 @@ export default function CreateChallenge() {
           <FieldLabel text="Duration (days)" top={16} />
           <InputBox
             value={duration}
-            onChangeText={(t) => setDuration(t.replace(/[^\d]/g, ""))}
+            onChangeText={(t) => setDuration(t.replace(/[^\d]/g, "").replace(/^0+/, ""))}
             placeholder="e.g., 21"
             keyboardType="number-pad"
           />
@@ -448,9 +497,10 @@ export default function CreateChallenge() {
             </View>
             <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
               <Pressable
-                onPress={() =>
-                  pickOneImage(setCoverLocalUri, setCoverMime, setCoverWebFile, setCoverUploadedUrl)
-                }
+                onPress={async () => {
+                  coverIgnoreRef.current = false;
+                  await pickOneImage(setCoverLocalUri, setCoverMime, setCoverWebFile, setCoverUploadedUrl);
+                }}
                 style={styles.imageBtn}
               >
                 <Text style={styles.imageBtnText}>
@@ -458,9 +508,20 @@ export default function CreateChallenge() {
                 </Text>
               </Pressable>
               {coverUploading && (
-                <View style={styles.imageUploadingBadge}>
-                  <Text style={{ color: "white", fontWeight: "700" }}>Uploading…</Text>
-                </View>
+                <>
+                  <View style={styles.imageUploadingBadge}>
+                    <Text style={{ color: "white", fontWeight: "700" }}>Uploading…</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => {
+                      coverIgnoreRef.current = true;
+                      setCoverUploading(false);
+                    }}
+                    style={[styles.imageBtn, { backgroundColor: "#fca5a5" }]}
+                  >
+                    <Text style={[styles.imageBtnText, { color: "#7f1d1d" }]}>Cancel</Text>
+                  </Pressable>
+                </>
               )}
             </View>
           </View>
@@ -483,14 +544,15 @@ export default function CreateChallenge() {
             </View>
             <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
               <Pressable
-                onPress={() =>
-                  pickOneImage(
+                onPress={async () => {
+                  rewardIgnoreRef.current = false;
+                  await pickOneImage(
                     setRewardLocalUri,
                     setRewardMime,
                     setRewardWebFile,
                     setRewardUploadedUrl
-                  )
-                }
+                  );
+                }}
                 style={styles.imageBtn}
               >
                 <Text style={styles.imageBtnText}>
@@ -498,9 +560,20 @@ export default function CreateChallenge() {
                 </Text>
               </Pressable>
               {rewardUploading && (
-                <View style={styles.imageUploadingBadge}>
-                  <Text style={{ color: "white", fontWeight: "700" }}>Uploading…</Text>
-                </View>
+                <>
+                  <View style={styles.imageUploadingBadge}>
+                    <Text style={{ color: "white", fontWeight: "700" }}>Uploading…</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => {
+                      rewardIgnoreRef.current = true;
+                      setRewardUploading(false);
+                    }}
+                    style={[styles.imageBtn, { backgroundColor: "#fca5a5" }]}
+                  >
+                    <Text style={[styles.imageBtnText, { color: "#7f1d1d" }]}>Cancel</Text>
+                  </Pressable>
+                </>
               )}
             </View>
           </View>

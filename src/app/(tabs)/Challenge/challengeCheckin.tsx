@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
 import { auth, db } from "../../../firebase";
 import {
   doc,
@@ -24,6 +25,7 @@ import {
   serverTimestamp,
   onSnapshot,
 } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 /* ---------- Colors ---------- */
 const BG = "#CFE0FF";
@@ -54,9 +56,28 @@ const CLOUDINARY = {
   FOLDER_CHECKIN: "challenge_checkins",
 };
 
-/* ---------- Helpers ---------- */
-type DayCell = { day: number | null; isToday: boolean };
+/* ---------- Upload constraints ---------- */
+const MAX_IMAGE_MB = 10;
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 
+/* ---------- Types ---------- */
+type DayCell = { day: number | null; isToday: boolean };
+type WebFileLike = { size?: number } | Blob | null;
+
+type UserChallengeDoc = {
+  title?: string;
+  totalDays?: number;
+  progress?: number;
+  checkins?: string[];
+  reward?: string;
+  cover?: string;
+  category?: string;
+  status?: "active" | "completed";
+  lastNote?: string;
+  lastPhoto?: string;
+};
+
+/* ---------- Helpers ---------- */
 const ymd = (d = new Date()) => {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -79,24 +100,64 @@ function buildMonth(year: number, monthIndex0: number): DayCell[] {
   return cells;
 }
 
-/* ---------- Types ---------- */
-type UserChallengeDoc = {
-  title?: string;
-  totalDays?: number;
-  progress?: number;
-  checkins?: string[];
-  reward?: string;
-  cover?: string;
-  category?: string;
-  status?: "active" | "completed";
-  lastNote?: string;
-  lastPhoto?: string;
+const formatBytes = (n: number) => {
+  if (!Number.isFinite(n)) return "-";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  let s = n;
+  while (s >= 1024 && i < units.length - 1) {
+    s /= 1024;
+    i++;
+  }
+  return `${s.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+};
+
+const isAllowedType = (mime?: string | null) => {
+  if (!mime) return false;
+  const m = mime.toLowerCase();
+  return m.startsWith("image/") || ALLOWED_MIME.includes(m);
+};
+
+// Get file size (bytes). Web: File.size/Blob.size; Native: FileSystem.getInfoAsync
+const getFileSize = async (uri: string, webFile: WebFileLike) => {
+  if (Platform.OS === "web") {
+    const maybeSize = (webFile as any)?.size;
+    if (typeof maybeSize === "number") return maybeSize;
+    const resp = await fetch(uri);
+    const blob = await resp.blob();
+    const blobSize = (blob as any)?.size;
+    return typeof blobSize === "number" ? blobSize : 0;
+  } else {
+    const info = await FileSystem.getInfoAsync(uri);
+    if (!info.exists) return 0;
+    return typeof info.size === "number" ? (info.size as number) : 0;
+  }
+};
+
+// Validate file type & size after selection
+const validateSelection = async (mime: string | null, uri: string, webFile: WebFileLike) => {
+  if (!isAllowedType(mime)) {
+    throw new Error("Only image files are allowed (jpg / png / webp / HEIC / HEIF).");
+  }
+  const size = await getFileSize(uri, webFile);
+  const limit = MAX_IMAGE_MB * 1024 * 1024;
+  if (size > limit) {
+    throw new Error(`Image is too large (${formatBytes(size)}). Please keep it ≤ ${MAX_IMAGE_MB}MB.`);
+  }
+  return size;
 };
 
 /* ---------- Component ---------- */
 export default function ChallengeCheckin() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  // Keep auth uid in state so effects re-run on login/logout
+  const [uid, setUid] = useState<string | null>(auth.currentUser?.uid ?? null);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => setUid(user?.uid ?? null));
+    return unsub;
+  }, []);
 
   // Route params
   const params = useLocalSearchParams<{
@@ -129,11 +190,11 @@ export default function ChallengeCheckin() {
 
   // Check-in inputs
   const [note, setNote] = useState("");
-  const [photoUri, setPhotoUri] = useState<string | null>(null); // Cloudinary URL after upload
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoLocalPreview, setPhotoLocalPreview] = useState<string | null>(null);
   const [photoMime, setPhotoMime] = useState<string | null>(null);
-  const [photoWebFile, setPhotoWebFile] = useState<File | null>(null);
+  const [photoWebFile, setPhotoWebFile] = useState<WebFileLike>(null);
 
   // Reward (from public challenge doc)
   const [rewardName, setRewardName] = useState("");
@@ -159,8 +220,18 @@ export default function ChallengeCheckin() {
       return dtf.format(new Date(displayYear, displayMonth, 1));
     } catch {
       const names = [
-        "January","February","March","April","May","June","July",
-        "August","September","October","November","December",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
       ];
       return `${names[displayMonth]} ${displayYear}`;
     }
@@ -171,8 +242,18 @@ export default function ChallengeCheckin() {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
     const months = [
-      "January","February","March","April","May","June","July",
-      "August","September","October","November","December",
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
     ];
     const dd = String(d.getDate()).padStart(2, "0");
     return `Valid until ${dd} ${months[d.getMonth()]} ${d.getFullYear()}`;
@@ -180,7 +261,6 @@ export default function ChallengeCheckin() {
 
   /* ---------- Real-time user challenge sync ---------- */
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
     if (!uid || !cid) return;
 
     const ref = doc(db, "userChallenges", uid, "active", cid);
@@ -191,8 +271,7 @@ export default function ChallengeCheckin() {
         const d = snap.data() as UserChallengeDoc;
 
         if (d.title) setTitle(d.title);
-        if (typeof d.totalDays === "number" && d.totalDays > 0)
-          setTotalDaysNum(d.totalDays);
+        if (typeof d.totalDays === "number" && d.totalDays > 0) setTotalDaysNum(d.totalDays);
         if (d.category && !category) setCategory(d.category);
 
         const list = (d.checkins ?? []).filter(Boolean);
@@ -209,7 +288,6 @@ export default function ChallengeCheckin() {
         const didCheckToday = list.includes(todayStr);
         setCheckedToday(didCheckToday);
 
-        // Checked in on the same day: Fill in the lastNote/lastPhoto in the main document
         if (didCheckToday) {
           if (typeof d.lastNote === "string") setNote(d.lastNote);
           if (typeof d.lastPhoto === "string" && d.lastPhoto) {
@@ -218,21 +296,22 @@ export default function ChallengeCheckin() {
           }
         }
 
-        // Mark the check-in days for this month
-        const selected = list
-          .map((s) => new Date(s))
-          .filter(
-            (x) =>
-              x.getFullYear() === displayYear && x.getMonth() === displayMonth
-          )
-          .map((x) => x.getDate());
+        // Marked days (use string parsing to avoid timezone issues)
+        const selected = (list ?? [])
+          .map((s) => {
+            const [y, m, dnum] = s.split("-").map((n) => parseInt(n, 10));
+            return { y, m: m - 1, d: dnum };
+          })
+          .filter((x) => x.y === displayYear && x.m === displayMonth)
+          .map((x) => x.d);
+
         setMarkedDays(selected);
       },
       (err) => console.error("realtime sync error:", err)
     );
 
     return () => unsub();
-  }, [cid, category, totalDaysNum, displayYear, displayMonth]);
+  }, [uid, cid, category, totalDaysNum, displayYear, displayMonth]);
 
   /* ---------- Subscribe to public challenge for reward/joined ---------- */
   useEffect(() => {
@@ -256,10 +335,22 @@ export default function ChallengeCheckin() {
     return () => unsub();
   }, [cid, category]);
 
+  const [uiError, setUiError] = useState<{ msg: string; retry?: () => void } | null>(null);
+
+  type LastUploadArgs = {
+    localUri: string;
+    webFile: WebFileLike;
+    mime: string | null;
+    folder: string;
+  };
+  const lastUploadRef = useRef<LastUploadArgs | null>(null);
+
   /* ---------- Image picking & upload ---------- */
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
   const uploadToCloudinary = async (
     localUri: string | null,
-    webFile: File | null,
+    webFile: WebFileLike,
     mime: string | null,
     folder: string,
     setUploading: (b: boolean) => void,
@@ -267,9 +358,23 @@ export default function ChallengeCheckin() {
   ): Promise<string> => {
     if (!localUri) return "";
 
+    // Fallback validation
+    if (!isAllowedType(mime)) {
+      throw new Error("Only image files are allowed (jpg / png / webp / HEIC / HEIF).");
+    }
     try {
-      setUploading(true);
+      const size = await getFileSize(localUri, webFile);
+      const limit = MAX_IMAGE_MB * 1024 * 1024;
+      if (size > limit) {
+        throw new Error(
+          `Image is too large (${formatBytes(size)}). Please keep it ≤ ${MAX_IMAGE_MB}MB.`
+        );
+      }
+    } catch {
+      // ignore read failures
+    }
 
+    const doOnce = async (signal: AbortSignal) => {
       const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY.CLOUD_NAME}/image/upload`;
       const form = new FormData();
       form.append("upload_preset", CLOUDINARY.UPLOAD_PRESET);
@@ -279,25 +384,81 @@ export default function ChallengeCheckin() {
       const mt = mime || "image/jpeg";
 
       if (Platform.OS === "web") {
-        let fileToSend: Blob | File | null = webFile;
+        let fileToSend: Blob | any = webFile as any;
         if (!fileToSend) {
           const resp = await fetch(localUri);
           fileToSend = await resp.blob();
         }
-        form.append("file", fileToSend as any, filename);
+        // @ts-ignore
+        form.append("file", fileToSend, filename);
       } else {
-        form.append("file", { uri: localUri, name: filename, type: mt } as any);
+        // @ts-ignore
+        form.append("file", { uri: localUri, name: filename, type: mt });
       }
 
-      const res = await fetch(endpoint, { method: "POST", body: form as any });
+      const res = await fetch(endpoint, { method: "POST", body: form as any, signal });
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Cloudinary upload failed: ${text}`);
+        let detail = "";
+        try {
+          const j = await res.json();
+          detail = j?.error?.message || JSON.stringify(j);
+        } catch {
+          detail = await res.text();
+        }
+        throw new Error(detail || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      const url = data.secure_url as string;
-      if (setUploadedUrl) setUploadedUrl(url);
-      return url;
+      return (data.secure_url as string) || "";
+    };
+
+    setUploading(true);
+    try {
+      const maxTries = 3;
+      let lastErr: any = null;
+
+      for (let attempt = 1; attempt <= maxTries; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 18000);
+
+        try {
+          const url = await doOnce(controller.signal);
+          if (!url) throw new Error("Cloudinary did not return a URL.");
+          setUploadedUrl?.(url);
+          setUiError(null);
+          return url;
+        } catch (e: any) {
+          lastErr = e;
+          if (attempt === maxTries) break;
+          await sleep(600 * attempt);
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      const msg =
+        typeof lastErr?.message === "string" && lastErr.message.trim()
+          ? lastErr.message
+          : "Network or server error. Please try again later.";
+
+      const saved = lastUploadRef.current;
+      setUiError({
+        msg,
+        retry: saved
+          ? async () => {
+              setUiError(null);
+              await uploadToCloudinary(
+                saved.localUri,
+                saved.webFile,
+                saved.mime,
+                saved.folder,
+                setUploading,
+                setUploadedUrl
+              );
+            }
+          : undefined,
+      });
+
+      throw new Error(msg);
     } finally {
       setUploading(false);
     }
@@ -326,21 +487,38 @@ export default function ChallengeCheckin() {
 
     setPhotoLocalPreview(asset.uri);
     setPhotoMime((asset as any)?.mimeType || "image/jpeg");
-    setPhotoWebFile(Platform.OS === "web" ? (asset as any)?.file ?? null : null);
+    setPhotoWebFile(Platform.OS === "web" ? (((asset as any)?.file as any) ?? null) : null);
 
     return {
       localUri: asset.uri as string,
       mime: (asset as any)?.mimeType || "image/jpeg",
-      webFile: Platform.OS === "web" ? (asset as any)?.file ?? null : null,
+      webFile: Platform.OS === "web" ? (((asset as any)?.file as any) ?? null) : null,
     };
   };
 
   const onPickPhoto = async () => {
-    // After clocking in that day, it was locked and no longer allowed to select images
     if (checkedToday) return;
 
     const picked = await pickOneImage();
     if (!picked) return;
+
+    try {
+      await validateSelection(picked.mime, picked.localUri, picked.webFile);
+    } catch (err: any) {
+      setUiError({
+        msg:
+          err?.message ||
+          "The selected file does not meet requirements. Please choose another image.",
+      });
+      return;
+    }
+
+    lastUploadRef.current = {
+      localUri: picked.localUri,
+      webFile: picked.webFile,
+      mime: picked.mime,
+      folder: CLOUDINARY.FOLDER_CHECKIN,
+    };
 
     try {
       const url = await uploadToCloudinary(
@@ -353,12 +531,14 @@ export default function ChallengeCheckin() {
       );
 
       if (!url) {
-        Alert.alert("Upload failed", "Could not get an image URL from Cloudinary.");
+        setUiError({ msg: "Failed to obtain the image URL. Please try again." });
         return;
       }
+
+      setUiError(null);
     } catch (e: any) {
       console.error("check-in photo upload error:", e);
-      Alert.alert("Upload error", e?.message || "Could not upload the image.");
+      if (!uiError) setUiError({ msg: e?.message || "Upload failed, please try again later." });
     }
   };
 
@@ -366,14 +546,12 @@ export default function ChallengeCheckin() {
   const onCheckIn = async () => {
     const today = new Date();
     const todayStr = ymd(today);
-    const uid = auth.currentUser?.uid;
     if (!uid || !cid) return;
 
     try {
       const ref = doc(db, "userChallenges", uid, "active", cid);
       const snap = await getDoc(ref);
 
-      // Create shell doc if not exists
       if (!snap.exists()) {
         await setDoc(ref, {
           title,
@@ -389,7 +567,6 @@ export default function ChallengeCheckin() {
         });
       }
 
-      // Only update existing fields in the main document
       await updateDoc(ref, {
         checkins: arrayUnion(todayStr),
         lastNote: note || "",
@@ -406,12 +583,9 @@ export default function ChallengeCheckin() {
       await updateDoc(ref, {
         daysCompleted: list.length,
         progress: pct,
-        ...(list.length >= td
-          ? { status: "completed", completedAt: serverTimestamp() }
-          : {}),
+        ...(list.length >= td ? { status: "completed", completedAt: serverTimestamp() } : {}),
       });
 
-      // Distribute rewards
       try {
         if (list.length >= td) {
           const latest2 = await getDoc(ref);
@@ -487,11 +661,7 @@ export default function ChallengeCheckin() {
     }
   };
 
-  const remaining = Math.max(
-    0,
-    totalDaysNum - Math.round((progressPct / 100) * totalDaysNum)
-  );
-
+  const remaining = Math.max(0, totalDaysNum - Math.round((progressPct / 100) * totalDaysNum));
   const locked = checkedToday;
 
   /* ---------- Render ---------- */
@@ -518,6 +688,37 @@ export default function ChallengeCheckin() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
         showsVerticalScrollIndicator={false}
       >
+        {uiError && (
+          <View
+            style={{
+              backgroundColor: "#fdecea",
+              borderColor: "#f5c6cb",
+              borderWidth: 1,
+              padding: 12,
+              borderRadius: 10,
+              marginTop: 10,
+            }}
+          >
+            <Text style={{ color: "#7f1d1d", fontWeight: "700" }}>Upload failed</Text>
+            <Text style={{ color: "#7f1d1d", marginTop: 4 }}>{uiError.msg}</Text>
+            {uiError.retry && (
+              <Pressable
+                onPress={() => uiError.retry && uiError.retry()}
+                style={{
+                  alignSelf: "flex-start",
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                  backgroundColor: "#7f1d1d",
+                  marginTop: 8,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "800" }}>Retry</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+
         {/* Progress card */}
         <View style={[styles.cardSoft, SHADOW]}>
           <Text style={styles.titleBold}>{title}</Text>
@@ -542,11 +743,7 @@ export default function ChallengeCheckin() {
         </View>
 
         {/* Reward card */}
-        {(rewardName ||
-          rewardSubtitle ||
-          rewardValue ||
-          rewardDesc ||
-          rewardValidUntil) && (
+        {(rewardName || rewardSubtitle || rewardValue || rewardDesc || rewardValidUntil) && (
           <View style={[styles.rewardCard, SHADOW]}>
             <Text style={styles.rewardTitle}>
               {rewardName ? `Reward: ${rewardName}` : "Reward"}
@@ -806,7 +1003,6 @@ const styles = StyleSheet.create({
     backgroundColor: CARD,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    marginTop: 8,
   },
   input: { minHeight: 92, padding: 12, fontSize: 15, color: TEXT_DARK },
   photoBox: {

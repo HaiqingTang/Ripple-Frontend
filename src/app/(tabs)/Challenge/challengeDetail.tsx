@@ -21,6 +21,7 @@ import {
   serverTimestamp,
   updateDoc,
   increment,
+  runTransaction,
 } from "firebase/firestore";
 
 type RewardConfig = {
@@ -60,15 +61,18 @@ export default function ChallengeDetail() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ChallengeDoc | null>(null);
   const [alreadyJoined, setAlreadyJoined] = useState(false);
+  const [joining, setJoining] = useState(false);
 
   // Smart back logic
   const goBackSmart = () => {
-    if (router.canGoBack?.()) router.back();
-    else
+    if (router.canGoBack?.()) {
+      router.back();
+    } else {
       router.replace({
-        pathname: "/(tabs)/Challenge/nutritionChallengeList",
+        pathname: "/(tabs)/Challenge/challengeList",
         params: { category },
       } as any);
+    }
   };
 
   // Fetch challenge info
@@ -119,44 +123,58 @@ export default function ChallengeDetail() {
       Alert.alert("Error", "You must be signed in to join a challenge.");
       return;
     }
+    if (joining) return;
+    setJoining(true);
 
-    // Capacity limit
-    if (data.capacity && (data.joined || 0) >= data.capacity) {
-      Alert.alert("Full", "This challenge has reached its participant limit.");
-      return;
-    }
-
-    // Already joined
-    if (alreadyJoined) {
-      Alert.alert("Already joined", "You've already joined this challenge.");
-      return;
-    }
+    const userRef   = doc(db, "userChallenges", uid, "active", challengeId);
+    const globalRef = doc(db, "challenges", category, "items", challengeId);
 
     try {
-      const userRef = doc(db, "userChallenges", uid, "active", challengeId);
-      const globalRef = doc(db, "challenges", category, "items", challengeId);
+      await runTransaction(db, async (tx) => {
+        // Read the global challenge
+        const gSnap = await tx.get(globalRef);
+        if (!gSnap.exists()) throw new Error("Challenge not found.");
 
-      await setDoc(userRef, {
-        title: data.title || "",
-        desc: data.desc || "",
-        totalDays: data.days || 20,
-        daysCompleted: 0,
-        progress: 0,
-        reward: data.rewardConfig?.name || "",
-        cover: data.rewardConfig?.logoUri || data.cover || "",
-        category: data.category || category,
-        joinedAt: serverTimestamp(),
-        challengeId,
-        status: "active",
+        const g = gSnap.data() as ChallengeDoc;
+        const joined   = Number(g.joined || 0);
+        const capacity = Number(g.capacity || 0);
+
+        // Quota check
+        if (capacity > 0 && joined >= capacity) {
+          throw new Error("This challenge has reached its participant limit.");
+        }
+
+        // whether joined
+        const uSnap = await tx.get(userRef);
+        if (uSnap.exists()) {
+          throw new Error("You've already joined this challenge.");
+        }
+
+        // Create a User Challenge Document
+        tx.set(userRef, {
+          title: g.title || "",
+          desc: g.desc || "",
+          totalDays: g.days || 20,
+          daysCompleted: 0,
+          progress: 0,
+          reward: g.rewardConfig?.name || "",
+          cover: g.rewardConfig?.logoUri || g.cover || "",
+          category: g.category || category,
+          joinedAt: serverTimestamp(),
+          challengeId,
+          status: "active",
+        });
+
+        tx.update(globalRef, { joined: increment(1) });
       });
-
-      await updateDoc(globalRef, { joined: increment(1) });
 
       Alert.alert("Joined!", `You have joined "${data.title}" 🎉`);
       router.push("/(tabs)/Challenge/currentChallengeList");
     } catch (err: any) {
       console.error("join challenge error:", err);
       Alert.alert("Error", err?.message || "Failed to join challenge.");
+    } finally {
+      setJoining(false);
     }
   };
 
@@ -222,13 +240,13 @@ export default function ChallengeDetail() {
           <Pressable
             style={[
               styles.joinBtn,
-              alreadyJoined && { backgroundColor: "#ccc" },
+              (alreadyJoined || joining) && { backgroundColor: "#ccc" },
             ]}
-            onPress={alreadyJoined ? undefined : onJoin}
-            disabled={alreadyJoined}
+            onPress={alreadyJoined || joining ? undefined : onJoin}
+            disabled={alreadyJoined || joining}
           >
             <Text style={styles.joinText}>
-              {alreadyJoined ? "joined" : "join now"}
+              {alreadyJoined ? "joined" : (joining ? "joining..." : "join now")}
             </Text>
           </Pressable>
         </View>
