@@ -10,11 +10,13 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import * as ImagePicker from "expo-image-picker"; // cover image change add picker
+import * as ImagePicker from "expo-image-picker";
 
 // Firestore
 import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
-import { db } from "../../../firebase";
+import { db, auth } from "../../../firebase";
+
+import { uploadToCloudinary } from "../../../utils/upload";
 
 const { width } = Dimensions.get("window");
 const PANEL_W = Math.min(640, width - 28);
@@ -45,16 +47,13 @@ export default function ManageMyMeetupEdit() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
 
-  // Safe-area + TabBar height to avoid footer buttons being covered
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const bottomPadding = tabBarHeight + insets.bottom + 20;
 
-  // Loading / saving state
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Form state
   const [title, setTitle] = useState("");
   const [dateVal, setDateVal] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -71,7 +70,6 @@ export default function ManageMyMeetupEdit() {
 
   const [locationName, setLocationName] = useState("");
 
-  // Map region
   const [region, setRegion] = useState<Region>({
     latitude: -37.8,
     longitude: 144.966,
@@ -79,26 +77,21 @@ export default function ManageMyMeetupEdit() {
     longitudeDelta: 0.01,
   });
 
-  // Read-only derived info
   const [participantsCount, setParticipantsCount] = useState(0);
 
-  // inline validation add states for errors
-  const [dateError, setDateError] = useState<string | null>(null); // show inline error for time
-  const [capError, setCapError] = useState<string | null>(null);   // show inline error for capacity
+  const [dateError, setDateError] = useState<string | null>(null);
+  const [capError, setCapError] = useState<string | null>(null);
 
-  // geocoding debounce add state
-  const [isGeocoding, setIsGeocoding] = useState(false);           // small loading indicator near field
-  const [lastGeocodeAt, setLastGeocodeAt] = useState(0);           // debounce enter spam
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [lastGeocodeAt, setLastGeocodeAt] = useState(0);
 
-  // cover image change add states
-  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null); // loaded image url
-  const [imageUri, setImageUri] = useState<string | null>(null);                 // local picked image
-  const [imageMime, setImageMime] = useState<string | null>(null);               // picked mime
-  const [webFile, setWebFile] = useState<File | null>(null);                     // web blob
-  const [uploading, setUploading] = useState(false);                             // uploading badge
-  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);           // uploaded url
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageMime, setImageMime] = useState<string | null>(null);
+  const [webFile, setWebFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
 
-  // Initial fetch of meetup data
   useEffect(() => {
     (async () => {
       if (!id) {
@@ -123,11 +116,9 @@ export default function ManageMyMeetupEdit() {
         }
         const data = snap.data() as any;
 
-        setExistingImageUrl(typeof data.imageUrl === "string" ? data.imageUrl : null); // load existing cover image
-
+        setExistingImageUrl(typeof data.imageUrl === "string" ? data.imageUrl : null);
         setTitle(String(data.title ?? ""));
 
-        // Convert date to Date
         let initDate: Date | null = null;
         if (data.date?.seconds) initDate = new Date(data.date.seconds * 1000);
         else if (typeof data.date === "string") {
@@ -149,7 +140,6 @@ export default function ManageMyMeetupEdit() {
             : ["Lifestyle"];
         setSelectedTags(initialTags);
 
-        // Category is now independent of tags
         setSelectedCategory(
           typeof data.category === "string" && data.category ? data.category : "Lifestyle"
         );
@@ -179,7 +169,6 @@ export default function ManageMyMeetupEdit() {
     })();
   }, [id]);
 
-  // retry loader add helper
   const reloadDoc = async () => {
     if (!id) return;
     try {
@@ -221,14 +210,12 @@ export default function ManageMyMeetupEdit() {
     }
   };
 
-  // Toggle a tag (multi-select) with stable chip size
   const toggleTag = (t: string) => {
     setSelectedTags((prev) =>
       prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
     );
   };
 
-  // Add a custom tag
   const confirmAddTag = () => {
     const t = newTagText.trim();
     if (!t) return;
@@ -246,11 +233,10 @@ export default function ManageMyMeetupEdit() {
     setShowAddTag(false);
   };
 
-  // Geocode location name dynamic import with debounce
   const handleGeocodeSubmit = async () => {
     const q = locationName.trim();
     if (!q) return;
-    if (Date.now() - lastGeocodeAt < 1200) return; // add debounce to prevent enter spam
+    if (Date.now() - lastGeocodeAt < 1200) return;
     setLastGeocodeAt(Date.now());
     try {
       setIsGeocoding(true);
@@ -272,7 +258,6 @@ export default function ManageMyMeetupEdit() {
     }
   };
 
-  // cover image select add picker
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -295,45 +280,31 @@ export default function ManageMyMeetupEdit() {
     setUploadedUrl(null);
   };
 
-  // cover image upload to cloudinary add uploader
-  const uploadImageAndGetUrl = async (uid: string): Promise<string> => {
+  const uploadImageAndGetUrl = async (): Promise<string> => {
     if (!imageUri) return uploadedUrl || existingImageUrl || DEFAULT_IMAGE_URL;
+
+    if (!auth.currentUser?.uid) {
+      Alert.alert("Login required", "Please sign in before uploading an image.");
+      return uploadedUrl || existingImageUrl || DEFAULT_IMAGE_URL;
+    }
+
     try {
-      setUploading(true);
-      const CLOUD_NAME = "dwo2o5q8y";
-      const UPLOAD_PRESET = "meetup_unsigned";
-      const endpoint = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
-      const mime = imageMime || "image/jpeg";
-      const filename = `meetup_${uid}_${Date.now()}.jpg`;
-      const form = new FormData();
-      form.append("upload_preset", UPLOAD_PRESET);
-      form.append("folder", "meetup_images");
-      if (Platform.OS === "web") {
-        let fileToSend: Blob | File | null = webFile;
-        if (!fileToSend) {
-          const resp = await fetch(imageUri);
-          fileToSend = await resp.blob();
-        }
-        (form as any).append("file", fileToSend as any, filename);
-      } else {
-        const filePart: any = { uri: imageUri, name: filename, type: mime };
-        (form as any).append("file", filePart);
-      }
-      const res = await fetch(endpoint, { method: "POST", body: form as any });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Cloudinary upload failed ${text}`);
-      }
-      const data = await res.json();
-      const finalUrl = data.secure_url as string;
-      setUploadedUrl(finalUrl);
-      return finalUrl;
-    } finally {
-      setUploading(false);
+      // ✅ 修正这里的参数顺序：localUri, mime, webFile, folder, setUploading
+      const url = await uploadToCloudinary(
+        imageUri,
+        imageMime,
+        webFile,
+        "meetup_images",
+        setUploading
+      );
+      setUploadedUrl(url);
+      return url;
+    } catch (e: any) {
+      Alert.alert("Upload failed", e?.message ?? "Unknown error");
+      return uploadedUrl || existingImageUrl || DEFAULT_IMAGE_URL;
     }
   };
 
-  // Submit updates to Firestore
   const onSubmit = async () => {
     if (!id) return;
     const titleTrim = title.trim();
@@ -342,7 +313,6 @@ export default function ManageMyMeetupEdit() {
       return;
     }
 
-    // validate date must be future
     setDateError(null);
     if (!dateVal || Number.isNaN(dateVal.getTime())) {
       setDateError("Please choose a date and time");
@@ -354,7 +324,6 @@ export default function ManageMyMeetupEdit() {
     }
     const dateToSave = Timestamp.fromDate(dateVal);
 
-    // validate capacity must be positive integer
     setCapError(null);
     const maxCap = parseInt(maxCapInput, 10);
     if (!maxCapInput.trim() || Number.isNaN(maxCap) || maxCap <= 0) {
@@ -362,17 +331,13 @@ export default function ManageMyMeetupEdit() {
       return;
     }
 
-    // upload cover image if changed
-    const uid = "anonymous"; // no auth in this screen keep anonymous
-    const finalImageUrl = await uploadImageAndGetUrl(uid);
+    const finalImageUrl = await uploadImageAndGetUrl();
 
     const updates: any = {
       title: titleTrim,
       description: desc,
       maxCapacity: maxCap,
-      // Category comes from single-select category chips
       category: selectedCategory || "Lifestyle",
-      // Tags come from multi-select (base + custom)
       tags: selectedTags.length ? selectedTags : ["Lifestyle"],
       location: locationName.trim() || "Unknown",
       locationGeo: { latitude: region.latitude, longitude: region.longitude },

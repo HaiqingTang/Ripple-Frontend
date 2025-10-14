@@ -1,4 +1,4 @@
-import React, {useMemo, useState, useRef} from "react";
+import React, { useMemo, useState, useRef } from "react";
 import {
   SafeAreaView,
   View,
@@ -17,6 +17,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { db, auth } from "../../../firebase";
 import { collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import * as ImagePicker from "expo-image-picker";
+import { uploadToCloudinary } from "../../../utils/upload";
 
 type ThemeKey = "fitness" | "nutrition" | "tech" | "art" | "meditation";
 type RewardType = "badge" | "voucher" | "points" | "other";
@@ -87,24 +88,6 @@ const DEFAULT_REWARD_TERMS = [
   "No cash value.",
 ];
 
-// Cloudinary settings (same as newMeetup)
-const CLOUDINARY = {
-  CLOUD_NAME: "dwo2o5q8y",
-  UPLOAD_PRESET: "meetup_unsigned",
-  FOLDER_COVER: "challenge_covers",
-  FOLDER_REWARD: "challenge_rewards",
-};
-
-const fetchWithTimeout = async (url: string, options: any = {}, timeoutMs = 15000) => {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(t);
-  }
-};
-
 export default function CreateChallenge() {
   const router = useRouter();
 
@@ -149,7 +132,6 @@ export default function CreateChallenge() {
   const coverIgnoreRef = useRef(false);
   const rewardIgnoreRef = useRef(false);
 
-  // positive integer parser
   const toPositiveInt = (v: string | number | null | undefined) => {
     const n = typeof v === "string" ? parseInt(v, 10) : Number(v);
     return Number.isFinite(n) && n > 0 ? n : 0;
@@ -169,7 +151,6 @@ export default function CreateChallenge() {
     );
   }, [title, description, theme, capacity, duration, rewardName, rewardType]);
 
-  // Calculate validUntil ISO date
   const toValidUntilISO = (days: number) => {
     const d = new Date();
     d.setDate(d.getDate() + Math.max(1, days));
@@ -186,7 +167,7 @@ export default function CreateChallenge() {
       .slice(0, 12);
   };
 
-  /** Pick one image (same as newMeetup) */
+  /** Pick one image */
   const pickOneImage = async (
     setLocalUri: (uri: string | null) => void,
     setMime: (m: string | null) => void,
@@ -218,53 +199,27 @@ export default function CreateChallenge() {
     setUploadedUrl(null);
   };
 
-  /** Upload to Cloudinary (shared for cover/reward) */
-  const uploadToCloudinary = async (
+  async function uploadCoverImage(
     localUri: string | null,
-    webFile: File | null,
     mime: string | null,
-    folder: string,
-    setUploading: (b: boolean) => void,
-    setUploadedUrl: (u: string) => void,
-    uid: string
-  ): Promise<string> => {
+    webFile: File | Blob | null,
+    setUploading: (b: boolean) => void
+  ): Promise<string> {
+    if (!auth.currentUser?.uid) throw new Error("Please sign in to upload.");
     if (!localUri) return "";
+    return await uploadToCloudinary(localUri, mime, webFile,"challenge_covers", setUploading);
+  }
 
-    try {
-      setUploading(true);
-
-      const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY.CLOUD_NAME}/image/upload`;
-      const form = new FormData();
-      form.append("upload_preset", CLOUDINARY.UPLOAD_PRESET);
-      form.append("folder", folder);
-
-      const filename = `${folder}_${uid}_${Date.now()}.jpg`;
-      const mt = mime || "image/jpeg";
-
-      if (Platform.OS === "web") {
-        let fileToSend: Blob | File | null = webFile;
-        if (!fileToSend) {
-          const resp = await fetch(localUri);
-          fileToSend = await resp.blob();
-        }
-        form.append("file", fileToSend as any, filename);
-      } else {
-        form.append("file", { uri: localUri, name: filename, type: mt } as any);
-      }
-
-      const res = await fetchWithTimeout(endpoint, { method: "POST", body: form as any }, 15000);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Cloudinary upload failed: ${text}`);
-      }
-      const data = await res.json();
-      const url = data.secure_url as string;
-      setUploadedUrl(url);
-      return url;
-    } finally {
-      setUploading(false);
-    }
-  };
+  async function uploadRewardImage(
+    localUri: string | null,
+    mime: string | null,
+    webFile: File | Blob | null,
+    setUploading: (b: boolean) => void
+  ): Promise<string> {
+    if (!auth.currentUser?.uid) throw new Error("Please sign in to upload.");
+    if (!localUri) return "";
+    return await uploadToCloudinary(localUri, mime, webFile, "challenge_rewards", setUploading);
+  }
 
   // Submit handler
   const onSubmit = async () => {
@@ -302,55 +257,34 @@ export default function CreateChallenge() {
         return;
       }
 
-      // Upload selected images if not yet uploaded
+      // ✅ 上传封面
       let finalCoverUrl = coverUploadedUrl || "";
       if (!finalCoverUrl && coverLocalUri) {
-        finalCoverUrl = await uploadToCloudinary(
-          coverLocalUri,
-          coverWebFile,
-          coverMime,
-          CLOUDINARY.FOLDER_COVER,
-          setCoverUploading,
-          (u) => { if (!coverIgnoreRef.current) setCoverUploadedUrl(u); },
-          uid
-        );
+        finalCoverUrl = await uploadCoverImage(coverLocalUri, coverMime, coverWebFile, setCoverUploading);
+        setCoverUploadedUrl(finalCoverUrl);
       }
 
       let finalRewardLogoUrl = rewardUploadedUrl || "";
       if (!finalRewardLogoUrl && rewardLocalUri) {
-        finalRewardLogoUrl = await uploadToCloudinary(
-          rewardLocalUri,
-          rewardWebFile,
-          rewardMime,
-          CLOUDINARY.FOLDER_REWARD,
-          setRewardUploading,
-          (u) => { if (!rewardIgnoreRef.current) setRewardUploadedUrl(u); },
-          uid
-        );
+        finalRewardLogoUrl = await uploadRewardImage(rewardLocalUri, rewardMime, rewardWebFile, setRewardUploading);
+        setRewardUploadedUrl(finalRewardLogoUrl);
       }
 
-      // Final cover: uploaded one or default theme cover
-      const cover = finalCoverUrl || THEME_COVERS[theme];
-
-      // Reward logo: uploaded one or fallback to cover
+      const cover = finalCoverUrl || (theme ? THEME_COVERS[theme] : THEME_COVERS["nutrition"]);
       const rewardLogo = finalRewardLogoUrl || cover;
 
-      // Reward expiry
       const rewardDaysInt = toPositiveInt(rewardExpiryDays);
       const fallbackDur = toPositiveInt(duration);
       const finalRewardDays = rewardDaysInt > 0 ? rewardDaysInt : fallbackDur;
-
       if (finalRewardDays === 0) {
         Alert.alert("Invalid reward expiry", "Reward expiry days or duration must be a positive integer.");
         return;
       }
 
       const validUntilISO = toValidUntilISO(finalRewardDays);
-
       const terms = parseTerms();
       const quantityNum = Math.max(0, Number(rewardQuantity) || 0);
 
-      // Firestore write
       const challengeRef = doc(collection(db, "challenges", theme, "items"));
       await setDoc(challengeRef, {
         title: titleTrim,

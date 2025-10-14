@@ -28,6 +28,7 @@ import {
   Timestamp,
 } from "firebase/firestore"; // onPublish default date - time is required; we do not import serverTimestamp
 import { db, auth } from "../../../firebase";
+import { uploadToCloudinary } from "../../../utils/upload";
 
 const { width } = Dimensions.get("window");
 const PANEL_W = Math.min(640, width - 28);
@@ -201,52 +202,31 @@ export default function NewMeetup() {
   };
 
   // image upload - upload selected image to Cloudinary without using blob() on native and using Blob/File on web
-  const uploadImageAndGetUrl = async (uid: string): Promise<string> => {
-    if (!imageUri) return uploadedUrl || DEFAULT_IMAGE_URL;
+const uploadImageAndGetUrl = async (_uid: string): Promise<string> => {
+  if (!imageUri) return uploadedUrl || DEFAULT_IMAGE_URL;
 
-    try {
-      setUploading(true);
+  if (!auth.currentUser?.uid) {
+    Alert.alert("Not signed in", "Please sign in first.");
+    return uploadedUrl || DEFAULT_IMAGE_URL;
+  }
 
-      const CLOUD_NAME = "dwo2o5q8y";          
-      const UPLOAD_PRESET = "meetup_unsigned";
-      const endpoint = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+  try {
+    const url = await uploadToCloudinary(
+      imageUri,    // localUri
+      imageMime,   // mime
+      webFile,     // web File/Blob
+      "meetup_images",
+      setUploading
+    );
+    setUploadedUrl(url);
+    return url;
+  } catch (e: any) {
+    Alert.alert("Cloudinary upload failed", e?.message ?? "Unknown error");
+    return uploadedUrl || DEFAULT_IMAGE_URL;
+  }
+};
 
-      const mime = imageMime || "image/jpeg";
-      const filename = `meetup_${uid}_${Date.now()}.jpg`;
-
-      const form = new FormData();
-      form.append("upload_preset", UPLOAD_PRESET);
-      form.append("folder", "meetup_images");
-
-      if (Platform.OS === "web") {
-        // Web: must send a Blob/File. Prefer asset.file; fallback to fetch(uri).blob()
-        let fileToSend: Blob | File | null = webFile;
-        if (!fileToSend) {
-          const resp = await fetch(imageUri);
-          fileToSend = await resp.blob();
-        }
-        form.append("file", fileToSend as any, filename);
-      } else {
-        // Native: send as { uri, name, type }
-        const filePart: any = { uri: imageUri, name: filename, type: mime };
-        form.append("file", filePart);
-      }
-
-      // Do not set Content-Type manually; let fetch set the boundary
-      const res = await fetch(endpoint, { method: "POST", body: form as any });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Cloudinary upload failed: ${text}`);
-      }
-      const data = await res.json();
-      const finalUrl = data.secure_url as string; // Cloudinary public URL
-
-      setUploadedUrl(finalUrl);
-      return finalUrl;
-    } finally {
-      setUploading(false);
-    }
-  };
+  
 
   const onPublish = async () => {
     const uid = auth.currentUser?.uid;

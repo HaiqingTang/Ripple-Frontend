@@ -9,6 +9,8 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
+  Alert,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,9 +24,8 @@ import {
   doc,
   getDoc,
   deleteDoc,
-  setDoc, // for undo
+  setDoc,
 } from "firebase/firestore";
-import { Alert } from "react-native";
 
 /* ---------- Types ---------- */
 type Item = {
@@ -38,6 +39,8 @@ type Item = {
   category?: string;
   status?: "active" | "completed";
   checkedToday?: boolean;
+  lastPhoto?: string; 
+  lastNote?: string; 
 };
 
 /* ---------- Constants ---------- */
@@ -52,11 +55,15 @@ const ymd = (d = new Date()) => {
 };
 const TODAY = ymd();
 
+const toDisplayJpg = (u?: string | null) =>
+  u && u.includes("/upload/")
+    ? u.replace("/upload/", "/upload/f_jpg,q_auto/")
+    : u || "";
+
 /* ---------- Component ---------- */
 export default function CurrentChallengeList() {
   const router = useRouter();
 
-  // raw search text + debounced text for filtering
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,24 +72,30 @@ export default function CurrentChallengeList() {
   const [completed, setCompleted] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // inline banner for subscription errors
   const [listError, setListError] = useState<string | null>(null);
 
-  // lightweight snackbar/undo for delete
   const [undoData, setUndoData] = useState<{
     uid: string;
     docId: string;
-    docPath: string; // userChallenges/{uid}/active/{id}
+    docPath: string;
     payload: any;
   } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // debounce search input (250ms)
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setQDebounced(q.trim().toLowerCase()), 250);
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      setQDebounced(q.trim().toLowerCase());
+    }, 250);
+
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
     };
   }, [q]);
 
@@ -101,9 +114,7 @@ export default function CurrentChallengeList() {
         try {
           const ts =
             x.lastCheckinAt?.toDate?.() ??
-            (x.lastCheckinAt.seconds
-              ? new Date(x.lastCheckinAt.seconds * 1000)
-              : null);
+            (x.lastCheckinAt.seconds ? new Date(x.lastCheckinAt.seconds * 1000) : null);
           if (ts) ok = ymd(ts) === TODAY;
         } catch {}
       }
@@ -113,36 +124,30 @@ export default function CurrentChallengeList() {
     const mapActive = (d: any, id: string): Item => {
       const totalDays = Number(d.totalDays ?? d.days ?? 0) || 0;
       const dc = Number(d.daysCompleted ?? 0) || 0;
-      const pctFromCounts =
-        totalDays > 0
-          ? Math.min(100, Math.round((dc / totalDays) * 100))
-          : 0;
+      const pctFromCounts = totalDays > 0 ? Math.min(100, Math.round((dc / totalDays) * 100)) : 0;
       const percent =
-        typeof d.progress === "number"
-          ? Math.min(100, Math.max(0, d.progress))
-          : pctFromCounts;
+        typeof d.progress === "number" ? Math.min(100, Math.max(0, d.progress)) : pctFromCounts;
 
       return {
         id,
         title: d.title || "Untitled Challenge",
         icon: d.icon || "🔥",
         days: totalDays,
-        joined: 0, // placeholder, will be updated immediately
+        joined: 0, // placeholder, 后面补
         percent,
         reward: "",
         category: d.category || "",
         status: d.status === "completed" ? "completed" : "active",
         checkedToday: toCheckedToday(d),
+        lastPhoto: d.lastPhoto || "",
+        lastNote: d.lastNote || "",
       };
     };
 
-    // Ongoing real-time retrieval of joined/rewardConfig
     const unsubOngoing = onSnapshot(
       ongoingQ,
       async (snap) => {
-        const raw = snap.docs.map((docSnap) =>
-          mapActive(docSnap.data(), docSnap.id)
-        );
+        const raw = snap.docs.map((docSnap) => mapActive(docSnap.data(), docSnap.id));
         const enriched: Item[] = await Promise.all(
           raw.map(async (it) => {
             if (!it.category || !it.id) return it;
@@ -153,14 +158,8 @@ export default function CurrentChallengeList() {
                 const data = s.data() as any;
                 const j = Number(data?.joined ?? 0);
                 const name: string =
-                  typeof data?.rewardConfig?.name === "string"
-                    ? data.rewardConfig.name.trim()
-                    : "";
-                return {
-                  ...it,
-                  joined: Number.isFinite(j) ? j : 0,
-                  reward: name,
-                } as Item;
+                  typeof data?.rewardConfig?.name === "string" ? data.rewardConfig.name.trim() : "";
+                return { ...it, joined: Number.isFinite(j) ? j : 0, reward: name } as Item;
               }
             } catch {}
             return it;
@@ -170,7 +169,6 @@ export default function CurrentChallengeList() {
         setLoading(false);
         setListError(null);
       },
-      // error callback (subscription)
       (err) => {
         console.error("currentChallengeList ongoing onSnapshot error:", err);
         setLoading(false);
@@ -181,7 +179,6 @@ export default function CurrentChallengeList() {
       }
     );
 
-    // Completed real-time retrieval of joined/rewardConfig
     const unsubCompleted = onSnapshot(
       completedQ,
       async (snap) => {
@@ -198,6 +195,8 @@ export default function CurrentChallengeList() {
             category: d.category || "",
             status: "completed",
             checkedToday: toCheckedToday(d),
+            lastPhoto: d.lastPhoto || "",
+            lastNote: d.lastNote || "",
           };
         });
 
@@ -211,14 +210,8 @@ export default function CurrentChallengeList() {
                 const data = s.data() as any;
                 const j = Number(data?.joined ?? 0);
                 const name: string =
-                  typeof data?.rewardConfig?.name === "string"
-                    ? data.rewardConfig.name.trim()
-                    : "";
-                return {
-                  ...it,
-                  joined: Number.isFinite(j) ? j : 0,
-                  reward: name,
-                } as Item;
+                  typeof data?.rewardConfig?.name === "string" ? data.rewardConfig.name.trim() : "";
+                return { ...it, joined: Number.isFinite(j) ? j : 0, reward: name } as Item;
               }
             } catch {}
             return it;
@@ -242,7 +235,7 @@ export default function CurrentChallengeList() {
     };
   }, []);
 
-  /* ---------- Search (uses debounced query) ---------- */
+  /* ---------- Search ---------- */
   const filtered = useMemo(() => {
     const kw = qDebounced;
     if (!kw) return { ongoing, completed };
@@ -296,19 +289,15 @@ export default function CurrentChallengeList() {
         { cancelable: true }
       );
     });
-
     if (!confirm) return;
 
     const ref = doc(db, "userChallenges", uid, "active", c.id);
 
     try {
-      // read payload before delete to support undo
       const snap = await getDoc(ref);
       const payload = snap.exists() ? snap.data() : null;
-
       await deleteDoc(ref);
 
-      // show inline snackbar with undo (auto-dismiss in 6s)
       if (payload) {
         setUndoData({
           uid,
@@ -320,7 +309,6 @@ export default function CurrentChallengeList() {
         undoTimerRef.current = setTimeout(() => setUndoData(null), 6000);
       }
     } catch (e: any) {
-      // permission-denied or other errors
       const msg =
         e?.code === "permission-denied"
           ? "You do not have permission to delete this challenge."
@@ -341,76 +329,106 @@ export default function CurrentChallengeList() {
   };
 
   /* ---------- Card Renderer ---------- */
-  const renderCard = (c: Item, isCompleted: boolean) => (
-    <View key={`${isCompleted ? "done-" : "go-"}${c.id}`} style={styles.card}>
-      <Text style={styles.cardTitle}>
-        <Text style={{ fontSize: 22 }}>{c.icon} </Text>
-        {c.title}
-      </Text>
+  const renderCard = (c: Item, isCompleted: boolean) => {
 
-      <View style={styles.metaRow}>
-        <View style={styles.metaItem}>
-          <Ionicons name="time-outline" size={18} color="#000" />
-          <Text style={styles.metaTextDark}>{c.days} days</Text>
-        </View>
-        <View style={styles.metaItem}>
-          <Ionicons name="people-outline" size={18} color="#000" />
-          <Text style={styles.metaTextDark}>{c.joined} joined</Text>
-        </View>
-      </View>
+    const photoUri = toDisplayJpg(c.lastPhoto || "");
 
-      <Text style={styles.progressLabel}>Progress</Text>
-      <Text style={styles.percentCenter}>{isCompleted ? 100 : c.percent}%</Text>
-      <View style={styles.progressBar}>
-        <View
-          style={[
-            styles.progressFill,
-            { width: `${isCompleted ? 100 : c.percent}%` },
-          ]}
-        />
-      </View>
+    return (
+      <View key={`${isCompleted ? "done-" : "go-"}${c.id}`} style={styles.card}>
+        {/* title */}
+        <Text style={styles.cardTitle}>
+          <Text style={{ fontSize: 22 }}>{c.icon} </Text>
+          {c.title}
+        </Text>
 
-      <View style={styles.bottomRow}>
-        {c.reward ? (
-          <View style={styles.rewardChip}>
-            <Text style={styles.rewardText}>{c.reward}</Text>
-          </View>
-        ) : (
-          <View />
-        )}
-
-        {isCompleted ? (
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <Pressable
-              style={[styles.actionBtn, { backgroundColor: "#16A34A" }]}
-              onPress={() => toCompletedDetail(c)}
-              android_ripple={{ color: "#D1FAE5" }}
-            >
-              <Text style={styles.actionText}>view</Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.actionBtn, styles.deleteBtn]}
-              onPress={() => handleDeleteCompleted(c)}
-              android_ripple={{ color: "#FEE2E2" }}
-            >
-              <Text style={[styles.actionText, { textTransform: "none" }]}>Delete</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <Pressable
-            style={styles.actionBtn}
-            onPress={() => toCheckin(c)}
-            android_ripple={{ color: "#E0E7FF" }}
+        {/* image片 */}
+        {!!photoUri && (
+          <View
+            style={{
+              marginTop: 8,
+              borderRadius: 12,
+              overflow: "hidden",
+              backgroundColor: "#f1f5f9",
+            }}
           >
-            <Text style={styles.actionText}>
-              {c.checkedToday ? "view" : "check in"}
-            </Text>
-          </Pressable>
+            <Image
+              source={{ uri: photoUri }}
+              style={{ width: "100%", height: 180, resizeMode: "cover" }}
+            />
+          </View>
         )}
+
+        {/* note */}
+        {!!c.lastNote && (
+          <Text style={{ marginTop: 8, color: "#475569", fontStyle: "italic" }} numberOfLines={2}>
+            “{c.lastNote}”
+          </Text>
+        )}
+
+        {/* meta */}
+        <View style={styles.metaRow}>
+          <View className="row" style={styles.metaItem}>
+            <Ionicons name="time-outline" size={18} color="#000" />
+            <Text style={styles.metaTextDark}>{c.days} days</Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Ionicons name="people-outline" size={18} color="#000" />
+            <Text style={styles.metaTextDark}>{c.joined} joined</Text>
+          </View>
+        </View>
+
+        {/* progress */}
+        <Text style={styles.progressLabel}>Progress</Text>
+        <Text style={styles.percentCenter}>{isCompleted ? 100 : c.percent}%</Text>
+        <View style={styles.progressBar}>
+          <View
+            style={[styles.progressFill, { width: `${isCompleted ? 100 : c.percent}%` }]}
+          />
+        </View>
+
+        {/* bottom */}
+        <View style={styles.bottomRow}>
+          {c.reward ? (
+            <View style={styles.rewardChip}>
+              <Text style={styles.rewardText}>{c.reward}</Text>
+            </View>
+          ) : (
+            <View />
+          )}
+
+          {isCompleted ? (
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Pressable
+                style={[styles.actionBtn, { backgroundColor: "#16A34A" }]}
+                onPress={() => toCompletedDetail(c)}
+                android_ripple={{ color: "#D1FAE5" }}
+              >
+                <Text style={styles.actionText}>view</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.actionBtn, styles.deleteBtn]}
+                onPress={() => handleDeleteCompleted(c)}
+                android_ripple={{ color: "#FEE2E2" }}
+              >
+                <Text style={[styles.actionText, { textTransform: "none" }]}>Delete</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              style={styles.actionBtn}
+              onPress={() => toCheckin(c)}
+              android_ripple={{ color: "#E0E7FF" }}
+            >
+              <Text style={styles.actionText}>
+                {c.checkedToday ? "view" : "check in"}
+              </Text>
+            </Pressable>
+          )}
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   /* ---------- Render ---------- */
   return (
@@ -425,14 +443,9 @@ export default function CurrentChallengeList() {
           <View style={{ width: 24 }} />
         </View>
 
-        {/* Search (with clear button) */}
+        {/* Search */}
         <View style={styles.searchWrap}>
-          <Ionicons
-            name="search"
-            size={18}
-            color="#99A2C0"
-            style={{ marginHorizontal: 10 }}
-          />
+          <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
           <TextInput
             placeholder="Search"
             placeholderTextColor="#99A2C0"
@@ -448,21 +461,14 @@ export default function CurrentChallengeList() {
           )}
         </View>
 
-        {/* Error banner (subscription issues) */}
+        {/* Error banner */}
         {!!listError && (
           <View style={styles.errorBar}>
             <Ionicons name="warning-outline" size={16} color="#fff" />
             <Text style={styles.errorText} numberOfLines={2}>
               {listError}
             </Text>
-            <Pressable
-              onPress={() => {
-                // simplest: re-trigger subscriptions by toggling error off;
-                // snapshots are live; user can also pull-to-refresh in future
-                setListError(null);
-              }}
-              hitSlop={8}
-            >
+            <Pressable onPress={() => setListError(null)} hitSlop={8}>
               <Text style={styles.errorAction}>Dismiss</Text>
             </Pressable>
           </View>
@@ -494,7 +500,7 @@ export default function CurrentChallengeList() {
           </ScrollView>
         )}
 
-        {/* Snackbar / Undo for delete */}
+        {/* Snackbar / Undo */}
         {!!undoData && (
           <View style={styles.snackbar}>
             <Text style={styles.snackbarText} numberOfLines={2}>

@@ -26,6 +26,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { uploadToCloudinary } from "../../../utils/upload";
 
 /* ---------- Colors ---------- */
 const BG = "#CFE0FF";
@@ -49,10 +50,10 @@ const SHADOW =
       }
     : { elevation: 3 };
 
-/* ---------- Cloudinary settings ---------- */
+/* ---------- Cloudinary settings (ENV-based) ---------- */
 const CLOUDINARY = {
-  CLOUD_NAME: "dwo2o5q8y",
-  UPLOAD_PRESET: "meetup_unsigned",
+  CLOUD_NAME: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME!,
+  UPLOAD_PRESET: process.env.EXPO_PUBLIC_CLOUDINARY_UNSIGNED_PRESET!,
   FOLDER_CHECKIN: "challenge_checkins",
 };
 
@@ -296,7 +297,6 @@ export default function ChallengeCheckin() {
           }
         }
 
-        // Marked days (use string parsing to avoid timezone issues)
         const selected = (list ?? [])
           .map((s) => {
             const [y, m, dnum] = s.split("-").map((n) => parseInt(n, 10));
@@ -345,124 +345,11 @@ export default function ChallengeCheckin() {
   };
   const lastUploadRef = useRef<LastUploadArgs | null>(null);
 
+  // ✅ 把 lastUploadedUrlRef 放到组件内部
+  const lastUploadedUrlRef = useRef<string | null>(null);
+
   /* ---------- Image picking & upload ---------- */
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-  const uploadToCloudinary = async (
-    localUri: string | null,
-    webFile: WebFileLike,
-    mime: string | null,
-    folder: string,
-    setUploading: (b: boolean) => void,
-    setUploadedUrl?: (u: string) => void
-  ): Promise<string> => {
-    if (!localUri) return "";
-
-    // Fallback validation
-    if (!isAllowedType(mime)) {
-      throw new Error("Only image files are allowed (jpg / png / webp / HEIC / HEIF).");
-    }
-    try {
-      const size = await getFileSize(localUri, webFile);
-      const limit = MAX_IMAGE_MB * 1024 * 1024;
-      if (size > limit) {
-        throw new Error(
-          `Image is too large (${formatBytes(size)}). Please keep it ≤ ${MAX_IMAGE_MB}MB.`
-        );
-      }
-    } catch {
-      // ignore read failures
-    }
-
-    const doOnce = async (signal: AbortSignal) => {
-      const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY.CLOUD_NAME}/image/upload`;
-      const form = new FormData();
-      form.append("upload_preset", CLOUDINARY.UPLOAD_PRESET);
-      form.append("folder", folder);
-
-      const filename = `${folder}_${auth.currentUser?.uid || "anon"}_${Date.now()}.jpg`;
-      const mt = mime || "image/jpeg";
-
-      if (Platform.OS === "web") {
-        let fileToSend: Blob | any = webFile as any;
-        if (!fileToSend) {
-          const resp = await fetch(localUri);
-          fileToSend = await resp.blob();
-        }
-        // @ts-ignore
-        form.append("file", fileToSend, filename);
-      } else {
-        // @ts-ignore
-        form.append("file", { uri: localUri, name: filename, type: mt });
-      }
-
-      const res = await fetch(endpoint, { method: "POST", body: form as any, signal });
-      if (!res.ok) {
-        let detail = "";
-        try {
-          const j = await res.json();
-          detail = j?.error?.message || JSON.stringify(j);
-        } catch {
-          detail = await res.text();
-        }
-        throw new Error(detail || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      return (data.secure_url as string) || "";
-    };
-
-    setUploading(true);
-    try {
-      const maxTries = 3;
-      let lastErr: any = null;
-
-      for (let attempt = 1; attempt <= maxTries; attempt++) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 18000);
-
-        try {
-          const url = await doOnce(controller.signal);
-          if (!url) throw new Error("Cloudinary did not return a URL.");
-          setUploadedUrl?.(url);
-          setUiError(null);
-          return url;
-        } catch (e: any) {
-          lastErr = e;
-          if (attempt === maxTries) break;
-          await sleep(600 * attempt);
-        } finally {
-          clearTimeout(timer);
-        }
-      }
-
-      const msg =
-        typeof lastErr?.message === "string" && lastErr.message.trim()
-          ? lastErr.message
-          : "Network or server error. Please try again later.";
-
-      const saved = lastUploadRef.current;
-      setUiError({
-        msg,
-        retry: saved
-          ? async () => {
-              setUiError(null);
-              await uploadToCloudinary(
-                saved.localUri,
-                saved.webFile,
-                saved.mime,
-                saved.folder,
-                setUploading,
-                setUploadedUrl
-              );
-            }
-          : undefined,
-      });
-
-      throw new Error(msg);
-    } finally {
-      setUploading(false);
-    }
-  };
 
   // Pick one image from gallery
   const pickOneImage = async () => {
@@ -523,12 +410,14 @@ export default function ChallengeCheckin() {
     try {
       const url = await uploadToCloudinary(
         picked.localUri,
-        picked.webFile,
         picked.mime,
+        // ✅ 最小改动：把 webFile 做一次强转
+        (picked.webFile as any as File | Blob | null),
         CLOUDINARY.FOLDER_CHECKIN,
-        setPhotoUploading,
-        (u) => setPhotoUri(u)
+        setPhotoUploading
       );
+      setPhotoUri(url);
+      lastUploadedUrlRef.current = url;
 
       if (!url) {
         setUiError({ msg: "Failed to obtain the image URL. Please try again." });
@@ -567,10 +456,32 @@ export default function ChallengeCheckin() {
         });
       }
 
+      let photoToSave = photoUri || lastUploadedUrlRef.current || "";
+
+      // 兜底：若用户刚选过图但 state 还没来得及更新，再传一次
+      if (!photoToSave && photoLocalPreview && lastUploadRef.current) {
+        try {
+          const { localUri, mime, webFile } = lastUploadRef.current;
+          const u = await uploadToCloudinary(
+            localUri,
+            mime,
+            // ✅ 最小改动：这里同样强转
+            (webFile as any as File | Blob | null),
+            CLOUDINARY.FOLDER_CHECKIN,
+            setPhotoUploading
+          );
+          photoToSave = u;
+          lastUploadedUrlRef.current = u;
+          setPhotoUri(u);
+        } catch (e) {
+          console.warn("fallback upload failed:", e);
+        }
+      }
+
       await updateDoc(ref, {
         checkins: arrayUnion(todayStr),
         lastNote: note || "",
-        lastPhoto: photoUri || "",
+        lastPhoto: photoToSave || "",
         lastCheckinAt: serverTimestamp(),
       });
 
@@ -688,37 +599,6 @@ export default function ChallengeCheckin() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
         showsVerticalScrollIndicator={false}
       >
-        {uiError && (
-          <View
-            style={{
-              backgroundColor: "#fdecea",
-              borderColor: "#f5c6cb",
-              borderWidth: 1,
-              padding: 12,
-              borderRadius: 10,
-              marginTop: 10,
-            }}
-          >
-            <Text style={{ color: "#7f1d1d", fontWeight: "700" }}>Upload failed</Text>
-            <Text style={{ color: "#7f1d1d", marginTop: 4 }}>{uiError.msg}</Text>
-            {uiError.retry && (
-              <Pressable
-                onPress={() => uiError.retry && uiError.retry()}
-                style={{
-                  alignSelf: "flex-start",
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 8,
-                  backgroundColor: "#7f1d1d",
-                  marginTop: 8,
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "800" }}>Retry</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
-
         {/* Progress card */}
         <View style={[styles.cardSoft, SHADOW]}>
           <Text style={styles.titleBold}>{title}</Text>
