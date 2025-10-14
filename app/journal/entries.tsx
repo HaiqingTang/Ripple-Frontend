@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "expo-router";
 import {
   View,
@@ -78,10 +78,18 @@ export default function LogEntriesPage() {
         }));
 
         // Sort logs by timestamp in descending order using toDate helper
+        // Logs with invalid timestamps are placed at the end
         const sortedLogs = fetchedLogs.sort((a, b) => {
-          const dateA = toDate(b.timestamp)?.getTime() || 0;
-          const dateB = toDate(a.timestamp)?.getTime() || 0;
-          return dateA - dateB;
+          const dateA = toDate(a.timestamp);
+          const dateB = toDate(b.timestamp);
+
+          // Handle invalid timestamps
+          if (!dateA && !dateB) return 0;
+          if (!dateA) return 1; // Put invalid timestamps at the end
+          if (!dateB) return -1;
+
+          // Sort in descending order (newest first)
+          return dateB.getTime() - dateA.getTime();
         });
         setLogs(sortedLogs);
 
@@ -104,8 +112,8 @@ export default function LogEntriesPage() {
     }
   }, [userId]);
 
-  // Filter logic
-  const filterLogs = () => {
+  // Filter logic - memoized for performance
+  const filteredLogs = useMemo(() => {
     let filtered = [...logs];
 
     // Filter by tag
@@ -123,14 +131,17 @@ export default function LogEntriesPage() {
         const oneWeekAgo = new Date(today);
         oneWeekAgo.setDate(today.getDate() - 7);
         filtered = filtered.filter((log) => {
-          const logDay = toDate(log.timestamp) || new Date();
-          return logDay >= oneWeekAgo && logDay <= today;
+          const logDay = toDate(log.timestamp);
+          // Exclude logs with invalid timestamps instead of defaulting to today
+          return logDay && logDay >= oneWeekAgo && logDay <= today;
         });
       }
       if (filter === "Month") {
         filtered = filtered.filter((log) => {
-          const logDay = toDate(log.timestamp) || new Date();
+          const logDay = toDate(log.timestamp);
+          // Exclude logs with invalid timestamps instead of defaulting to today
           return (
+            logDay &&
             logDay.getMonth() === today.getMonth() &&
             logDay.getFullYear() === today.getFullYear()
           );
@@ -139,7 +150,7 @@ export default function LogEntriesPage() {
     }
 
     return filtered;
-  };
+  }, [logs, filter, tagFilter]);
 
   const renderLogCard = ({ item }: { item: any }) => {
     const displayDate = toDate(item.timestamp) || new Date();
@@ -370,7 +381,7 @@ export default function LogEntriesPage() {
 
       {/* Log List */}
       <FlatList
-        data={filterLogs()}
+        data={filteredLogs}
         keyExtractor={(item) => item.id}
         renderItem={renderLogCard}
         contentContainerStyle={{ paddingBottom: 20 }}

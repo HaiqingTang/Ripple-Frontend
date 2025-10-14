@@ -79,6 +79,8 @@ export default function PersonalLog() {
 
 	const handleSave = async () => {
 		// Extract base64 data from data URI if image exists
+		// Note: We store ONLY the pure base64 string in Firestore (without the data URI prefix)
+		// to reduce document size and maintain consistency with legacy 'imageBase64' field
 		let journalPhoto = null;
 		if (journalImage) {
 			// Remove the data URI prefix (e.g., "data:image/jpeg;base64,")

@@ -212,7 +212,22 @@ export const deleteProfilePicture = async (): Promise<boolean> => {
   }
 };
 
+/**
+ * Creates a data URI from a base64 string.
+ *
+ * @param base64String - Pure base64 string WITHOUT data URI prefix
+ *                       (e.g., "/9j/4AAQSkZJRg..." not "data:image/jpeg;base64,...")
+ * @returns Complete data URI string ready for Image component
+ *
+ * Note: Both 'journalPhoto' and 'imageBase64' fields in Firestore store pure base64.
+ * Legacy logs may have 'imageBase64', newer ones use 'journalPhoto'.
+ * This function handles both cases gracefully.
+ */
 export const createDataUri = (base64String: string): string => {
+  // Handle case where data URI prefix is already present
+  if (base64String?.startsWith('data:')) {
+    return base64String;
+  }
   return `data:image/jpeg;base64,${base64String}`;
 };
 
