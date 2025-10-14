@@ -25,6 +25,9 @@ import {
   getDoc,
   deleteDoc,
   setDoc,
+  runTransaction,
+  updateDoc,
+  arrayRemove
 } from "firebase/firestore";
 
 /* ---------- Types ---------- */
@@ -278,25 +281,45 @@ export default function CurrentChallengeList() {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
-    const confirm = await new Promise<boolean>((resolve) => {
+    const ok = await new Promise<boolean>((resolve) => {
       Alert.alert(
         "Delete completed challenge",
-        `This will remove "${c.title}" from your list.`,
+        `This will remove "${c.title}" and withdraw you from it.`,
         [
           { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
           { text: "Delete", style: "destructive", onPress: () => resolve(true) },
-        ],
-        { cancelable: true }
+        ]
       );
     });
-    if (!confirm) return;
+    if (!ok) return;
 
-    const ref = doc(db, "userChallenges", uid, "active", c.id);
+    const userRef = doc(db, "userChallenges", uid, "active", c.id);
+    const pubRef =
+      c.category ? doc(db, "challenges", c.category, "items", c.id) : null;
 
     try {
-      const snap = await getDoc(ref);
+      const snap = await getDoc(userRef);
       const payload = snap.exists() ? snap.data() : null;
-      await deleteDoc(ref);
+
+      await runTransaction(db, async (tx) => {
+        const pubSnap = pubRef ? await tx.get(pubRef) : null;
+        tx.delete(userRef);
+
+        if (pubRef && pubSnap?.exists()) {
+          const data = pubSnap.data() as any;
+          const participants: string[] = Array.isArray(data.participants)
+            ? data.participants
+            : [];
+          const alreadyIn = participants.includes(uid);
+          const currentJoined = Number(data.joined ?? 0) || 0;
+          const newJoined = alreadyIn ? Math.max(0, currentJoined - 1) : currentJoined;
+
+          tx.update(pubRef, {
+            participants: arrayRemove(uid),
+            joined: newJoined,
+          });
+        }
+      });
 
       if (payload) {
         setUndoData({
@@ -309,11 +332,8 @@ export default function CurrentChallengeList() {
         undoTimerRef.current = setTimeout(() => setUndoData(null), 6000);
       }
     } catch (e: any) {
-      const msg =
-        e?.code === "permission-denied"
-          ? "You do not have permission to delete this challenge."
-          : "Delete failed. Please try again later.";
-      Alert.alert("Delete failed", msg);
+      console.error("delete+withdraw error:", e);
+      Alert.alert("Delete failed", e?.message || "Please try again later.");
     }
   };
 

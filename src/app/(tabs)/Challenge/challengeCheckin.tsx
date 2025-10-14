@@ -14,7 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { auth, db } from "../../../firebase";
 import {
   doc,
@@ -56,6 +56,10 @@ const CLOUDINARY = {
   UPLOAD_PRESET: process.env.EXPO_PUBLIC_CLOUDINARY_UNSIGNED_PRESET!,
   FOLDER_CHECKIN: "challenge_checkins",
 };
+console.log("CLOUDINARY env check →", {
+  CLOUD_NAME: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  PRESET: process.env.EXPO_PUBLIC_CLOUDINARY_UNSIGNED_PRESET,
+});
 
 /* ---------- Upload constraints ---------- */
 const MAX_IMAGE_MB = 10;
@@ -194,8 +198,6 @@ export default function ChallengeCheckin() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoLocalPreview, setPhotoLocalPreview] = useState<string | null>(null);
-  const [photoMime, setPhotoMime] = useState<string | null>(null);
-  const [photoWebFile, setPhotoWebFile] = useState<WebFileLike>(null);
 
   // Reward (from public challenge doc)
   const [rewardName, setRewardName] = useState("");
@@ -335,21 +337,13 @@ export default function ChallengeCheckin() {
     return () => unsub();
   }, [cid, category]);
 
-  const [uiError, setUiError] = useState<{ msg: string; retry?: () => void } | null>(null);
-
   type LastUploadArgs = {
     localUri: string;
     webFile: WebFileLike;
     mime: string | null;
     folder: string;
   };
-  const lastUploadRef = useRef<LastUploadArgs | null>(null);
-
-  // ✅ 把 lastUploadedUrlRef 放到组件内部
   const lastUploadedUrlRef = useRef<string | null>(null);
-
-  /* ---------- Image picking & upload ---------- */
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   // Pick one image from gallery
   const pickOneImage = async () => {
@@ -373,8 +367,6 @@ export default function ChallengeCheckin() {
     if (!asset?.uri) return null;
 
     setPhotoLocalPreview(asset.uri);
-    setPhotoMime((asset as any)?.mimeType || "image/jpeg");
-    setPhotoWebFile(Platform.OS === "web" ? (((asset as any)?.file as any) ?? null) : null);
 
     return {
       localUri: asset.uri as string,
@@ -391,43 +383,25 @@ export default function ChallengeCheckin() {
 
     try {
       await validateSelection(picked.mime, picked.localUri, picked.webFile);
-    } catch (err: any) {
-      setUiError({
-        msg:
-          err?.message ||
-          "The selected file does not meet requirements. Please choose another image.",
-      });
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : typeof err === "string" ? err : "Invalid file";
+      Alert.alert("Invalid image", msg);
       return;
     }
-
-    lastUploadRef.current = {
-      localUri: picked.localUri,
-      webFile: picked.webFile,
-      mime: picked.mime,
-      folder: CLOUDINARY.FOLDER_CHECKIN,
-    };
 
     try {
       const url = await uploadToCloudinary(
         picked.localUri,
         picked.mime,
-        // ✅ 最小改动：把 webFile 做一次强转
         (picked.webFile as any as File | Blob | null),
         CLOUDINARY.FOLDER_CHECKIN,
         setPhotoUploading
       );
       setPhotoUri(url);
       lastUploadedUrlRef.current = url;
-
-      if (!url) {
-        setUiError({ msg: "Failed to obtain the image URL. Please try again." });
-        return;
-      }
-
-      setUiError(null);
     } catch (e: any) {
-      console.error("check-in photo upload error:", e);
-      if (!uiError) setUiError({ msg: e?.message || "Upload failed, please try again later." });
+      Alert.alert("Upload failed", e?.message || "Please try again.");
     }
   };
 
@@ -456,32 +430,12 @@ export default function ChallengeCheckin() {
         });
       }
 
-      let photoToSave = photoUri || lastUploadedUrlRef.current || "";
-
-      // 兜底：若用户刚选过图但 state 还没来得及更新，再传一次
-      if (!photoToSave && photoLocalPreview && lastUploadRef.current) {
-        try {
-          const { localUri, mime, webFile } = lastUploadRef.current;
-          const u = await uploadToCloudinary(
-            localUri,
-            mime,
-            // ✅ 最小改动：这里同样强转
-            (webFile as any as File | Blob | null),
-            CLOUDINARY.FOLDER_CHECKIN,
-            setPhotoUploading
-          );
-          photoToSave = u;
-          lastUploadedUrlRef.current = u;
-          setPhotoUri(u);
-        } catch (e) {
-          console.warn("fallback upload failed:", e);
-        }
-      }
+      const photoToSave = photoUri || lastUploadedUrlRef.current || "";
 
       await updateDoc(ref, {
         checkins: arrayUnion(todayStr),
         lastNote: note || "",
-        lastPhoto: photoToSave || "",
+        lastPhoto: photoToSave,
         lastCheckinAt: serverTimestamp(),
       });
 
@@ -497,59 +451,11 @@ export default function ChallengeCheckin() {
         ...(list.length >= td ? { status: "completed", completedAt: serverTimestamp() } : {}),
       });
 
-      try {
-        if (list.length >= td) {
-          const latest2 = await getDoc(ref);
-          const latestData = (latest2.data() || {}) as any;
-
-          if (!latestData.rewardIssued) {
-            const catForPub =
-              latestData.category ||
-              category ||
-              (typeof params.category === "string" ? params.category : "") ||
-              "";
-
-            let rc: any = null;
-            if (catForPub) {
-              const pubRef = doc(db, "challenges", catForPub, "items", cid);
-              const pubSnap = await getDoc(pubRef);
-              if (pubSnap.exists()) {
-                rc = (pubSnap.data() as any)?.rewardConfig || null;
-              }
-            }
-
-            const rewardRef = doc(db, "users", uid, "rewards", cid);
-            const rewardSnap = await getDoc(rewardRef);
-            if (!rewardSnap.exists()) {
-              await setDoc(rewardRef, {
-                title: rc?.name || title || "Challenge Reward",
-                subtitle: rc?.vendor || "",
-                description: rc?.description || "",
-                value: rc?.value || "",
-                validUntil: rc?.validUntil || "",
-                logoUri: rc?.logoUri || "",
-                challengeId: cid,
-                category: catForPub,
-                redeemed: false,
-                terms: [
-                  "One-time redemption",
-                  rc?.validUntil ? `Valid until ${rc.validUntil}` : undefined,
-                ].filter(Boolean),
-                issuedAt: serverTimestamp(),
-              });
-            }
-
-            await updateDoc(ref, { rewardIssued: true });
-          }
-        }
-      } catch (e) {
-        console.warn("Issue reward failed:", e);
-      }
-
       setProgressPct(pct);
       setCheckedToday(true);
-      if (!markedDays.includes(today.getDate()))
+      if (!markedDays.includes(today.getDate())) {
         setMarkedDays((prev) => [...prev, today.getDate()]);
+      }
 
       if (list.length >= td) {
         router.push({
@@ -567,7 +473,6 @@ export default function ChallengeCheckin() {
         Alert.alert("Nice!", "Today's check-in is saved.");
       }
     } catch (e: any) {
-      console.error("check-in error:", e);
       Alert.alert("Check-in Error", e?.message || "Failed to check in.");
     }
   };
@@ -707,7 +612,7 @@ export default function ChallengeCheckin() {
 
           <Text style={[styles.label, { marginTop: 16 }]}>Add photo (Optional)</Text>
           <Pressable
-            onPress={locked || photoUploading ? undefined : onPickPhoto}
+            onPress={onPickPhoto}   
             disabled={locked || photoUploading}
             style={[styles.photoBox, SHADOW]}
           >
