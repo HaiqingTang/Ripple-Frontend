@@ -58,15 +58,12 @@ export default function CreatePostScreen() {
     setIsPublishing(true);
     
     try {
-      // Use the addPost function from context which handles Firebase and state updates
       const newPost = await addPost({
         title,
         content,
         authorId: userId,
         author: fullName,
       });
-
-      console.log("New Post ID:", newPost.id);
 
       setShowConfirmModal(false);
       
