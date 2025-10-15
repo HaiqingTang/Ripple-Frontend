@@ -52,6 +52,31 @@ export default function ChallengeIndex() {
     auth.currentUser?.displayName?.trim().split(/\s+/)[0] || "there"
   );
 
+  // show today's calendar day as "Day NN" and update at midnight ======
+  const [todayDay, setTodayDay] = useState<number>(new Date().getDate());
+  useEffect(() => {
+    // update immediately in case app resumes after long sleep
+    setTodayDay(new Date().getDate());
+
+    const msUntilNextMidnight = () => {
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(24, 0, 0, 0); // local midnight
+      return next.getTime() - now.getTime();
+    };
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      const wait = Math.max(1000, msUntilNextMidnight() + 1000); // small buffer
+      timer = setTimeout(() => {
+        setTodayDay(new Date().getDate());
+        schedule(); // reschedule for the following day
+      }, wait);
+    };
+    schedule();
+    return () => { if (timer) clearTimeout(timer); };
+  }, []);
+
   useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
@@ -94,7 +119,7 @@ export default function ChallengeIndex() {
               <Text style={styles.customizeText}>customise your{"\n"}challenges here</Text>
             </Pressable>
             <View style={styles.dayBox}>
-              <Text style={styles.dayText}>Day 6</Text>
+              <Text style={styles.dayText}>Day {todayDay}</Text>
             </View>
           </View>
         </View>

@@ -31,7 +31,6 @@ import { uploadToCloudinary } from "../../../utils/upload";
 /* ---------- Colors ---------- */
 const BG = "#CFE0FF";
 const CARD = "#FFFFFF";
-const LEMON = "#FFF7C8";
 const LEMON_BADGE = "#F5E266";
 const TEXT_DARK = "#1F2937";
 const TEXT_BLUE = "#6A8DE6";
@@ -79,12 +78,76 @@ type UserChallengeDoc = {
 };
 
 /* ---------- Helpers ---------- */
+
+// yyyy-mm-dd (local time)
 const ymd = (d = new Date()) => {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${m}-${day}`;
 };
 
+// ensure validUntil is in the future; fallback to +30 days end-of-day
+function ensureFutureISO(iso?: string) {
+  const now = Date.now();
+  if (iso) {
+    const t = new Date(iso).getTime();
+    if (Number.isFinite(t) && t > now + 60_000) return new Date(t).toISOString();
+  }
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
+}
+
+// issue reward into users/{uid}/rewards/{cid}
+async function issueRewardIfEligible(opts: {
+  uid: string;
+  cid: string;
+  rewardName?: string;
+  rewardSubtitle?: string;
+  rewardValue?: string;
+  rewardDesc?: string;
+  rewardValidUntil?: string;
+  logoUri?: string;
+}) {
+  const {
+    uid,
+    cid,
+    rewardName,
+    rewardSubtitle,
+    rewardValue,
+    rewardDesc,
+    rewardValidUntil,
+    logoUri,
+  } = opts;
+
+  const hasAny =
+    (rewardName && rewardName.trim()) ||
+    (rewardSubtitle && rewardSubtitle.trim()) ||
+    (rewardValue && rewardValue.trim()) ||
+    (rewardDesc && rewardDesc.trim());
+  if (!hasAny) return;
+
+  const ref = doc(db, "users", uid, "rewards", cid); // avoid duplication by using challengeId as doc id
+  await setDoc(
+    ref,
+    {
+      title: rewardName || "Reward",
+      subtitle: rewardSubtitle || "",
+      description: rewardDesc || "",
+      value: rewardValue || "",
+      logoUri: logoUri || "",
+      validUntil: ensureFutureISO(rewardValidUntil),
+      redeemed: false,
+      expired: false,
+      issuedAt: serverTimestamp(),
+      challengeId: cid,
+    },
+    { merge: true }
+  );
+}
+
+// build month cells
 function buildMonth(year: number, monthIndex0: number): DayCell[] {
   const first = new Date(year, monthIndex0, 1);
   const firstWeekday = first.getDay();
@@ -119,7 +182,7 @@ const isAllowedType = (mime?: string | null) => {
   return m.startsWith("image/") || ALLOWED_MIME.includes(m);
 };
 
-// Get file size (bytes). Web: File.size/Blob.size; Native: FileSystem.getInfoAsync
+// get file size across platforms
 const getFileSize = async (uri: string, webFile: WebFileLike) => {
   if (Platform.OS === "web") {
     const maybeSize = (webFile as any)?.size;
@@ -135,7 +198,7 @@ const getFileSize = async (uri: string, webFile: WebFileLike) => {
   }
 };
 
-// Validate file type & size after selection
+// validate size & type
 const validateSelection = async (mime: string | null, uri: string, webFile: WebFileLike) => {
   if (!isAllowedType(mime)) {
     throw new Error("Only image files are allowed (jpg / png / webp / HEIC / HEIF).");
@@ -172,7 +235,7 @@ function CouponCard({
           </Text>
         </View>
 
-        <View style={coupon.mid}>
+        <View className="mid" style={coupon.mid}>
           <View style={coupon.dash} />
           <View style={[coupon.notch, coupon.notchTop]} />
           <View style={[coupon.notch, coupon.notchBottom]} />
@@ -204,7 +267,6 @@ const coupon = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: COUPON_BORDER,
   },
-
   left: {
     width: "32%",
     alignItems: "center",
@@ -214,7 +276,6 @@ const coupon = StyleSheet.create({
     borderBottomLeftRadius: 12,
     paddingHorizontal: 6,
   },
-
   amount: { fontSize: 20, fontWeight: "900", color: COUPON_TEXT },
   mid: { width: 14, alignItems: "center", justifyContent: "center", position: "relative" },
   dash: {
@@ -224,7 +285,6 @@ const coupon = StyleSheet.create({
     borderColor: COUPON_BORDER,
     borderStyle: "dashed",
   },
-
   notch: {
     position: "absolute",
     width: 18,
@@ -233,15 +293,12 @@ const coupon = StyleSheet.create({
     backgroundColor: BG,
     left: -2,
   },
-
   notchTop: { top: -9 },
   notchBottom: { bottom: -9 },
-
   right: { flex: 1, justifyContent: "center", paddingHorizontal: 12, gap: 4 },
   rule: { fontSize: 16, fontWeight: "800", color: COUPON_TEXT },
   validity: { fontSize: 12, fontWeight: "700", color: COUPON_TEXT, opacity: 0.9 },
 });
-
 
 /* ---------- Component ---------- */
 export default function ChallengeCheckin() {
@@ -259,7 +316,7 @@ export default function ChallengeCheckin() {
     category?: string;
     title?: string;
     totalDays?: string;
-    cover?: string;
+    cover?: string; // cover used as reward logoUri
     joined?: string;
   }>();
 
@@ -272,7 +329,7 @@ export default function ChallengeCheckin() {
     typeof params.category === "string" ? params.category : ""
   );
 
-  const [title, setTitle] = useState(params.title || "Daily 10k steps");
+  const [title, setTitle] = useState(params.title || "Challenge");
   const [totalDaysNum, setTotalDaysNum] = useState(
     Math.max(1, Number(params.totalDays || 20) || 20)
   );
@@ -423,7 +480,7 @@ export default function ChallengeCheckin() {
 
   const lastUploadedUrlRef = useRef<string | null>(null);
 
-  // Pick one image
+  /* ---------- Pick image ---------- */
   const pickOneImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -472,7 +529,7 @@ export default function ChallengeCheckin() {
       const url = await uploadToCloudinary(
         picked.localUri,
         picked.mime,
-        (picked.webFile as any), // Blob | null on web, null on native
+        (picked.webFile as any),
         CLOUDINARY.FOLDER_CHECKIN,
         setPhotoUploading
       );
@@ -490,6 +547,7 @@ export default function ChallengeCheckin() {
     if (!uid || !cid) return;
 
     try {
+      // ensure userChallenge doc exists
       const ref = doc(db, "userChallenges", uid, "active", cid);
       const snap = await getDoc(ref);
 
@@ -499,8 +557,8 @@ export default function ChallengeCheckin() {
           totalDays: totalDaysNum,
           progress: 0,
           reward: "",
-          cover: params.cover || "",
-          category: category || params.category || "",
+          cover: typeof params.cover === "string" ? params.cover : "",
+          category: category || (typeof params.category === "string" ? params.category : ""),
           challengeId: cid,
           joinedAt: serverTimestamp(),
           status: "active",
@@ -508,8 +566,8 @@ export default function ChallengeCheckin() {
         });
       }
 
+      // write today's check-in
       const photoToSave = photoUri || lastUploadedUrlRef.current || "";
-
       await updateDoc(ref, {
         checkins: arrayUnion(todayStr),
         lastNote: note || "",
@@ -517,6 +575,7 @@ export default function ChallengeCheckin() {
         lastCheckinAt: serverTimestamp(),
       });
 
+      // recompute progress after write
       const latest = await getDoc(ref);
       const data = (latest.data() || {}) as UserChallengeDoc;
       const list = (data.checkins ?? []).filter(Boolean);
@@ -529,14 +588,27 @@ export default function ChallengeCheckin() {
         ...(list.length >= td ? { status: "completed", completedAt: serverTimestamp() } : {}),
       });
 
+      // local UI updates
       setProgressPct(pct);
       setCheckedToday(true);
       if (!markedDays.includes(today.getDate())) {
         setMarkedDays((prev) => [...prev, today.getDate()]);
       }
 
+      // finished
       if (list.length >= td) {
-        router.push({
+        await issueRewardIfEligible({
+          uid,
+          cid,
+          rewardName,
+          rewardSubtitle,
+          rewardValue,
+          rewardDesc,
+          rewardValidUntil,
+          logoUri: typeof params.cover === "string" ? params.cover : "",
+        });
+
+        router.replace({
           pathname: "/Challenge/completedChallenge",
           params: {
             challengeId: cid,
@@ -750,12 +822,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginTop: 8,
   },
-  rewardCard: {
-    backgroundColor: LEMON,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 14,
-  },
   calendarCard: {
     backgroundColor: CARD,
     borderRadius: 12,
@@ -784,22 +850,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   progressPct: { color: TEXT_DARK, fontWeight: "700", marginTop: 6 },
-  rewardTitle: { color: TEXT_DARK, fontWeight: "800", fontSize: 16 },
-  rewardRow: { flexDirection: "row", alignItems: "center", marginTop: 12 },
-  badge: {
-    backgroundColor: LEMON_BADGE,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  badgeText: { fontWeight: "700", color: TEXT_DARK },
-  illus: {
-    flex: 1,
-    height: 70,
-    borderRadius: 12,
-    backgroundColor: "#EAEFFF",
-    marginLeft: 12,
-  },
   monthTitle: {
     fontSize: 18,
     fontWeight: "800",

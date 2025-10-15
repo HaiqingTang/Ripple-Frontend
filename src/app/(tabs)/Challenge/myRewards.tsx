@@ -13,7 +13,15 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { db, auth } from "../../../firebase";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import {
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  doc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
 type Reward = {
   id: string;
@@ -25,7 +33,31 @@ type Reward = {
   value?: string;
   redeemed?: boolean;
   terms?: string[];
+  expired?: boolean; // 新增：后端可选字段，便于回写
 };
+
+/* ---------- 日期工具：与 rewardDetail 保持一致 ---------- */
+function parseISODateSafe(iso?: string | null): Date | null {
+  if (!iso) return null;
+  const ymd = iso.match(/^\d{4}-\d{2}-\d{2}$/);
+  try {
+    if (ymd) return new Date(`${iso}T00:00:00.000Z`);
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+}
+
+/** 过期判断：到期日 **包含该日的 23:59:59.999(UTC)** */
+function isExpiredUTC(validUntilISO?: string): boolean {
+  if (!validUntilISO) return false;
+  const parsed = parseISODateSafe(validUntilISO);
+  if (!parsed) return false;
+  const end = new Date(parsed);
+  end.setUTCHours(23, 59, 59, 999);
+  return Date.now() > end.getTime();
+}
 
 export default function MyRewards() {
   const router = useRouter();
@@ -37,8 +69,9 @@ export default function MyRewards() {
   const [listError, setListError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
 
+  const uid = auth.currentUser?.uid || null;
+
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
     if (!uid) return;
 
     setLoading(true);
@@ -64,6 +97,7 @@ export default function MyRewards() {
             value: d.value || "",
             redeemed: d.redeemed || false,
             terms: Array.isArray(d.terms) ? d.terms : undefined,
+            expired: Boolean(d.expired),
           });
         });
         setRewards(items);
@@ -82,7 +116,7 @@ export default function MyRewards() {
     );
 
     return () => unsub();
-  }, [reloadTick]); // re-subscribe on retry
+  }, [reloadTick, uid]); // re-subscribe on retry
 
   // diacritic-insensitive lowercasing
   const diacriticFold = (s: string) =>
@@ -91,9 +125,29 @@ export default function MyRewards() {
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
-  // filter and grouping
+  // ✅ 自动回写：把“已过期但未兑换”的奖励标记为 expired=true（一次遍历批量写回）
+  useEffect(() => {
+    if (!uid || rewards.length === 0) return;
+
+    const updates = rewards
+      .filter((r) => !r.redeemed && isExpiredUTC(r.validUntil) && !r.expired)
+      .map((r) =>
+        updateDoc(doc(db, "users", uid, "rewards", r.id), {
+          expired: true,
+          expiredAt: serverTimestamp(),
+        }).catch((e) => {
+          // 静默失败：不影响 UI
+          console.warn("auto-expire update failed:", r.id, e?.message || e);
+        })
+      );
+
+    if (updates.length > 0) {
+      Promise.all(updates).catch(() => {});
+    }
+  }, [uid, rewards]);
+
+  // filter & grouping（使用 isExpiredUTC + redeemed）
   const { activeList, expiredList } = useMemo(() => {
-    const now = new Date().getTime();
     const queryText = diacriticFold(q);
 
     const match = (r: Reward) =>
@@ -106,11 +160,8 @@ export default function MyRewards() {
     const exp: Reward[] = [];
     for (const r of rewards) {
       if (!match(r)) continue;
-      const until = r.validUntil
-        ? new Date(r.validUntil).getTime()
-        : Number.POSITIVE_INFINITY;
-      const isExpired = r.redeemed === true || until < now;
-      (isExpired ? exp : act).push(r);
+      const expired = r.redeemed === true || isExpiredUTC(r.validUntil);
+      (expired ? exp : act).push(r);
     }
     return { activeList: act, expiredList: exp };
   }, [rewards, q]);
@@ -147,7 +198,18 @@ export default function MyRewards() {
           {r.subtitle ? <Text style={styles.subtitle}>{r.subtitle}</Text> : null}
           {r.validUntil ? (
             <Text style={styles.valid}>
-              Valid until {new Date(r.validUntil).toLocaleDateString("en-AU")}
+              Valid until{" "}
+              {(() => {
+                const d = parseISODateSafe(r.validUntil);
+                return d
+                  ? d.toLocaleDateString("en-AU", {
+                      timeZone: "UTC",
+                      year: "numeric",
+                      month: "long",
+                      day: "2-digit",
+                    })
+                  : new Date(r.validUntil).toLocaleDateString("en-AU");
+              })()}
             </Text>
           ) : null}
         </View>
@@ -190,9 +252,7 @@ export default function MyRewards() {
       {!!listError && !loading ? (
         <View style={styles.emptyBox}>
           <Ionicons name="warning-outline" size={54} color="#EF4444" />
-          <Text style={[styles.emptyText, { marginTop: 10 }]}>
-            {listError}
-          </Text>
+          <Text style={[styles.emptyText, { marginTop: 10 }]}>{listError}</Text>
           <Pressable
             onPress={() => setReloadTick((t) => t + 1)}
             style={{
@@ -207,11 +267,7 @@ export default function MyRewards() {
           </Pressable>
         </View>
       ) : loading ? (
-        <ActivityIndicator
-          style={{ marginTop: 50 }}
-          color="#6B7AFF"
-          size="large"
-        />
+        <ActivityIndicator style={{ marginTop: 50 }} color="#6B7AFF" size="large" />
       ) : (activeList.length + expiredList.length) === 0 ? (
         <View style={styles.emptyBox}>
           <Ionicons name="sparkles-outline" size={60} color="#A0A0A0" />
@@ -302,10 +358,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: "800", color: DEEP },
   subtitle: { color: "#64748b", marginTop: 2 },
   valid: { color: "#1f2937", marginTop: 4, fontWeight: "600" },
-  desc: {
-    marginTop: 8,
-    color: "#374151",
-    lineHeight: 18,
-    fontSize: 14,
-  },
+  desc: { marginTop: 8, color: "#374151", lineHeight: 18, fontSize: 14 },
 });
