@@ -46,6 +46,16 @@ function parseISODateSafe(iso: string): Date | null {
   }
 }
 
+/** Consider reward valid THROUGH the validUntil date (inclusive, until 23:59:59.999 UTC). */
+function isExpiredUTC(validUntilISO?: string): boolean {
+  if (!validUntilISO) return false;
+  const parsed = parseISODateSafe(validUntilISO);
+  if (!parsed) return false;
+  const end = new Date(parsed);
+  end.setUTCHours(23, 59, 59, 999);
+  return Date.now() > end.getTime();
+}
+
 type RewardDoc = {
   title?: string;
   subtitle?: string;
@@ -155,10 +165,17 @@ export default function RewardDetail() {
     return formatValidLocale(fallback, "en-AU");
   }, [validUntilISO]);
 
-  // Confirm + disable while pending (no accidental taps)
+  // expired status
+  const expired = useMemo(() => isExpiredUTC(validUntilISO), [validUntilISO]);
+
+  // Confirm + disable while pending (no accidental taps) + block when expired
   const markRedeemed = () => {
     if (!uid || !rewardId) {
       Alert.alert("Action not available", "Missing user or reward id.");
+      return;
+    }
+    if (expired) {
+      Alert.alert("Unavailable", "This reward has expired and can’t be redeemed.");
       return;
     }
     if (redeemPending) return;
@@ -329,6 +346,11 @@ export default function RewardDetail() {
                   />
                   <Text style={styles.redeemedText}>Redeemed</Text>
                 </View>
+              ) : expired ? (
+                <View style={styles.expiredBtn} pointerEvents="none">
+                  <Ionicons name="alert-circle-outline" size={18} color="#fff" />
+                  <Text style={styles.expiredText}>Expired</Text>
+                </View>
               ) : rewardId ? (
                 <Pressable
                   style={[styles.redeemBtn, redeemPending && { opacity: 0.6 }]}
@@ -475,6 +497,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   redeemText: { color: "#fff", fontWeight: "800" },
+
+  // NEW: expired disabled button
+  expiredBtn: {
+    marginTop: 10,
+    backgroundColor: "#9CA3AF",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    opacity: 0.9,
+  },
+  expiredText: { color: "#fff", fontWeight: "800" },
 
   redeemedTag: {
     marginTop: 10,
