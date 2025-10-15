@@ -572,7 +572,7 @@ export default function ChallengeCheckin() {
           <Ionicons name="chevron-back" size={28} color={TEXT_BLUE} />
         </Pressable>
         <Text numberOfLines={1} style={styles.headerTitle}>
-          challenge check-in
+          Challenge check-in
         </Text>
         <View style={styles.rightPlaceholder} />
       </View>
@@ -742,7 +742,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "900",
     color: TEXT_BLUE,
-    textTransform: "lowercase",
   },
   scroll: { flex: 1, paddingHorizontal: 16 },
   cardSoft: {
