@@ -56,10 +56,6 @@ const CLOUDINARY = {
   UPLOAD_PRESET: process.env.EXPO_PUBLIC_CLOUDINARY_UNSIGNED_PRESET!,
   FOLDER_CHECKIN: "challenge_checkins",
 };
-console.log("CLOUDINARY env check →", {
-  CLOUD_NAME: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME,
-  PRESET: process.env.EXPO_PUBLIC_CLOUDINARY_UNSIGNED_PRESET,
-});
 
 /* ---------- Upload constraints ---------- */
 const MAX_IMAGE_MB = 10;
@@ -152,19 +148,112 @@ const validateSelection = async (mime: string | null, uri: string, webFile: WebF
   return size;
 };
 
+/* ---------- Coupon UI (compact) ---------- */
+const COUPON_BG = "#FFE7E7";
+const COUPON_BORDER = "#FF6B6B";
+const COUPON_LEFT_BG = "#FFF1F1";
+const COUPON_TEXT = "#E02424";
+
+function CouponCard({
+  amountText,
+  ruleText,
+  validityText,
+}: {
+  amountText: string;
+  ruleText: string;
+  validityText?: string;
+}) {
+  return (
+    <View style={coupon.wrap}>
+      <View style={[coupon.card, SHADOW]}>
+        <View style={coupon.left}>
+          <Text style={coupon.amount} numberOfLines={1}>
+            {amountText}
+          </Text>
+        </View>
+
+        <View style={coupon.mid}>
+          <View style={coupon.dash} />
+          <View style={[coupon.notch, coupon.notchTop]} />
+          <View style={[coupon.notch, coupon.notchBottom]} />
+        </View>
+
+        <View style={coupon.right}>
+          <Text style={coupon.rule} numberOfLines={1}>
+            {ruleText}
+          </Text>
+          {!!validityText && (
+            <Text style={coupon.validity} numberOfLines={1}>
+              {validityText}
+            </Text>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const coupon = StyleSheet.create({
+  wrap: { marginTop: 10, borderRadius: 14, overflow: "hidden" },
+  card: {
+    height: 88,
+    flexDirection: "row",
+    alignItems: "stretch",
+    backgroundColor: COUPON_BG,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COUPON_BORDER,
+  },
+
+  left: {
+    width: "32%",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COUPON_LEFT_BG,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+    paddingHorizontal: 6,
+  },
+
+  amount: { fontSize: 20, fontWeight: "900", color: COUPON_TEXT },
+  mid: { width: 14, alignItems: "center", justifyContent: "center", position: "relative" },
+  dash: {
+    height: "74%",
+    width: 0,
+    borderLeftWidth: 1.5,
+    borderColor: COUPON_BORDER,
+    borderStyle: "dashed",
+  },
+
+  notch: {
+    position: "absolute",
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: BG,
+    left: -2,
+  },
+
+  notchTop: { top: -9 },
+  notchBottom: { bottom: -9 },
+
+  right: { flex: 1, justifyContent: "center", paddingHorizontal: 12, gap: 4 },
+  rule: { fontSize: 16, fontWeight: "800", color: COUPON_TEXT },
+  validity: { fontSize: 12, fontWeight: "700", color: COUPON_TEXT, opacity: 0.9 },
+});
+
+
 /* ---------- Component ---------- */
 export default function ChallengeCheckin() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // Keep auth uid in state so effects re-run on login/logout
   const [uid, setUid] = useState<string | null>(auth.currentUser?.uid ?? null);
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => setUid(user?.uid ?? null));
     return unsub;
   }, []);
 
-  // Route params
   const params = useLocalSearchParams<{
     challengeId?: string;
     category?: string;
@@ -174,7 +263,6 @@ export default function ChallengeCheckin() {
     joined?: string;
   }>();
 
-  // Params -> state
   const routeCid =
     typeof params.challengeId === "string" && params.challengeId.trim()
       ? params.challengeId
@@ -184,7 +272,6 @@ export default function ChallengeCheckin() {
     typeof params.category === "string" ? params.category : ""
   );
 
-  // Challenge meta & progress
   const [title, setTitle] = useState(params.title || "Daily 10k steps");
   const [totalDaysNum, setTotalDaysNum] = useState(
     Math.max(1, Number(params.totalDays || 20) || 20)
@@ -193,20 +280,17 @@ export default function ChallengeCheckin() {
   const [progressPct, setProgressPct] = useState(0);
   const [checkedToday, setCheckedToday] = useState(false);
 
-  // Check-in inputs
   const [note, setNote] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoLocalPreview, setPhotoLocalPreview] = useState<string | null>(null);
 
-  // Reward (from public challenge doc)
   const [rewardName, setRewardName] = useState("");
   const [rewardSubtitle, setRewardSubtitle] = useState("");
   const [rewardValue, setRewardValue] = useState("");
   const [rewardDesc, setRewardDesc] = useState("");
   const [rewardValidUntil, setRewardValidUntil] = useState("");
 
-  // Calendar state
   const now = new Date();
   const [displayYear] = useState(now.getFullYear());
   const [displayMonth] = useState(now.getMonth());
@@ -315,7 +399,7 @@ export default function ChallengeCheckin() {
     return () => unsub();
   }, [uid, cid, category, totalDaysNum, displayYear, displayMonth]);
 
-  /* ---------- Subscribe to public challenge for reward/joined ---------- */
+  /* ---------- Subscribe public challenge ---------- */
   useEffect(() => {
     const cat = category || (typeof params.category === "string" ? params.category : "");
     if (!cid || !cat) return;
@@ -337,15 +421,9 @@ export default function ChallengeCheckin() {
     return () => unsub();
   }, [cid, category]);
 
-  type LastUploadArgs = {
-    localUri: string;
-    webFile: WebFileLike;
-    mime: string | null;
-    folder: string;
-  };
   const lastUploadedUrlRef = useRef<string | null>(null);
 
-  // Pick one image from gallery
+  // Pick one image
   const pickOneImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -394,7 +472,7 @@ export default function ChallengeCheckin() {
       const url = await uploadToCloudinary(
         picked.localUri,
         picked.mime,
-        (picked.webFile as any as File | Blob | null),
+        (picked.webFile as any), // Blob | null on web, null on native
         CLOUDINARY.FOLDER_CHECKIN,
         setPhotoUploading
       );
@@ -405,7 +483,7 @@ export default function ChallengeCheckin() {
     }
   };
 
-  /* ---------- Handle check-in (only updates main doc) ---------- */
+  /* ---------- Handle check-in ---------- */
   const onCheckIn = async () => {
     const today = new Date();
     const todayStr = ymd(today);
@@ -527,31 +605,13 @@ export default function ChallengeCheckin() {
           <Text style={[styles.small, { marginTop: 6 }]}>{remaining} days remaining</Text>
         </View>
 
-        {/* Reward card */}
+        {/* Coupon-style Reward */}
         {(rewardName || rewardSubtitle || rewardValue || rewardDesc || rewardValidUntil) && (
-          <View style={[styles.rewardCard, SHADOW]}>
-            <Text style={styles.rewardTitle}>
-              {rewardName ? `Reward: ${rewardName}` : "Reward"}
-            </Text>
-            {rewardSubtitle && (
-              <Text style={[styles.small, { marginTop: 4 }]}>{rewardSubtitle}</Text>
-            )}
-            <View style={styles.rewardRow}>
-              {rewardValue && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{rewardValue}</Text>
-                </View>
-              )}
-              <View style={styles.illus} />
-            </View>
-            {(rewardDesc || rewardValidUntil) && (
-              <Text style={[styles.small, { marginTop: 10 }]}>
-                {rewardDesc}
-                {rewardDesc && rewardValidUntil ? "\n" : ""}
-                {rewardValidUntil ? formatValidUntil(rewardValidUntil) : ""}
-              </Text>
-            )}
-          </View>
+          <CouponCard
+            amountText={rewardValue || "¥5"}
+            ruleText={rewardName || rewardSubtitle || "Available on orders over 500"}
+            validityText={rewardValidUntil ? formatValidUntil(rewardValidUntil) : undefined}
+          />
         )}
 
         {/* Calendar */}
@@ -612,7 +672,7 @@ export default function ChallengeCheckin() {
 
           <Text style={[styles.label, { marginTop: 16 }]}>Add photo (Optional)</Text>
           <Pressable
-            onPress={onPickPhoto}   
+            onPress={onPickPhoto}
             disabled={locked || photoUploading}
             style={[styles.photoBox, SHADOW]}
           >
