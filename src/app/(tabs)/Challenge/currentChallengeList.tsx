@@ -1,4 +1,3 @@
-// app/(tabs)/Challenge/currentChallengeList.tsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   View,
@@ -15,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { db, auth } from "../../../firebase";
 import {
   collection,
@@ -23,11 +23,6 @@ import {
   onSnapshot,
   doc,
   getDoc,
-  deleteDoc,
-  setDoc,
-  runTransaction,
-  updateDoc,
-  arrayRemove
 } from "firebase/firestore";
 
 /* ---------- Types ---------- */
@@ -42,8 +37,8 @@ type Item = {
   category?: string;
   status?: "active" | "completed";
   checkedToday?: boolean;
-  lastPhoto?: string; 
-  lastNote?: string; 
+  lastPhoto?: string;
+  lastNote?: string;
 };
 
 /* ---------- Constants ---------- */
@@ -80,12 +75,31 @@ export default function CurrentChallengeList() {
   const [undoData, setUndoData] = useState<{
     uid: string;
     docId: string;
-    docPath: string;
-    payload: any;
   } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // debounce search input (250ms)
+  const [hiddenCompletedIds, setHiddenCompletedIds] = useState<Set<string>>(new Set());
+  const HIDDEN_KEY = (uid?: string | null) => `hiddenCompleted:${uid ?? "anon"}`;
+
+  useEffect(() => {
+    const uid = auth.currentUser?.uid ?? null;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(HIDDEN_KEY(uid));
+        if (raw) {
+          const arr: string[] = JSON.parse(raw);
+          setHiddenCompletedIds(new Set(arr));
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const persistHidden = async (uid: string | null | undefined, setObj: Set<string>) => {
+    try {
+      await AsyncStorage.setItem(HIDDEN_KEY(uid), JSON.stringify([...setObj]));
+    } catch {}
+  };
+
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -136,7 +150,7 @@ export default function CurrentChallengeList() {
         title: d.title || "Untitled Challenge",
         icon: d.icon || "🔥",
         days: totalDays,
-        joined: 0, // placeholder, 后面补
+        joined: 0,
         percent,
         reward: "",
         category: d.category || "",
@@ -238,16 +252,16 @@ export default function CurrentChallengeList() {
     };
   }, []);
 
-  /* ---------- Search ---------- */
+  /* ---------- Search + hide filter ---------- */
   const filtered = useMemo(() => {
     const kw = qDebounced;
-    if (!kw) return { ongoing, completed };
-    const match = (x: Item) => x.title.toLowerCase().includes(kw);
-    return {
-      ongoing: ongoing.filter(match),
-      completed: completed.filter(match),
-    };
-  }, [qDebounced, ongoing, completed]);
+    const match = (x: Item) => !kw || x.title.toLowerCase().includes(kw);
+
+    const ongoingFiltered = ongoing.filter(match);
+    const completedFiltered = completed.filter(match).filter((x) => !hiddenCompletedIds.has(x.id));
+
+    return { ongoing: ongoingFiltered, completed: completedFiltered };
+  }, [qDebounced, ongoing, completed, hiddenCompletedIds]);
 
   /* ---------- Navigation ---------- */
   const toCheckin = (c: Item) => {
@@ -276,72 +290,47 @@ export default function CurrentChallengeList() {
     });
   };
 
-  /* ---------- Delete completed with undo ---------- */
+  /* ---------- UI-only hide for completed ---------- */
   const handleDeleteCompleted = async (c: Item) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    const uid = auth.currentUser?.uid ?? null;
 
     const ok = await new Promise<boolean>((resolve) => {
       Alert.alert(
-        "Delete completed challenge",
-        `This will remove "${c.title}" and withdraw you from it.`,
+        "Hide completed challenge",
+        `This will hide "${c.title}" from the list. No data will be deleted.`,
         [
           { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-          { text: "Delete", style: "destructive", onPress: () => resolve(true) },
+          { text: "Hide", style: "destructive", onPress: () => resolve(true) },
         ]
       );
     });
     if (!ok) return;
 
-    const userRef = doc(db, "userChallenges", uid, "active", c.id);
-    const pubRef =
-      c.category ? doc(db, "challenges", c.category, "items", c.id) : null;
+    setHiddenCompletedIds((prev) => {
+      const next = new Set(prev);
+      next.add(c.id);
+      persistHidden(uid, next);
+      return next;
+    });
 
-    try {
-      const snap = await getDoc(userRef);
-      const payload = snap.exists() ? snap.data() : null;
-
-      await runTransaction(db, async (tx) => {
-        const pubSnap = pubRef ? await tx.get(pubRef) : null;
-        tx.delete(userRef);
-
-        if (pubRef && pubSnap?.exists()) {
-          const data = pubSnap.data() as any;
-          const participants: string[] = Array.isArray(data.participants)
-            ? data.participants
-            : [];
-          const alreadyIn = participants.includes(uid);
-          const currentJoined = Number(data.joined ?? 0) || 0;
-          const newJoined = alreadyIn ? Math.max(0, currentJoined - 1) : currentJoined;
-
-          tx.update(pubRef, {
-            participants: arrayRemove(uid),
-            joined: newJoined,
-          });
-        }
-      });
-
-      if (payload) {
-        setUndoData({
-          uid,
-          docId: c.id,
-          docPath: `userChallenges/${uid}/active/${c.id}`,
-          payload,
-        });
-        if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-        undoTimerRef.current = setTimeout(() => setUndoData(null), 6000);
-      }
-    } catch (e: any) {
-      console.error("delete+withdraw error:", e);
-      Alert.alert("Delete failed", e?.message || "Please try again later.");
-    }
+    setUndoData({
+      uid: uid || "",
+      docId: c.id,
+    });
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoTimerRef.current = setTimeout(() => setUndoData(null), 6000);
   };
 
   const undoDelete = async () => {
     if (!undoData) return;
+    const uid = auth.currentUser?.uid ?? null;
     try {
-      const { uid, docId, payload } = undoData;
-      await setDoc(doc(db, "userChallenges", uid, "active", docId), payload);
+      setHiddenCompletedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(undoData.docId);
+        persistHidden(uid, next);
+        return next;
+      });
     } finally {
       setUndoData(null);
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
@@ -350,18 +339,15 @@ export default function CurrentChallengeList() {
 
   /* ---------- Card Renderer ---------- */
   const renderCard = (c: Item, isCompleted: boolean) => {
-
     const photoUri = toDisplayJpg(c.lastPhoto || "");
 
     return (
       <View key={`${isCompleted ? "done-" : "go-"}${c.id}`} style={styles.card}>
-        {/* title */}
         <Text style={styles.cardTitle}>
           <Text style={{ fontSize: 22 }}>{c.icon} </Text>
           {c.title}
         </Text>
 
-        {/* image片 */}
         {!!photoUri && (
           <View
             style={{
@@ -378,14 +364,12 @@ export default function CurrentChallengeList() {
           </View>
         )}
 
-        {/* note */}
         {!!c.lastNote && (
           <Text style={{ marginTop: 8, color: "#475569", fontStyle: "italic" }} numberOfLines={2}>
             “{c.lastNote}”
           </Text>
         )}
 
-        {/* meta */}
         <View style={styles.metaRow}>
           <View className="row" style={styles.metaItem}>
             <Ionicons name="time-outline" size={18} color="#000" />
@@ -397,7 +381,6 @@ export default function CurrentChallengeList() {
           </View>
         </View>
 
-        {/* progress */}
         <Text style={styles.progressLabel}>Progress</Text>
         <Text style={styles.percentCenter}>{isCompleted ? 100 : c.percent}%</Text>
         <View style={styles.progressBar}>
@@ -406,7 +389,6 @@ export default function CurrentChallengeList() {
           />
         </View>
 
-        {/* bottom */}
         <View style={styles.bottomRow}>
           {c.reward ? (
             <View style={styles.rewardChip}>
@@ -431,7 +413,7 @@ export default function CurrentChallengeList() {
                 onPress={() => handleDeleteCompleted(c)}
                 android_ripple={{ color: "#FEE2E2" }}
               >
-                <Text style={[styles.actionText, { textTransform: "none" }]}>Delete</Text>
+                <Text style={[styles.actionText, { textTransform: "none" }]}>Hide</Text>
               </Pressable>
             </View>
           ) : (
@@ -454,7 +436,6 @@ export default function CurrentChallengeList() {
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <View style={styles.container}>
-        {/* Header */}
         <View style={styles.headerRow}>
           <Pressable hitSlop={10} style={styles.backBtn} onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={24} color="#6B7AFF" />
@@ -463,7 +444,6 @@ export default function CurrentChallengeList() {
           <View style={{ width: 24 }} />
         </View>
 
-        {/* Search */}
         <View style={styles.searchWrap}>
           <Ionicons name="search" size={18} color="#99A2C0" style={{ marginHorizontal: 10 }} />
           <TextInput
@@ -481,7 +461,6 @@ export default function CurrentChallengeList() {
           )}
         </View>
 
-        {/* Error banner */}
         {!!listError && (
           <View style={styles.errorBar}>
             <Ionicons name="warning-outline" size={16} color="#fff" />
@@ -494,7 +473,6 @@ export default function CurrentChallengeList() {
           </View>
         )}
 
-        {/* Content */}
         {loading ? (
           <ActivityIndicator style={{ marginTop: 80 }} color={DEEP} size="large" />
         ) : (
@@ -520,11 +498,10 @@ export default function CurrentChallengeList() {
           </ScrollView>
         )}
 
-        {/* Snackbar / Undo */}
         {!!undoData && (
           <View style={styles.snackbar}>
             <Text style={styles.snackbarText} numberOfLines={2}>
-              Deleted. Undo?
+              Hidden. Undo?
             </Text>
             <Pressable onPress={undoDelete} hitSlop={8}>
               <Text style={styles.snackbarAction}>UNDO</Text>
@@ -575,7 +552,6 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, height: "100%", fontSize: 16, color: "#223" },
 
-  // error banner
   errorBar: {
     marginHorizontal: 18,
     backgroundColor: "#EF4444",
@@ -661,7 +637,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#DC2626",
   },
 
-  // snackbar
   snackbar: {
     position: "absolute",
     left: 18,
