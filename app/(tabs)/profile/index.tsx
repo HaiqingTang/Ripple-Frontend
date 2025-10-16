@@ -250,14 +250,10 @@ export default function ProfilePage() {
 
     // Navigate to post detail page
     const handlePostPress = (post: Post) => {
-        router.push('/Discussion');
-        
-        setTimeout(() => {
-            router.push({
-                pathname: "/Discussion/detail",
-                params: { id: post.id }
-            });
-        }, 100);
+        router.push({
+            pathname: "/Discussion/detail",
+            params: { id: post.id }
+        });
     };
 
     const handleTabPress = (tab: TabType) => {
