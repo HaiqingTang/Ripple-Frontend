@@ -2,6 +2,11 @@ import 'dotenv/config';
 
 export default {
     scheme: "ripple",
+    plugins: [
+        "expo-font",
+        "expo-router",
+        "expo-web-browser"
+    ],
     extra: {
         firebaseApiKey: process.env.REACT_APP_FIREBASE_API_KEY,
         authDomain: process.env.REACT_APP_AUTH_DOMAIN,
