@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import {
   View,
@@ -19,6 +18,7 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useAppContext } from "@/context/AppContext";
 import { useDiscussion } from "./_layout";
+import * as ImageManipulator from "expo-image-manipulator";
 
 export default function CreatePostScreen() {
   const colorScheme = useColorScheme();
@@ -54,23 +54,34 @@ export default function CreatePostScreen() {
   // Confirm publish
   const confirmPublish = async () => {
     if (isPublishing) return; // Prevent double-click
-    
+  
     setIsPublishing(true);
-    
+  
     try {
+      // Extract base64 data from the image URI if an image is selected
+      let base64Image = null;
+      if (image) {
+          const match = image.match(/^data:image\/[a-z]+;base64,(.+)$/);
+          if (match && match[1]) {
+              base64Image = match[1]; // Extract the base64 string
+          }
+      }
+  
+      // Add the image base64 string to the post data
       const newPost = await addPost({
-        title,
-        content,
-        authorId: userId,
-        author: fullName,
+          title,
+          content,
+          authorId: userId,
+          author: fullName,
+          imageBase64: base64Image ?? undefined,
       });
-
+  
       setShowConfirmModal(false);
-      
+  
       // Navigate to the post detail page with the actual Firebase-generated ID
       router.replace({
-        pathname: "/Discussion/detail",
-        params: { id: newPost.id },
+          pathname: "/Discussion/detail",
+          params: { id: newPost.id },
       });
     } catch (error) {
       console.error("Error publishing post:", error);
@@ -84,11 +95,45 @@ export default function CreatePostScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 1,
+      quality: 0.5,
+      base64: true,
     });
 
     if (!result.canceled) {
-      setImage(result.assets[0].uri);
+      const { uri, base64 } = result.assets[0];
+
+      try {
+        // Resize and compress the image
+        const manipulatedImage = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 800 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+
+        // Convert the manipulated image to base64
+        const response = await fetch(manipulatedImage.uri);
+        const blob = await response.blob();
+        const reader = new FileReader();
+
+        reader.onloadend = () => {
+          const base64String = (reader.result as string).split(",")[1]; // Extract base64 part
+          
+          if (base64String.length > 1048487) {
+            Alert.alert(
+              "Error",
+              "The selected image is too large. Please choose a smaller image."
+            );
+            return;
+          }
+
+          setImage(`data:image/jpeg;base64,${base64String}`);
+        };
+
+        reader.readAsDataURL(blob);
+      } catch (error) {
+        console.error("Error resizing image:", error);
+        Alert.alert("Error", "Failed to process the image. Please try again.");
+      }
     }
   };
 
@@ -194,7 +239,13 @@ export default function CreatePostScreen() {
           <ThemedText style={{ color: colors.tint }}>Add Image</ThemedText>
         </TouchableOpacity>
 
-        {image && <Image source={{ uri: image }} style={styles.imagePreview} />}
+        {/* Conditionally render the image */}
+        {image && (
+          <Image 
+            source={{ uri: image }} 
+            style={styles.imagePreview} 
+          />
+        )}
 
         {/* Add address */}
         <TouchableOpacity

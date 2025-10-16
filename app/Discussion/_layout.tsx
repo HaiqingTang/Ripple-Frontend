@@ -40,6 +40,7 @@ type Post = {
   likes: string[]; // Array of user IDs who liked the post
   likeCount: number;
   commentCount: number;
+  imageBase64?: string; // optional imageBase64 property
 };
 
 type DiscussionContextType = {
@@ -128,6 +129,7 @@ export default function DiscussionLayout() {
           likes: data.likes || [],
           likeCount: data.likeCount || 0,
           commentCount: data.commentCount || 0,
+          imageBase64: data.imageBase64 || undefined, 
         });
       });
       
@@ -311,7 +313,12 @@ export default function DiscussionLayout() {
   };
 
   // Helper functions
-  const getPost = (id: string) => posts.find(x => x.id === id);
+  function getPost(postId: string): Post | undefined {
+    // Example of fetching post data
+    const post = posts.find((p) => p.id === postId);
+    return post ? { ...post, imageBase64: post.imageBase64 } : undefined;
+  }
+
   const getCommentsForPost = (postId: string) => comments.filter(c => c.postId === postId);
   const isPostLiked = (postId: string): boolean => {
     const post = posts.find(p => p.id === postId);

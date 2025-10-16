@@ -60,7 +60,6 @@ export default function DiscussionDetail() {
       setText("");
     } catch (error) {
       console.error('Error adding comment:', error);
-      // You could show an error message to the user here
     }
   }, [text, post, addComment]);
 
@@ -72,6 +71,11 @@ export default function DiscussionDetail() {
     );
   }
 
+  // Construct the image URI from imageBase64
+  const imageUri = post.imageBase64 
+    ? `data:image/jpeg;base64,${post.imageBase64}` 
+    : undefined;
+
   return (
     <View style={sharedStyles.container}>
       <ScrollView style={sharedStyles.contentPadding}>
@@ -79,6 +83,14 @@ export default function DiscussionDetail() {
         <Text style={sharedStyles.postMeta}>
           {post.author} • {new Date(post.createdAt).toLocaleString()}
         </Text>
+
+        {/* Display the image if available */}
+        {imageUri && (
+          <Image 
+            source={{ uri: imageUri }}
+            style={{ width: "100%", height: 200, borderRadius: 8, marginTop: 10 }}
+          />
+        )}
 
         <PostStats 
           postId={post.id} 
