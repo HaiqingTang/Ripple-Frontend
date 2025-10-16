@@ -250,11 +250,8 @@ export default function ProfilePage() {
 
     // Navigate to post detail page
     const handlePostPress = (post: Post) => {
-        // First navigate to Discussion index, then push detail
-        // This ensures you're in the Discussion stack properly
         router.push('/Discussion');
         
-        // Then navigate to the detail with a small delay to ensure stack is ready
         setTimeout(() => {
             router.push({
                 pathname: "/Discussion/detail",
