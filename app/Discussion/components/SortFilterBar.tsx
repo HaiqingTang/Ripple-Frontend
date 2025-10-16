@@ -43,7 +43,7 @@ const SortFilterBar: React.FC<Props> = React.memo(
                   paddingHorizontal: 10,
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: active ? COLORS.primary : COLORS.border,
+                  borderColor: active ? COLORS.primary : COLORS.grayAvatar,
                   backgroundColor: active ? COLORS.primary : "transparent",
                 }}
               >
@@ -80,8 +80,8 @@ const SortFilterBar: React.FC<Props> = React.memo(
                     paddingHorizontal: 10,
                     borderRadius: 999,
                     borderWidth: 1,
-                    borderColor: active ? COLORS.primary : COLORS.border,
-                    backgroundColor: active ? COLORS.primaryLight : "transparent",
+                    borderColor: active ? COLORS.primary : COLORS.grayBorder,
+                    backgroundColor: active ? COLORS.heroBackground : "transparent",
                   }}
                 >
                   <Text
@@ -106,15 +106,12 @@ const SortFilterBar: React.FC<Props> = React.memo(
               marginTop: 4,
               paddingVertical: 8,
               paddingHorizontal: 12,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              borderRadius: 12,
             }}
           >
             <Text
               style={{
                 fontSize: 12,
-                color: COLORS.muted,
+                color: COLORS.textMuted,
                 marginBottom: 4,
                 fontWeight: "600",
               }}
@@ -127,7 +124,7 @@ const SortFilterBar: React.FC<Props> = React.memo(
                   paddingVertical: 6,
                   paddingHorizontal: 10,
                   borderRadius: 8,
-                  backgroundColor: COLORS.bgMuted,
+                  backgroundColor: COLORS.grayLight,
                 }}
                 
                 onPress={() => onQueryChange("")}
@@ -135,11 +132,11 @@ const SortFilterBar: React.FC<Props> = React.memo(
                 <Text style={{ fontSize: 12, color: COLORS.text }}>Clear</Text>
               </TouchableOpacity>
               <Text
-                
-                style={{ fontSize: 12, color: query ? COLORS.text : COLORS.muted }}
+
+                style={{ fontSize: 12, color: query ? COLORS.text : COLORS.textSecondary }}
                 numberOfLines={1}
               >
-                {query ? `“${query}”` : "Tip: set keyword in code or hook"}
+                {query ? `“${query}”` : "Tip: Type a keyword to filter"}
               </Text>
             </View>
           </View>
