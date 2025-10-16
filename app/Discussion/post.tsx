@@ -39,6 +39,7 @@ export default function CreatePostScreen() {
 
   // Back to discussion/search page
   const handleGoBack = () => {
+    if (isPublishing) return; // avoid leaving while posting
     router.replace("/Discussion");
   };
 
@@ -61,31 +62,55 @@ export default function CreatePostScreen() {
       // Extract base64 data from the image URI if an image is selected
       let base64Image = null;
       if (image) {
-          const match = image.match(/^data:image\/[a-z]+;base64,(.+)$/);
-          if (match && match[1]) {
-              base64Image = match[1]; // Extract the base64 string
-          }
+        const match = image.match(/^data:image\/[a-z]+;base64,(.+)$/);
+        if (match && match[1]) {
+          base64Image = match[1]; // Extract the base64 string
+        }
       }
   
       // Add the image base64 string to the post data
       const newPost = await addPost({
-          title,
-          content,
-          authorId: userId,
-          author: fullName,
-          imageBase64: base64Image ?? undefined,
+        title,
+        content,
+        authorId: userId,
+        author: fullName,
+        imageBase64: base64Image ?? undefined,
+        
+        // address: address || undefined,
       });
   
       setShowConfirmModal(false);
-  
-      // Navigate to the post detail page with the actual Firebase-generated ID
-      router.replace({
-          pathname: "/Discussion/detail",
-          params: { id: newPost.id },
-      });
+
+      
+      Alert.alert(
+        "Published",
+        "Your post has been published successfully.",
+        [
+          {
+            text: "View post",
+            onPress: () =>
+              router.replace({
+                pathname: "/Discussion/detail",
+                params: { id: newPost.id },
+              }),
+          },
+          {
+            text: "Back to list",
+            onPress: () => router.replace("/Discussion"),
+          },
+        ],
+        { cancelable: false }
+      );
+
+      
+      setTitle("");
+      setContent("");
+      setImage(null);
+      setAddress("");
     } catch (error) {
       console.error("Error publishing post:", error);
       Alert.alert("Error", "Failed to publish the post. Please try again.");
+    } finally {
       setIsPublishing(false);
     }
   };
@@ -100,7 +125,7 @@ export default function CreatePostScreen() {
     });
 
     if (!result.canceled) {
-      const { uri, base64 } = result.assets[0];
+      const { uri } = result.assets[0];
 
       try {
         // Resize and compress the image
@@ -162,7 +187,7 @@ export default function CreatePostScreen() {
       {/* Head navigation bar */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
+          <TouchableOpacity style={styles.backButton} onPress={handleGoBack} disabled={isPublishing}>
             <Ionicons name="close" size={24} color={colors.tint} />
           </TouchableOpacity>
 
@@ -235,6 +260,7 @@ export default function CreatePostScreen() {
         <TouchableOpacity
           style={[styles.actionButton, { borderColor: colors.tint }]}
           onPress={handleImageSelect}
+          disabled={isPublishing}
         >
           <ThemedText style={{ color: colors.tint }}>Add Image</ThemedText>
         </TouchableOpacity>
@@ -251,6 +277,7 @@ export default function CreatePostScreen() {
         <TouchableOpacity
           style={[styles.actionButton, { borderColor: colors.tint }]}
           onPress={handleAddressSelect}
+          disabled={isPublishing}
         >
           <ThemedText style={{ color: colors.tint }}>Select Address</ThemedText>
         </TouchableOpacity>
