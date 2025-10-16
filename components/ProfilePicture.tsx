@@ -186,6 +186,7 @@ export default function ProfilePicture({
         onClose={handleCloseModal}
         onTakePhoto={handleTakePhoto}
         onChooseFromGallery={handleChooseFromGallery}
+        title="Change Profile Picture"
       />
     </View>
   );

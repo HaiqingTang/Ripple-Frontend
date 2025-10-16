@@ -10,10 +10,15 @@ import {
 	FlatList,
 	ImageSourcePropType,
 	ActivityIndicator,
+	Modal,
+	TouchableWithoutFeedback,
+	Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppContext } from "@/context/AppContext";
 import { useRouter } from 'expo-router';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import pic1 from '@/assets/images/profile-post-1.png';
 import pic2 from '@/assets/images/profile-post-2.png';
 import pic3 from '@/assets/images/profile-post-3.png';
@@ -108,6 +113,9 @@ export default function ProfilePage() {
 
 	// Tab selection state
 	const [selectedTab, setSelectedTab] = useState<TabType>("Posts");
+
+	// Settings modal state
+	const [settingsModalVisible, setSettingsModalVisible] = useState(false);
 
 	// API Functions (replace with your actual API endpoints)
 	const fetchUserPosts = async (): Promise<Post[]> => {
@@ -206,6 +214,35 @@ export default function ProfilePage() {
 		setSelectedTab(tab);
 	};
 
+	const handleSignOut = () => {
+		setSettingsModalVisible(false);
+		Alert.alert(
+			'Sign Out',
+			'Are you sure you want to sign out?',
+			[
+				{
+					text: 'Cancel',
+					style: 'cancel',
+				},
+				{
+					text: 'Sign Out',
+					style: 'destructive',
+					onPress: async () => {
+						try {
+							await signOut(auth);
+							// AppContext will automatically detect auth state change
+							// User will be redirected to login page
+							router.replace('/auth/login');
+						} catch (error) {
+							console.error('Sign out error:', error);
+							Alert.alert('Error', 'Failed to sign out. Please try again.');
+						}
+					},
+				},
+			]
+		);
+	};
+
 	return (
 		<ScrollView
 			style={styles.container}
@@ -217,6 +254,7 @@ export default function ProfilePage() {
 			<View style={styles.header}>
 				<Text style={styles.headerTitle}>Profile</Text>
 				<TouchableOpacity
+					onPress={() => setSettingsModalVisible(true)}
 					accessibilityRole="button"
 					accessibilityLabel="Settings"
 					hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -302,6 +340,43 @@ export default function ProfilePage() {
 					/>
 				)}
 			</View>
+
+			{/* Settings Modal */}
+			<Modal
+				visible={settingsModalVisible}
+				animationType="fade"
+				transparent={true}
+				onRequestClose={() => setSettingsModalVisible(false)}
+			>
+				<TouchableWithoutFeedback onPress={() => setSettingsModalVisible(false)}>
+					<View style={styles.modalOverlay}>
+						<TouchableWithoutFeedback>
+							<View style={styles.settingsModal}>
+								<Text style={styles.modalTitle}>Settings</Text>
+
+								<TouchableOpacity
+									style={styles.settingsOption}
+									onPress={handleSignOut}
+									accessibilityRole="button"
+									accessibilityLabel="Sign out of your account"
+								>
+									<Ionicons name="log-out-outline" size={22} color="#FF3B30" />
+									<Text style={styles.signOutText}>Sign Out</Text>
+								</TouchableOpacity>
+
+								<TouchableOpacity
+									style={styles.cancelButton}
+									onPress={() => setSettingsModalVisible(false)}
+									accessibilityRole="button"
+									accessibilityLabel="Cancel"
+								>
+									<Text style={styles.cancelText}>Cancel</Text>
+								</TouchableOpacity>
+							</View>
+						</TouchableWithoutFeedback>
+					</View>
+				</TouchableWithoutFeedback>
+			</Modal>
 		</ScrollView>
 	);
 }
@@ -462,5 +537,49 @@ const styles = StyleSheet.create({
 		color: 'white',
 		fontSize: 14,
 		fontWeight: '600',
+	},
+	modalOverlay: {
+		flex: 1,
+		backgroundColor: 'rgba(0, 0, 0, 0.5)',
+		justifyContent: 'flex-end',
+	},
+	settingsModal: {
+		backgroundColor: 'white',
+		borderTopLeftRadius: 20,
+		borderTopRightRadius: 20,
+		paddingHorizontal: 20,
+		paddingTop: 20,
+		paddingBottom: 40,
+	},
+	modalTitle: {
+		fontSize: 18,
+		fontWeight: '600',
+		color: '#333',
+		marginBottom: 20,
+		textAlign: 'center',
+	},
+	settingsOption: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingVertical: 16,
+		paddingHorizontal: 20,
+		backgroundColor: '#FFF5F5',
+		borderRadius: 12,
+		marginBottom: 12,
+	},
+	signOutText: {
+		fontSize: 16,
+		fontWeight: '600',
+		color: '#FF3B30',
+		marginLeft: 12,
+	},
+	cancelButton: {
+		paddingVertical: 16,
+		alignItems: 'center',
+	},
+	cancelText: {
+		fontSize: 16,
+		color: '#666',
+		fontWeight: '500',
 	},
 });

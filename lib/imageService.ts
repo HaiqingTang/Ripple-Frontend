@@ -212,7 +212,22 @@ export const deleteProfilePicture = async (): Promise<boolean> => {
   }
 };
 
+/**
+ * Creates a data URI from a base64 string.
+ *
+ * @param base64String - Pure base64 string WITHOUT data URI prefix
+ *                       (e.g., "/9j/4AAQSkZJRg..." not "data:image/jpeg;base64,...")
+ * @returns Complete data URI string ready for Image component
+ *
+ * Note: Both 'journalPhoto' and 'imageBase64' fields in Firestore store pure base64.
+ * Legacy logs may have 'imageBase64', newer ones use 'journalPhoto'.
+ * This function handles both cases gracefully.
+ */
 export const createDataUri = (base64String: string): string => {
+  // Handle case where data URI prefix is already present
+  if (base64String?.startsWith('data:')) {
+    return base64String;
+  }
   return `data:image/jpeg;base64,${base64String}`;
 };
 
@@ -221,4 +236,73 @@ export const validateImageFile = (fileSizeInBytes: number): { isValid: boolean; 
     return { isValid: false, error: 'Image file too large. Please choose a smaller image.' };
   }
   return { isValid: true };
+};
+
+// Journal Image Functions
+export const pickJournalImageFromGallery = async (): Promise<ImagePickerResult> => {
+  try {
+    // Check media library permissions first
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      return { success: false, error: 'Media library permission is required to select photos' };
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.6, // Aggressive compression to reduce file size
+      base64: true,
+    });
+
+    if (result.canceled) {
+      return { success: false, canceled: true };
+    }
+
+    const imageUri = result.assets[0].uri;
+    const base64Data = result.assets[0].base64;
+
+    return {
+      success: true,
+      imageUri,
+      base64: base64Data || undefined
+    };
+  } catch (error) {
+    console.error('Error picking journal image from gallery:', error);
+    return { success: false, error: 'Failed to pick image from gallery' };
+  }
+};
+
+export const takeJournalPicture = async (): Promise<ImagePickerResult> => {
+  try {
+    // Check camera permissions first
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      return { success: false, error: 'Camera permission is required to take photos' };
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.6, // Aggressive compression to reduce file size
+      base64: true,
+    });
+
+    if (result.canceled) {
+      return { success: false, canceled: true };
+    }
+
+    const imageUri = result.assets[0].uri;
+    const base64Data = result.assets[0].base64;
+
+    return {
+      success: true,
+      imageUri,
+      base64: base64Data || undefined
+    };
+  } catch (error) {
+    console.error('Error taking journal picture:', error);
+    return { success: false, error: 'Failed to take picture' };
+  }
 };

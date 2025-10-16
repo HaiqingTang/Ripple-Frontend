@@ -4,7 +4,7 @@ import {
 	Text,
 	ScrollView,
 	TouchableOpacity,
-	Image,
+	Image as RNImage,
 	Dimensions,
 	KeyboardAvoidingView,
 	Platform,
@@ -15,6 +15,7 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useLocalSearchParams, useRouter} from 'expo-router';
 import {Ionicons} from '@expo/vector-icons';
+import {Image} from 'expo-image';
 import JournalIcon from '@/assets/images/journaling.png';
 import {useAppContext} from '@/context/AppContext';
 import {addDoc, collection} from "@firebase/firestore";
@@ -27,7 +28,7 @@ const BLUE = '#4A90E2';
 
 export default function PersonalLog() {
 	const router = useRouter();
-	const params = useLocalSearchParams<{ journal?: string; tags?: string }>();
+	const params = useLocalSearchParams<{ journal?: string; tags?: string; image?: string }>();
 	const scrollViewRef = useRef<ScrollView>(null);
 	const journalingCardRef = useRef<View>(null);
 	const [journalingCardY, setJournalingCardY] = useState(0);
@@ -38,6 +39,7 @@ export default function PersonalLog() {
 	const [sleepQuality, setSleepQuality] = useState(8);
 	const [journalText, setJournalText] = useState('');
 	const [selectedTags, setSelectedTags] = useState<string[]>([]);
+	const [journalImage, setJournalImage] = useState<string | null>(null);
 	const {userId, fullName, dayOfWeek, formattedDate} = useAppContext();
 
 	const emojis = ['😢', '😠', '😐', '😊', '😄'];
@@ -58,6 +60,10 @@ export default function PersonalLog() {
 			} catch {
 			}
 		}
+		if (params.image) {
+			setJournalImage(String(params.image));
+			shouldScrollToJournal = true;
+		}
 
 		// Scroll to journaling section when returning from journal page
 		if (shouldScrollToJournal && journalingCardY > 0) {
@@ -68,12 +74,25 @@ export default function PersonalLog() {
 				});
 			});
 		}
-	}, [params.journal, params.tags, journalingCardY]);
+	}, [params.journal, params.tags, params.image, journalingCardY]);
 
 
 	const handleSave = async () => {
+		// Extract base64 data from data URI if image exists
+		// Note: We store ONLY the pure base64 string in Firestore (without the data URI prefix)
+		// to reduce document size and maintain consistency with legacy 'imageBase64' field
+		let journalPhoto = null;
+		if (journalImage) {
+			// Remove the data URI prefix (e.g., "data:image/jpeg;base64,")
+			const base64Match = journalImage.match(/^data:image\/[a-z]+;base64,(.+)$/);
+			if (base64Match && base64Match[1]) {
+				journalPhoto = base64Match[1];
+			}
+		}
+
 		const logData = {
 			date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
+			weekday: dayOfWeek,
 			dayRating,
 			moodRating,
 			selectedEmoji: selectedEmoji + 1, // Save as 1-5 integer instead of emoji character
@@ -81,7 +100,8 @@ export default function PersonalLog() {
 			tags: selectedTags,
 			sleepDuration,
 			sleepQuality,
-			timestamp: new Date().toISOString()
+			timestamp: new Date().toISOString(),
+			journalPhoto: journalPhoto, // Store only the base64 string
 		};
 
 		try {
@@ -104,15 +124,20 @@ export default function PersonalLog() {
 	const handleViewPreviousEntries = () => {
 		// TODO: Navigate to previous entries screen
 		console.log('Viewing previous entries...');
+		router.push('/journal/entries');
 	};
 
 	const openJournal = () => {
+		const params: any = {
+			journal: journalText,
+			tags: JSON.stringify(selectedTags),
+		};
+		if (journalImage) {
+			params.image = journalImage;
+		}
 		router.push({
 			pathname: '/journal',
-			params: {
-				journal: journalText,
-				tags: JSON.stringify(selectedTags),
-			},
+			params,
 		});
 	};
 
@@ -144,7 +169,7 @@ export default function PersonalLog() {
 						You&apos;ve been doing an awesome job with logging! Awesome work!
 					</Text>
 				</View>
-				<Image
+				<RNImage
 					source={JournalIcon}
 					style={styles.journalIcon}
 					accessible={true}
@@ -413,6 +438,21 @@ export default function PersonalLog() {
 											</Text>
 										</View>
 									))}
+								</View>
+							)}
+
+							{journalImage && (
+								<View
+									style={styles.journalImageContainer}
+									accessible={true}
+									accessibilityLabel="Attached journal image"
+								>
+									<Image
+										source={{ uri: journalImage }}
+										style={styles.journalImage}
+										contentFit="cover"
+										transition={200}
+									/>
 								</View>
 							)}
 						</Card>
@@ -733,5 +773,15 @@ const styles = StyleSheet.create({
 	sliderLabel: {
 		fontSize: 12,
 		color: '#666',
+	},
+	journalImageContainer: {
+		marginTop: 16,
+		borderRadius: 12,
+		overflow: 'hidden',
+	},
+	journalImage: {
+		width: '100%',
+		height: 200,
+		borderRadius: 12,
 	},
 });
