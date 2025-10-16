@@ -95,7 +95,7 @@ const PostGrid: React.FC<PostGridProps> = ({
     if (data.length === 0) {
         return (
             <View style={styles.emptyState}>
-                <Ionicons name={emptyIcon} size={48} color="#999" />
+                <Ionicons name={emptyIcon as any} size={48} color="#999" />
                 <Text style={styles.emptyStateText}>{emptyMessage}</Text>
             </View>
         );
