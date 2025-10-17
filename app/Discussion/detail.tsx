@@ -45,6 +45,7 @@ export default function DiscussionDetail() {
   const { getPost, getCommentsForPost, addComment } = useDiscussion();
   const { profilePictureUrl } = useAppContext();
   const [text, setText] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
   const post = id ? getPost(String(id)) : undefined;
   const comments = React.useMemo(() => 

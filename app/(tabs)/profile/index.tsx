@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, useEffect } from "react";
 import {
     View,
@@ -21,7 +19,7 @@ import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import ProfilePicture from "@/components/ProfilePicture";
-import { collection, query, where, getDocs, doc, getDoc, Timestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 const { width } = Dimensions.get("window");
@@ -30,10 +28,37 @@ type TabType = "Posts" | "Liked Posts";
 
 interface Post {
     id: string;
-    imageUrl?: string; // URL of the image (optional)
-    title: string; // Title of the post
-    createdAt: string; // Timestamp of creation
+    imageUrl?: string;
+    title: string;
+    createdAt: string;
 }
+
+// Helper function to parse createdAt timestamp
+const parseCreatedAt = (value: any): string => {
+    if (value instanceof Timestamp) {
+        return value.toDate().toISOString();
+    }
+    if (typeof value === 'string') {
+        return value;
+    }
+    console.warn('Missing or invalid createdAt, using current time');
+    return new Date().toISOString();
+};
+
+// Helper function to resolve image URL
+const resolveImageUrl = (data: any): string | undefined => {
+    if (data.imageBase64) {
+        return `data:image/jpeg;base64,${data.imageBase64}`;
+    }
+    return data.imageUrl || data.image;
+};
+
+// Helper function to sort posts by date
+const sortPostsByDate = (posts: Post[]): Post[] => {
+    return posts.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+};
 
 // Reusable Grid Component for Posts
 interface PostGridProps {
@@ -110,7 +135,7 @@ const PostGrid: React.FC<PostGridProps> = ({
             contentContainerStyle={styles.grid}
             columnWrapperStyle={numColumns > 1 ? styles.gridRow : undefined}
             showsVerticalScrollIndicator={false}
-            scrollEnabled={false} // Disable scrolling since we're inside ScrollView
+            scrollEnabled={false}
         />
     );
 };
@@ -118,22 +143,18 @@ const PostGrid: React.FC<PostGridProps> = ({
 export default function ProfilePage() {
     const router = useRouter();
 
-    // Get user details from global context with fallbacks
     const { userId, fullName, userName } = useAppContext();
     const displayName = fullName || "User Name";
     const displayHandle = userName || "@username";
 
-    // State for data that will come from backend
     const [posts, setPosts] = useState<Post[]>([]);
     const [likedPosts, setLikedPosts] = useState<Post[]>([]);
     const [postCount, setPostCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Tab selection state
     const [selectedTab, setSelectedTab] = useState<TabType>("Posts");
 
-    // Settings modal state
     const [settingsModalVisible, setSettingsModalVisible] = useState(false);
 
     // Fetch user posts from Firestore
@@ -144,21 +165,14 @@ export default function ProfilePage() {
                 where("authorId", "==", userId)
             );
             const querySnapshot = await getDocs(q);
-            const posts: Post[] = querySnapshot.docs.map((doc) => {
-                const data = doc.data();
-                const createdAt = data.createdAt instanceof Timestamp
-                ? data.createdAt.toDate().toISOString()
-                : typeof data.createdAt === 'string'
-                ? data.createdAt
-                : new Date().toISOString();
+            const posts: Post[] = querySnapshot.docs.map((postDoc) => {
+                const data = postDoc.data();
 
                 return {
-                    id: doc.id,
-                    imageUrl: data.imageBase64 
-                            ? `data:image/jpeg;base64,${data.imageBase64}`
-                            : data.imageUrl || data.image,
-                    title: data.title,
-                    createdAt: createdAt,
+                    id: postDoc.id,
+                    imageUrl: resolveImageUrl(data),
+                    title: data.title || 'Untitled',
+                    createdAt: parseCreatedAt(data.createdAt),
                 };
             });
             return posts;
@@ -170,35 +184,22 @@ export default function ProfilePage() {
 
     const fetchLikedPosts = async (userId: string): Promise<Post[]> => {
         try {
-            const postsRef = collection(db, 'discussionPosts');
-            const querySnapshot = await getDocs(postsRef);
+            const q = query(
+                collection(db, 'discussionPosts'),
+                where('likes', 'array-contains', userId)
+            );
+            const querySnapshot = await getDocs(q);
             
-            const likedPostsData: Post[] = [];
-            
-            querySnapshot.forEach((postDoc) => {
+            const likedPostsData: Post[] = querySnapshot.docs.map((postDoc) => {
                 const data = postDoc.data();
                 
-                // Check if this post's likes array contains the current user
-                if (data.likes && data.likes.includes(userId)) {
-                    const createdAt = data.createdAt instanceof Timestamp
-                        ? data.createdAt.toDate().toISOString()
-                        : typeof data.createdAt === 'string'
-                        ? data.createdAt
-                        : new Date().toISOString();
-                    
-                    likedPostsData.push({
-                        id: postDoc.id,
-                        title: data.title,
-                        imageUrl: data.imageBase64 
-                            ? `data:image/jpeg;base64,${data.imageBase64}`
-                            : data.imageUrl || data.image,
-                        createdAt: createdAt,
-                    });
-                }
+                return {
+                    id: postDoc.id,
+                    title: data.title || 'Untitled',
+                    imageUrl: resolveImageUrl(data),
+                    createdAt: parseCreatedAt(data.createdAt),
+                };
             });
-            
-            console.log('Total posts with userId in likes array:', likedPostsData.length);
-            console.log('Liked posts:', likedPostsData);
             
             return likedPostsData;
         } catch (error) {
@@ -206,6 +207,7 @@ export default function ProfilePage() {
             throw error;
         }
     };
+
     const fetchUserData = async () => {
         try {
             setLoading(true);
@@ -216,18 +218,9 @@ export default function ProfilePage() {
                 userId ? fetchLikedPosts(userId) : Promise.resolve([])
             ]);
 
-            // Sort by createdAt in descending order (newest first)
-            const sortedUserPosts = userPosts.sort((a, b) => 
-                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
-            
-            const sortedLikedPosts = userLikedPosts.sort((a, b) => 
-                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
-    
-            setPosts(sortedUserPosts);
-            setLikedPosts(sortedLikedPosts);
-            setPostCount(sortedUserPosts.length);
+            setPosts(sortPostsByDate(userPosts));
+            setLikedPosts(sortPostsByDate(userLikedPosts));
+            setPostCount(userPosts.length);
 
         } catch (error) {
             setError("Failed to load posts. Please try again.");
@@ -238,9 +231,19 @@ export default function ProfilePage() {
 
     // Fetch data on component mount
     useEffect(() => {
+        const isMounted = { current: true };
+
         if (userId) {
-            fetchUserData();
+            fetchUserData().then(() => {
+                // Data fetched
+            }).catch(() => {
+                // Error handled in fetchUserData
+            });
         }
+
+        return () => {
+            isMounted.current = false;
+        };
     }, [userId]);
 
     // Get current tab data
@@ -276,8 +279,6 @@ export default function ProfilePage() {
                     onPress: async () => {
                         try {
                             await signOut(auth);
-                            // AppContext will automatically detect auth state change
-                            // User will be redirected to login page
                             router.replace('/auth/login');
                         } catch (error) {
                             console.error('Sign out error:', error);
@@ -292,7 +293,7 @@ export default function ProfilePage() {
     return (
         <ScrollView
             style={styles.container}
-            stickyHeaderIndices={[2]} // Tab bar is the third child (index 2)
+            stickyHeaderIndices={[2]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
         >
