@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import { TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { 
@@ -95,6 +95,28 @@ export default function DiscussionLayout() {
       <Ionicons name="arrow-back" size={24} color="#4A66C2" />
     </TouchableOpacity>
   );
+
+  // Smart back button for detail screen - goes to profile if fromProfile param is present
+  const SmartBackButton = () => {
+    const params = useLocalSearchParams();
+    const fromProfile = params.fromProfile === 'true';
+    
+    return (
+      <TouchableOpacity
+        onPress={() => {
+          if (fromProfile) {
+            router.push('/(tabs)/profile');
+          } else {
+            router.push('/Discussion');
+          }
+        }}
+        style={{ marginLeft: 8 }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Ionicons name="arrow-back" size={24} color="#4A66C2" />
+      </TouchableOpacity>
+    );
+  };
 
   // Firebase-backed state
   const [posts, setPosts] = useState<Post[]>([]);
@@ -396,7 +418,7 @@ export default function DiscussionLayout() {
           name="detail" 
           options={{ 
             title: "Discussion",
-            headerLeft: () => <BackToIndexButton />
+            headerLeft: () => <SmartBackButton />
           }} 
         />
         <Stack.Screen 

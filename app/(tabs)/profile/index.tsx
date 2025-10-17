@@ -255,7 +255,7 @@ export default function ProfilePage() {
     const handlePostPress = (post: Post) => {
         router.push({
             pathname: "/Discussion/detail",
-            params: { id: post.id }
+            params: { id: post.id, fromProfile: 'true' }
         });
     };
 
