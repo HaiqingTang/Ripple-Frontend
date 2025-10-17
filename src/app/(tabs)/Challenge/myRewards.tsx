@@ -9,6 +9,7 @@ import {
   Platform,
   ActivityIndicator,
   TextInput,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -33,10 +34,10 @@ type Reward = {
   value?: string;
   redeemed?: boolean;
   terms?: string[];
-  expired?: boolean; // 新增：后端可选字段，便于回写
+  expired?: boolean;
+  hidden?: boolean;
 };
 
-/* ---------- 日期工具：与 rewardDetail 保持一致 ---------- */
 function parseISODateSafe(iso?: string | null): Date | null {
   if (!iso) return null;
   const ymd = iso.match(/^\d{4}-\d{2}-\d{2}$/);
@@ -49,7 +50,6 @@ function parseISODateSafe(iso?: string | null): Date | null {
   }
 }
 
-/** 过期判断：到期日 **包含该日的 23:59:59.999(UTC)** */
 function isExpiredUTC(validUntilISO?: string): boolean {
   if (!validUntilISO) return false;
   const parsed = parseISODateSafe(validUntilISO);
@@ -98,13 +98,13 @@ export default function MyRewards() {
             redeemed: d.redeemed || false,
             terms: Array.isArray(d.terms) ? d.terms : undefined,
             expired: Boolean(d.expired),
+            hidden: Boolean(d.hidden),
           });
         });
         setRewards(items);
         setLoading(false);
         setListError(null);
       },
-      // error callback: capture message and stop loading
       (err) => {
         console.error("myRewards onSnapshot error:", err);
         setLoading(false);
@@ -116,7 +116,7 @@ export default function MyRewards() {
     );
 
     return () => unsub();
-  }, [reloadTick, uid]); // re-subscribe on retry
+  }, [reloadTick, uid]);
 
   // diacritic-insensitive lowercasing
   const diacriticFold = (s: string) =>
@@ -125,7 +125,6 @@ export default function MyRewards() {
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
-  // ✅ 自动回写：把“已过期但未兑换”的奖励标记为 expired=true（一次遍历批量写回）
   useEffect(() => {
     if (!uid || rewards.length === 0) return;
 
@@ -136,7 +135,6 @@ export default function MyRewards() {
           expired: true,
           expiredAt: serverTimestamp(),
         }).catch((e) => {
-          // 静默失败：不影响 UI
           console.warn("auto-expire update failed:", r.id, e?.message || e);
         })
       );
@@ -146,7 +144,6 @@ export default function MyRewards() {
     }
   }, [uid, rewards]);
 
-  // filter & grouping（使用 isExpiredUTC + redeemed）
   const { activeList, expiredList } = useMemo(() => {
     const queryText = diacriticFold(q);
 
@@ -159,6 +156,7 @@ export default function MyRewards() {
     const act: Reward[] = [];
     const exp: Reward[] = [];
     for (const r of rewards) {
+      if (r.hidden) continue;
       if (!match(r)) continue;
       const expired = r.redeemed === true || isExpiredUTC(r.validUntil);
       (expired ? exp : act).push(r);
@@ -166,12 +164,40 @@ export default function MyRewards() {
     return { activeList: act, expiredList: exp };
   }, [rewards, q]);
 
-  // back button
   const goBackToIndex = () => {
     router.replace("/(tabs)/Challenge");
   };
 
-  const renderCard = (r: Reward, faded?: boolean) => (
+  // hide button
+  const confirmHide = (r: Reward) => {
+    if (!uid) {
+      Alert.alert("Unavailable", "User not logged in.");
+      return;
+    }
+    Alert.alert(
+      "Hide this reward?",
+      "It will be hidden from My Rewards (you can unhide it later in Firestore).",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Hide",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await updateDoc(doc(db, "users", uid, "rewards", r.id), {
+                hidden: true,
+                hiddenAt: serverTimestamp(),
+              });
+            } catch (e: any) {
+              Alert.alert("Error", e?.message || "Failed to hide this reward.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const renderCard = (r: Reward, faded?: boolean, isExpired?: boolean) => (
     <Pressable
       key={r.id}
       style={[styles.card, faded && { opacity: 0.6 }]}
@@ -221,6 +247,23 @@ export default function MyRewards() {
           {r.description}
         </Text>
       ) : null}
+
+      {/* Hide button */}
+      {isExpired && (
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={(e: any) => {
+              e?.stopPropagation?.();
+              confirmHide(r);
+            }}
+            style={styles.hideBtn}
+            hitSlop={8}
+          >
+            <Ionicons name="eye-off-outline" size={16} color="#fff" />
+            <Text style={styles.hideText}>Hide</Text>
+          </Pressable>
+        </View>
+      )}
     </Pressable>
   );
 
@@ -248,22 +291,16 @@ export default function MyRewards() {
         />
       </View>
 
-      {/* error empty-state with retry */}
+      {/* error / loading / empty */}
       {!!listError && !loading ? (
         <View style={styles.emptyBox}>
           <Ionicons name="warning-outline" size={54} color="#EF4444" />
           <Text style={[styles.emptyText, { marginTop: 10 }]}>{listError}</Text>
           <Pressable
             onPress={() => setReloadTick((t) => t + 1)}
-            style={{
-              marginTop: 14,
-              backgroundColor: "#6B7AFF",
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-              borderRadius: 10,
-            }}
+            style={styles.retryBtn}
           >
-            <Text style={{ color: "#fff", fontWeight: "800" }}>Retry</Text>
+            <Text style={styles.retryText}>Retry</Text>
           </Pressable>
         </View>
       ) : loading ? (
@@ -277,13 +314,13 @@ export default function MyRewards() {
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
           {/* Active */}
           <Text style={styles.sectionTitle}>Active ({activeList.length})</Text>
-          {activeList.map((r) => renderCard(r, false))}
+          {activeList.map((r) => renderCard(r, false, false))}
 
           {/* Expired */}
           <Text style={[styles.sectionTitle, { marginTop: 16 }]}>
             Expired ({expiredList.length})
           </Text>
-          {expiredList.map((r) => renderCard(r, true))}
+          {expiredList.map((r) => renderCard(r, true, true))}
         </ScrollView>
       )}
     </View>
@@ -346,6 +383,15 @@ const styles = StyleSheet.create({
   },
   emptyText: { color: "#777", marginTop: 12, fontWeight: "600", textAlign: "center" },
 
+  retryBtn: {
+    marginTop: 14,
+    backgroundColor: DEEP,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  retryText: { color: "#fff", fontWeight: "800" },
+
   card: {
     backgroundColor: "#EEF3FF",
     marginHorizontal: 18,
@@ -359,4 +405,21 @@ const styles = StyleSheet.create({
   subtitle: { color: "#64748b", marginTop: 2 },
   valid: { color: "#1f2937", marginTop: 4, fontWeight: "600" },
   desc: { marginTop: 8, color: "#374151", lineHeight: 18, fontSize: 14 },
+
+  // actions
+  actionRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  hideBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#9CA3AF",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  hideText: { color: "#fff", fontWeight: "800" },
 });
