@@ -316,6 +316,13 @@ export default function ProfilePage() {
                 <Text style={styles.name}>{displayName}</Text>
                 <Text style={styles.handle}>{displayHandle}</Text>
 
+                <TouchableOpacity
+					style={styles.editButton}
+					onPress={() => router.push('/profile/edit')}
+				><Text style={styles.editButtonText}>Edit Profile</Text>
+				</TouchableOpacity>
+
+
                 <View style={styles.stats}>
                     <Text style={styles.statNumber}>{postCount}</Text>
                     <Text style={styles.statLabel}>Posts</Text>
