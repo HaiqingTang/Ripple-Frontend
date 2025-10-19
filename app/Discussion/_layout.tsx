@@ -92,7 +92,7 @@ export default function DiscussionLayout() {
   // Back button for other screens - goes to Discussion index
   const BackToIndexButton = () => (
     <TouchableOpacity
-      onPress={() => router.push('/Discussion')}
+      onPress={() => router.back()}
       style={{ marginLeft: 8 }}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
     >
@@ -111,7 +111,7 @@ export default function DiscussionLayout() {
           if (fromProfile) {
             router.push('/(tabs)/profile');
           } else {
-            router.push('/Discussion');
+            router.back();
           }
         }}
         style={{ marginLeft: 8 }}
