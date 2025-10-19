@@ -13,7 +13,7 @@ const BLUE_BG = '#E3F2FD';
 const WHITE = '#FFFFFF';
 
 const AVAILABLE_TAGS = [
-	'Work', 'Relationships', 'Health', 'Goals', 'Gratitude', 'Stress',
+	'Work', 'Relationships', 'Health', 'Goals', 'Gratitude', 'Emotions', 'Stress',
 	'Achievements', 'Challenges', 'Family', 'Friends', 'Exercise', 'Sleep',
 	'Mood', 'Anxiety', 'Happiness', 'Growth', 'Learning', 'Creativity'
 ];

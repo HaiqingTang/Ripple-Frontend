@@ -56,7 +56,7 @@ const getTagColor = (tag: string) => {
 
 export default function LogEntriesPage() {
   const [filter, setFilter] = useState<"All" | "Week" | "Month">("All");
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [selectedLog, setSelectedLog] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [userTags, setUserTags] = useState<string[]>([]);
@@ -79,7 +79,7 @@ export default function LogEntriesPage() {
 
         // Sort logs by timestamp in descending order using toDate helper
         // Logs with invalid timestamps are placed at the end
-        const sortedLogs = fetchedLogs.sort((a, b) => {
+        const sortedLogs = fetchedLogs.sort((a: any, b: any) => {
           const dateA = toDate(a.timestamp);
           const dateB = toDate(b.timestamp);
 
@@ -95,7 +95,7 @@ export default function LogEntriesPage() {
 
         // Extract unique tags from logs with defensive checks
         const tags = new Set<string>();
-        sortedLogs.forEach((log) => {
+        sortedLogs.forEach((log: any) => {
           const logTags = Array.isArray(log.tags) ? log.tags : [];
           logTags.forEach((tag: string) => tags.add(tag));
         });
@@ -116,11 +116,11 @@ export default function LogEntriesPage() {
   const filteredLogs = useMemo(() => {
     let filtered = [...logs];
 
-    // Filter by tag
-    if (tagFilter) {
+    // Filter by tags (AND operation - log must contain ALL selected tags)
+    if (tagFilter.length > 0) {
       filtered = filtered.filter((log) => {
         const logTags = Array.isArray(log.tags) ? log.tags : [];
-        return logTags.includes(tagFilter);
+        return tagFilter.every(tag => logTags.includes(tag));
       });
     }
 
@@ -308,7 +308,7 @@ export default function LogEntriesPage() {
             <Ionicons name="arrow-back" size={24} color="#4A90E2" />
           </TouchableOpacity>
           <Text style={{ fontSize: 20, fontWeight: "bold", marginBottom: 18 }}>
-            {fullName}'s Log Entries
+            {fullName}&apos;s Log Entries
           </Text>
           <View style={{ width: 25 }} />
         </View>
@@ -358,11 +358,17 @@ export default function LogEntriesPage() {
         >
           {userTags.map((tag) => {
             const colors = getTagColor(tag);
-            const isActive = tagFilter === tag;
+            const isActive = tagFilter.includes(tag);
             return (
               <TouchableOpacity
                 key={tag}
-                onPress={() => setTagFilter(isActive ? null : tag)}
+                onPress={() => {
+                  if (isActive) {
+                    setTagFilter(prev => prev.filter(t => t !== tag));
+                  } else {
+                    setTagFilter(prev => [...prev, tag]);
+                  }
+                }}
                 style={{
                   backgroundColor: isActive ? colors.bg : WHITE,
                   paddingHorizontal: 14,
@@ -370,6 +376,8 @@ export default function LogEntriesPage() {
                   borderRadius: 20,
                   marginRight: 8,
                   height: 30,
+                  borderWidth: isActive ? 2 : 1,
+                  borderColor: isActive ? colors.text : '#E0E0E0',
                 }}
               >
                 <Text style={{ color: colors.text, fontWeight: "500" }}>{tag}</Text>

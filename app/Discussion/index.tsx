@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Text, ScrollView, ActivityIndicator, View } from "react-native";
+import { Text, ScrollView, ActivityIndicator, View, NativeSyntheticEvent, NativeScrollEvent } from "react-native";
 import { useDiscussion } from "./_layout";
 import { sharedStyles, COLORS } from "@/styles/sharedStyles";
 import HeroSection from "./components/HeroSection";
@@ -12,7 +12,7 @@ type Post = {
   id: string;
   title: string;
   author: string;
-  createdAt: Date | number;     
+  createdAt: string;     
   commentCount?: number;
   likeCount?: number;
   content?: string;
@@ -68,10 +68,10 @@ function relevanceScore(q: string, post: Post) {
 }
 
 /**
- * Optimized Discussion Index with memoized components
+ * Optimized Discussion Index with memoized components and pagination
  */
 export default function DiscussionIndex() {
-  const { posts, loading } = useDiscussion();
+  const { posts, loading, loadingMore, hasMore, loadMorePosts } = useDiscussion();
 
 
   const [sortBy, setSortBy] = useState<SortBy>(() => readSession<SortBy>(STORAGE_KEYS.sortBy, "date"));
@@ -134,6 +134,20 @@ export default function DiscussionIndex() {
     return list;
   }, [posts, selectedTags, sortBy, query]);
 
+  // Handle scroll to detect when near bottom and load more posts
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    
+    // Calculate how close we are to the bottom
+    const paddingToBottom = 100; // Trigger when 100px from bottom
+    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+    
+    // Load more posts if we're close to bottom and not already loading
+    if (isCloseToBottom && !loadingMore && hasMore) {
+      loadMorePosts();
+    }
+  };
+
   if (loading) {
     return (
       <View style={[sharedStyles.container, { justifyContent: "center", alignItems: "center" }]}>
@@ -143,9 +157,13 @@ export default function DiscussionIndex() {
   }
 
   return (
-    <ScrollView style={sharedStyles.container} contentContainerStyle={sharedStyles.content}>
-
+    <ScrollView 
+      style={sharedStyles.container}
+      onScroll={handleScroll}
+      scrollEventThrottle={400}
+    >
       <HeroSection />
+      <View style={{ padding: 10 }}>
       <SearchBar />
       <SortFilterBar
         sortBy={sortBy}
@@ -158,19 +176,43 @@ export default function DiscussionIndex() {
       />
 
       {visiblePosts.length === 0 ? (
-        <Text style={[sharedStyles.emptyText, { marginTop: 12 }]}>No posts found</Text>
+        <View style={{ padding: 20, alignItems: 'center' }}>
+          <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>No posts found</Text>
+        </View>
       ) : (
-        visiblePosts.map((post) => (
-          <PostCard
-            key={post.id}
-            id={post.id}
-            title={post.title}
-            author={post.author}
-            createdAt={post.createdAt}
-            commentCount={post.commentCount}
-          />
-        ))
+        <>
+          {visiblePosts.map((post) => (
+            <PostCard
+              key={post.id}
+              id={post.id}
+              title={post.title}
+              author={post.author}
+              createdAt={post.createdAt}
+              commentCount={post.commentCount || 0}
+            />
+          ))}
+          
+          {/* Loading indicator at bottom when loading more posts */}
+          {loadingMore && (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+              <Text style={{ color: COLORS.textMuted, marginTop: 8, fontSize: 14 }}>
+                Loading more posts...
+              </Text>
+            </View>
+          )}
+          
+          {/* Show message when all posts are loaded */}
+          {!hasMore && visiblePosts.length > 0 && (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+              <Text style={{ color: COLORS.textMuted, fontSize: 14 }}>
+                No more posts
+              </Text>
+            </View>
+          )}
+        </>
       )}
+      </View>
     </ScrollView>
   );
 }

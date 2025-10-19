@@ -14,7 +14,8 @@ import {
   arrayRemove,
   increment,
   Timestamp,
-  limit
+  limit,
+  startAfter
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAppContext } from "@/context/AppContext";
@@ -46,6 +47,8 @@ type Post = {
 type DiscussionContextType = {
   posts: Post[];
   loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
   addPost: (p: Omit<Post, "id" | "createdAt" | "likes" | "likeCount" | "commentCount">) => Promise<Post>;
   getPost: (id: string) => Post | undefined;
   comments: Comment[];
@@ -57,6 +60,7 @@ type DiscussionContextType = {
   togglePostLike: (postId: string) => Promise<void>;
   getPostComments: (postId: string) => number;
   refreshPosts: () => Promise<void>;
+  loadMorePosts: () => Promise<void>;
   // Hottest post functionality:
   hottestPost: Post | null;
   loadHottestPost: () => Promise<void>;
@@ -122,19 +126,53 @@ export default function DiscussionLayout() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastDoc, setLastDoc] = useState<any>(null);
   const [hottestPost, setHottestPost] = useState<Post | null>(null);
 
-  // Load posts from Firebase
-  const loadPosts = async () => {
+  const POSTS_PER_PAGE = 5;
+
+  // Load posts from Firebase with pagination
+  const loadPosts = async (refresh: boolean = false) => {
     try {
-      setLoading(true);
+      if (refresh) {
+        setLoading(true);
+        setPosts([]);
+        setLastDoc(null);
+        setHasMore(true);
+      } else {
+        setLoadingMore(true);
+      }
+
       const postsRef = collection(db, 'discussionPosts');
-      const q = query(
-        postsRef, 
-        orderBy('createdAt', 'desc'),
-        limit(25)  // Limit to 25 most recent posts
-      );
+      let q;
+      
+      if (refresh || !lastDoc) {
+        // Initial load
+        q = query(
+          postsRef, 
+          orderBy('createdAt', 'desc'),
+          limit(POSTS_PER_PAGE)
+        );
+      } else {
+        // Load more from last document
+        q = query(
+          postsRef,
+          orderBy('createdAt', 'desc'),
+          startAfter(lastDoc),
+          limit(POSTS_PER_PAGE)
+        );
+      }
+      
       const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        setHasMore(false);
+        setLoading(false);
+        setLoadingMore(false);
+        return;
+      }
       
       const loadedPosts: Post[] = [];
       querySnapshot.forEach((doc) => {
@@ -155,12 +193,33 @@ export default function DiscussionLayout() {
         });
       });
       
-      setPosts(loadedPosts);
+      // Set the last document for pagination
+      const lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];
+      setLastDoc(lastVisible);
+      
+      // Check if we got fewer posts than requested (means we're at the end)
+      if (loadedPosts.length < POSTS_PER_PAGE) {
+        setHasMore(false);
+      }
+      
+      // Append to existing posts or replace
+      if (refresh) {
+        setPosts(loadedPosts);
+      } else {
+        setPosts(prev => [...prev, ...loadedPosts]);
+      }
     } catch (error) {
       console.error('Error loading posts:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
+  };
+
+  // Load more posts
+  const loadMorePosts = async () => {
+    if (loadingMore || !hasMore) return;
+    await loadPosts(false);
   };
 
   // Load comments from Firebase
@@ -355,20 +414,23 @@ export default function DiscussionLayout() {
     return post ? post.commentCount : 0;
   };
 
-  const refreshPosts = React.useCallback(async () => {
-    await Promise.all([loadPosts(), loadComments(), loadHottestPost()]);
-  }, []);
+  const refreshPosts = async () => {
+    await Promise.all([loadPosts(true), loadComments(), loadHottestPost()]);
+  };
 
   // Load data on mount
   useEffect(() => {
     if (userId) {
       refreshPosts();
     }
-  }, [userId, refreshPosts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   const value: DiscussionContextType = { 
     posts, 
     loading,
+    loadingMore,
+    hasMore,
     addPost, 
     getPost, 
     comments, 
@@ -379,6 +441,7 @@ export default function DiscussionLayout() {
     togglePostLike,
     getPostComments,
     refreshPosts,
+    loadMorePosts,
     hottestPost,
     loadHottestPost
   };
