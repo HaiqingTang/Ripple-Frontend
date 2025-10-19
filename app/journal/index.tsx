@@ -5,18 +5,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import ImagePickerModal from '@/components/ImagePickerModal';
 import { pickJournalImageFromGallery, takeJournalPicture, createDataUri, validateImageFile } from '@/lib/imageService';
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 const { width } = Dimensions.get('window');
+const DEFAULT_TAGS = [ "Work", "Relationships", "Health", "Goals", "Gratitude", "Stress", "Achievements", "Challenges", "Family", "Friends", "Exercise", "Sleep", "Mood", "Anxiety", "Happiness", "Growth", "Learning", "Creativity", "Emotions" ]
 
 // Module-level constants
 const BLUE_BG = '#E3F2FD';
 const WHITE = '#FFFFFF';
-
-const AVAILABLE_TAGS = [
-	'Work', 'Relationships', 'Health', 'Goals', 'Gratitude', 'Emotions', 'Stress',
-	'Achievements', 'Challenges', 'Family', 'Friends', 'Exercise', 'Sleep',
-	'Mood', 'Anxiety', 'Happiness', 'Growth', 'Learning', 'Creativity'
-];
 
 const TAG_COLOR_PALETTE = [
 	{ bg: '#FFE5E5', text: '#D63384' },
@@ -43,6 +40,7 @@ export default function JournalPage() {
 	const [isTagModalVisible, setIsTagModalVisible] = useState(false);
 	const [journalImage, setJournalImage] = useState<string | null>(null);
 	const [imageModalVisible, setImageModalVisible] = useState(false);
+	const [availableTags, setAvailableTags] = useState<string[]>([]);
 
 	// Initialize from params on mount
 	useEffect(() => {
@@ -63,6 +61,34 @@ export default function JournalPage() {
 			setJournalImage(params.image as string);
 		}
 	}, []); // Run once on mount
+
+	// Fetch journal tags on mount
+	const loadTags = async () => {
+		try {
+		  const docRef = doc(db, "config", "journal");
+		  const snapshot = await getDoc(docRef);
+	  
+		  if (snapshot.exists()) {
+			const data = snapshot.data();
+			console.log("Raw snapshot data:", data); // <-- debug
+	  
+			// Ensure tags is an array
+			const tagsArray = Array.isArray(data.tags) ? data.tags : DEFAULT_TAGS;
+			setAvailableTags(tagsArray);
+			console.log("Loaded tags:", tagsArray);
+		  } else {
+			console.log("Document does not exist, using default tags");
+			setAvailableTags(DEFAULT_TAGS);
+		  }
+		} catch (error) {
+		  console.error("Failed to load journal tags:", error);
+		  setAvailableTags(DEFAULT_TAGS);
+		}
+	  };
+
+	useEffect(() => {
+		loadTags();
+	}, []);
 
 	// Memoize tag colors to avoid recalculating on every render
 	const tagColors = useMemo(() => {
@@ -340,33 +366,30 @@ export default function JournalPage() {
 
 					<ScrollView style={styles.modalScrollView}>
 						<View style={styles.modalTagsGrid}>
-							{AVAILABLE_TAGS.map((tag) => {
-								const colors = getTagColor(tag);
-								const isSelected = selectedTags.includes(tag);
-								return (
-									<TouchableOpacity
-										key={tag}
-										onPress={() => toggleTag(tag)}
-										style={[
-											styles.modalTag,
-											{
-												backgroundColor: isSelected ? colors.bg : '#F5F5F5',
-												width: (width - 60) / 2
-											}
-										]}
-										accessibilityLabel={`${isSelected ? 'Remove' : 'Add'} ${tag} tag`}
-										accessibilityRole="button"
-										accessibilityState={{ selected: isSelected }}
-									>
-										<Text style={[
-											styles.modalTagText,
-											{ color: isSelected ? colors.text : '#666' }
-										]}>
-											{tag}
-										</Text>
-									</TouchableOpacity>
-								);
-							})}
+						{availableTags.map((tag) => {
+							const colors = getTagColor(tag);
+							const isSelected = selectedTags.includes(tag);
+							return (
+								<TouchableOpacity
+								key={tag}
+								onPress={() => toggleTag(tag)}
+								style={[
+									styles.modalTag,
+									{
+									backgroundColor: isSelected ? colors.bg : '#F5F5F5',
+									width: (width - 60) / 2
+									}
+								]}
+								>
+								<Text style={[
+									styles.modalTagText,
+									{ color: isSelected ? colors.text : '#666' }
+								]}>
+									{tag}
+								</Text>
+								</TouchableOpacity>
+							);
+						})}
 						</View>
 					</ScrollView>
 				</SafeAreaView>
