@@ -116,11 +116,11 @@ export default function LogEntriesPage() {
   const filteredLogs = useMemo(() => {
     let filtered = [...logs];
 
-    // Filter by tags (AND operation - log must contain ALL selected tags)
+    // Filter by tags (OR operation - log must contain ANY selected tags)
     if (tagFilter.length > 0) {
       filtered = filtered.filter((log) => {
         const logTags = Array.isArray(log.tags) ? log.tags : [];
-        return tagFilter.every(tag => logTags.includes(tag));
+        return tagFilter.some(tag => logTags.includes(tag)); // Changed from every() to some()
       });
     }
 
@@ -248,7 +248,7 @@ export default function LogEntriesPage() {
             <Text style={{ fontWeight: "600", color: "#2e8adaff", marginBottom: 6 }}>
 				        {emojis[(item.selectedEmoji || 1) - 1]}
             </Text>
-            <Text style={{ fontSize: 11, color: "#666"}}>Emotion</Text>
+            <Text style={{ fontSize: 11, color: "#666" }}>Emotion</Text>
           </View>
         </View>
 

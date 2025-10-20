@@ -70,7 +70,7 @@ export default function JournalPage() {
 	  
 		  if (snapshot.exists()) {
 			const data = snapshot.data();
-			console.log("Raw snapshot data:", data); // <-- debug
+			console.log("Raw snapshot data:", data); 
 	  
 			// Ensure tags is an array
 			const tagsArray = Array.isArray(data.tags) ? data.tags : DEFAULT_TAGS;
