@@ -1,7 +1,8 @@
+// app/(tabs)/Interest/index.tsx
 import React, { useMemo } from "react";
 import { View, Text, ScrollView, StyleSheet, Pressable, Image, Platform } from "react-native";
-import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { auth } from "../../../firebase";
 
 const Routes = {
@@ -9,9 +10,12 @@ const Routes = {
     clubMain: "/(tabs)/Interest/clubMainPage" as const,
     meetupMain: "/(tabs)/Interest/meetupMainPage" as const,
   },
+  Discussion: {
+    home: "/(tabs)/Discussion" as const, // Discussion/index.tsx
+  },
 } as const;
 
-export default function Interest() {
+export default function InterestIndex() {
   const router = useRouter();
 
   const helloName = useMemo(() => {
@@ -23,6 +27,7 @@ export default function Interest() {
 
   const goClubMain = () => router.push(Routes.Interest.clubMain);
   const goMeetupMain = () => router.push(Routes.Interest.meetupMain);
+  const goDiscussion = () => router.push("/Discussion");
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
@@ -42,29 +47,26 @@ export default function Interest() {
         <Pressable style={styles.card} accessibilityRole="button" hitSlop={8} onPress={goClubMain}>
           <Image
             style={styles.image}
+            resizeMode="cover"
             source={{
               uri:
-                "https://images.unsplash.com/photo-1663162550974-aaf76bcdeedf?q=80&w=1740&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+                "https://images.unsplash.com/photo-1663162550974-aaf76bcdeedf?q=80&w=1740&auto=format&fit=crop",
             }}
           />
           <Text style={styles.cardTitle}>Clubs</Text>
           <Text style={styles.cardDesc}>
-            Share your thoughts, ask questions, and interact with other members.
+            Join interest-based clubs and connect with people who share your passions.
           </Text>
         </Pressable>
 
         {/* Meetups */}
-        <Pressable
-          style={styles.card}
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={goMeetupMain}
-        >
+        <Pressable style={styles.card} accessibilityRole="button" hitSlop={8} onPress={goMeetupMain}>
           <Image
             style={styles.image}
+            resizeMode="cover"
             source={{
               uri:
-                "https://images.unsplash.com/photo-1692261929431-253094ad8497?q=80&w=1740&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+                "https://images.unsplash.com/photo-1692261929431-253094ad8497?q=80&w=1740&auto=format&fit=crop",
             }}
           />
           <Text style={styles.cardTitle}>Meetups</Text>
@@ -73,15 +75,21 @@ export default function Interest() {
           </Text>
         </Pressable>
 
-        {/* 如需讨论区，保留你原来的路由；没有就先隐藏
-        <Pressable style={styles.card} onPress={() => router.push("/Discussion")} hitSlop={8}>
-          <View style={styles.imagePlaceholder} />
+        {/* Discussion Boards */}
+        <Pressable style={styles.card} accessibilityRole="button" hitSlop={8} onPress={goDiscussion}>
+          <Image
+            style={styles.image}
+            resizeMode="cover"
+            source={{
+              uri:
+                "https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?q=80&w=1740&auto=format&fit=crop",
+            }}
+          />
           <Text style={styles.cardTitle}>Discussion Boards</Text>
           <Text style={styles.cardDesc}>
-            Share your thoughts, ask questions, and interact with other members.
+            Start threads, reply to others, and keep the conversation going.
           </Text>
         </Pressable>
-        */}
       </ScrollView>
     </SafeAreaView>
   );
@@ -112,8 +120,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 12,
   },
-  image: { height: 150, borderRadius: 14, backgroundColor: "#EAF0FF", marginBottom: 10, width: "100%" },
-  imagePlaceholder: { height: 150, borderRadius: 14, backgroundColor: "#EAF0FF", marginBottom: 10 },
+  image: {
+    width: "100%",
+    height: 150,
+    borderRadius: 14,
+    backgroundColor: "#EAF0FF",
+    marginBottom: 10,
+  },
 
   cardTitle: { textAlign: "center", fontSize: 20, fontWeight: "800", color: "#4A66C2" },
   cardDesc: { textAlign: "left", marginTop: 6, color: "#536082" },

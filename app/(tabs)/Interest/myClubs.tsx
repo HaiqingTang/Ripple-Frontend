@@ -224,8 +224,14 @@ export default function MyClubs() {
         keyExtractor={(it) => it.id}
         renderItem={renderItem}
         numColumns={3}
-        columnWrapperStyle={{ justifyContent: "space-between", paddingHorizontal: H_PADDING }}
-        contentContainerStyle={{ paddingTop: 10, paddingBottom: 20 }}
+        contentContainerStyle={{
+          paddingTop: 10,
+          paddingBottom: 20,
+          paddingHorizontal: H_PADDING,
+        }}
+        columnWrapperStyle={{
+          gap: GAP,
+        }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6B7AFF" />}
         ListEmptyComponent={
           <View style={{ paddingHorizontal: H_PADDING, marginTop: 16 }}>
