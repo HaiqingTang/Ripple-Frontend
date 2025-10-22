@@ -1,9 +1,17 @@
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getAuth, initializeAuth, type Auth } from "firebase/auth";
+import {
+  getAuth,
+  initializeAuth,
+  setPersistence,
+  browserLocalPersistence,
+  type Auth,
+} from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 
+// ==================== Firebase Config ====================
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FB_API_KEY!,
   authDomain: process.env.EXPO_PUBLIC_FB_AUTH_DOMAIN!,
@@ -13,68 +21,82 @@ const firebaseConfig = {
   measurementId: process.env.EXPO_PUBLIC_FB_MEASUREMENT_ID!,
 };
 
-// ---- App 单例
-function ensureApp(): FirebaseApp {
-  return getApps().length ? getApp() : initializeApp(firebaseConfig);
-}
-const app = ensureApp();
+const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// ---- Auth 单例（RN 上优先持久化；失败时回退到内存，不会崩）
+const rnAsyncStoragePersistenceShim = {
+  type: "LOCAL",
+  async _isAvailable() {
+    try {
+      const key = "__fb_avail_test__";
+      await AsyncStorage.setItem(key, "1");
+      await AsyncStorage.removeItem(key);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  async _set(key: string, value: string) {
+    await AsyncStorage.setItem(key, value);
+  },
+  async _get(key: string) {
+    const v = await AsyncStorage.getItem(key);
+    return v ?? null;
+  },
+  async _remove(key: string) {
+    await AsyncStorage.removeItem(key);
+  },
+} as any;
+
 let auth: Auth;
 
-if (Platform.OS === "ios" || Platform.OS === "android") {
-  // 先尝试复用已存在实例（热更/重复导入场景）
+if (Platform.OS === "web") {
+  // --- Web ---
+  auth = getAuth(app);
+  void setPersistence(auth, browserLocalPersistence);
+} else {
+  // --- RN env ---
+  let getReactNativePersistence: any = null;
+
   try {
-    auth = getAuth(app);
-    // @ts-ignore 检测是否已设置持久化（有的历史实例可能没有）
-    const hasPersistence = !!(auth as any)?._persistenceManager;
-
-    if (!hasPersistence) {
-      let getReactNativePersistence: any = null;
-
-      // ❗️用动态字符串避免 Metro 静态解析失败
-      try {
-        // 等价于 require("firebase/auth/react-native")
-        const rnAuth = require("firebase/auth" + "/react-native");
-        getReactNativePersistence = rnAuth.getReactNativePersistence;
-      } catch {
-        // 留空，回退到内存持久化
-      }
-
-      if (getReactNativePersistence) {
-        // 只有在没有实例或未设置持久化时才初始化；否则重复 initializeAuth 会抛错
-        auth = initializeAuth(app, {
-          persistence: getReactNativePersistence(AsyncStorage),
-        });
-      } // else: 继续用内存持久化的 auth
-    }
-  } catch {
-    // 项目内还不存在 auth 实例，尝试带持久化初始化
-    let getReactNativePersistence: any = null;
+    const mod = require("firebase/auth");
+    getReactNativePersistence = mod.getReactNativePersistence;
+  } catch {}
+  if (!getReactNativePersistence) {
     try {
-      const rnAuth = require("firebase/auth" + "/react-native");
-      getReactNativePersistence = rnAuth.getReactNativePersistence;
-    } catch {
-      // ignore
-    }
+      const mod = require("firebase/auth" + "/react-native");
+      getReactNativePersistence = mod.getReactNativePersistence;
+    } catch {}
+  }
 
+  try {
     if (getReactNativePersistence) {
       auth = initializeAuth(app, {
         persistence: getReactNativePersistence(AsyncStorage),
       });
     } else {
-      // 最保守回退：内存持久化，不会阻断运行
-      auth = getAuth(app);
+      auth = initializeAuth(app, {
+        persistence: rnAsyncStoragePersistenceShim,
+      });
       console.warn(
-        "[firebase] RN 持久化入口未找到，已回退为内存持久化（会话间不会自动保持登录）。" +
-          "可执行 `npx expo install firebase` 升级以启用持久化。"
+        "[firebase] did not find 'firebase/auth/react-native'，use AsyncStorage Shim instead。"
       );
     }
+  } catch (e) {
+    try {
+      auth = getAuth(app);
+    } finally {
+      console.warn("[firebase] initializeAuth is skipped: Old instance already exists (memory persistence)");
+      console.warn(new Error("who-created-auth-first").stack);
+    }
   }
-} else {
-  // Web
-  auth = getAuth(app);
 }
 
 const db: Firestore = getFirestore(app);
+
+console.log(
+  "[auth persistence]",
+  Platform.OS,
+  (auth as any)?._persistenceManager ? "PERSISTED" : "MEMORY"
+);
+
 export { app, auth, db };
