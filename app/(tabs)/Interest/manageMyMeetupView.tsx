@@ -19,7 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 const { width } = Dimensions.get("window");
 const PANEL_W = Math.min(640, width - 28);
 
-// Default cover image fallback to keep visual style unified
+// Default cover image fallback
 const DEFAULT_IMAGE_URL =
   "https://images.unsplash.com/photo-1556816723-1ce827b9cfbb?q=80&w=1584&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
 
@@ -31,8 +31,13 @@ type Meetup = {
   participants?: string[];
   category?: string;
   tags?: string[];
-  location?: string;
-  locationGeo?: { latitude?: number; longitude?: number };
+  location?: string | null;
+  locationGeo?:
+    | { latitude?: number; longitude?: number }
+    | { lat?: number; lng?: number }
+    | [number, number]
+    | string
+    | null;
   imageUrl?: string;
   sponsorName?: string;
 };
@@ -43,7 +48,7 @@ type Profile = {
   avatarUrl?: string;
 };
 
-// format date as "YYYY-MM-DD HH:mm"
+// ---- Helpers ----
 function formatDate(val: any): string {
   try {
     let d: Date | null = null;
@@ -67,6 +72,41 @@ function initialFromId(id: string) {
   return c || "U";
 }
 
+function normalizeCoords(val: any): { lat: number; lng: number } | null {
+  if (!val) return null;
+
+  if (
+    (typeof val.latitude === "number" && typeof val.longitude === "number") ||
+    (typeof val.lat === "number" && typeof val.lng === "number")
+  ) {
+    const lat = typeof val.latitude === "number" ? val.latitude : val.lat;
+    const lng = typeof val.longitude === "number" ? val.longitude : val.lng;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    return null;
+  }
+
+  if (Array.isArray(val) && val.length >= 2) {
+    const [lat, lng] = val;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    return null;
+  }
+
+  if (typeof val === "string") {
+    const parts = val.split(",").map((s) => parseFloat(s.trim()));
+    if (parts.length >= 2 && parts.every((n) => Number.isFinite(n))) {
+      return { lat: parts[0], lng: parts[1] };
+    }
+    return null;
+  }
+
+  return null;
+}
+
+function formatCoords(val: any): string {
+  const c = normalizeCoords(val);
+  return c ? ` (${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})` : "";
+}
+
 export default function ManageMyMeetupView() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
@@ -76,7 +116,7 @@ export default function ManageMyMeetupView() {
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
-  const [profilesPartialFailed, setProfilesPartialFailed] = useState(false); // show non-blocking hint if some failed
+  const [profilesPartialFailed, setProfilesPartialFailed] = useState(false);
 
   // load meetup
   useEffect(() => {
@@ -104,7 +144,7 @@ export default function ManageMyMeetupView() {
     })();
   }, [id]);
 
-  // load participant profiles (best-effort) with partial-failure hint
+  // load participant profiles (best-effort)
   useEffect(() => {
     (async () => {
       if (!meetup?.participants || meetup.participants.length === 0) {
@@ -113,7 +153,7 @@ export default function ManageMyMeetupView() {
         return;
       }
       setLoadingProfiles(true);
-      let partial = false; // track if any profile fetch failed
+      let partial = false;
       try {
         const uids = meetup.participants.slice(0, 12);
         const results = await Promise.all(
@@ -128,19 +168,16 @@ export default function ManageMyMeetupView() {
                   avatarUrl: d.avatarUrl,
                 } as Profile;
               } else {
-                // mark partial failure when user doc not found
                 partial = true;
               }
             } catch {
-              // swallow and mark partial failure but still return placeholder
               partial = true;
             }
-            return { id: uid, name: uid } as Profile; // placeholder if failed
+            return { id: uid, name: uid } as Profile;
           })
         );
         setProfiles(results);
       } catch {
-        // in case of a global failure, show empty list and hint
         setProfiles([]);
         partial = true;
       } finally {
@@ -150,7 +187,7 @@ export default function ManageMyMeetupView() {
     })();
   }, [meetup?.participants]);
 
-  const tags = useMemo(() => meetup?.tags ?? [], [meetup?.tags]);
+  const tags = useMemo(() => Array.isArray(meetup?.tags) ? meetup!.tags! : [], [meetup?.tags]);
   const category = meetup?.category || "-";
 
   if (loading) {
@@ -164,6 +201,16 @@ export default function ManageMyMeetupView() {
     );
   }
 
+  const locationLabel =
+    (meetup?.location && typeof meetup.location === "string" ? meetup.location : "Unknown") +
+    formatCoords(meetup?.locationGeo);
+
+  const participantsCount = Array.isArray(meetup?.participants)
+    ? meetup!.participants!.length
+    : 0;
+
+  const imageSrc = meetup?.imageUrl || DEFAULT_IMAGE_URL;
+
   return (
     <SafeAreaView style={styles.screen}>
       {/* Header */}
@@ -172,18 +219,17 @@ export default function ManageMyMeetupView() {
           <Ionicons name="chevron-back" size={22} />
         </TouchableOpacity>
         <Text style={styles.title}>Manage Meetups</Text>
-        {/* Removed the plus button to avoid confusing route from manage screen */}
         <View style={{ width: 32, height: 32 }} />
       </View>
 
       <ScrollView contentContainerStyle={{ alignItems: "center", paddingBottom: 28 }}>
         {/* First card */}
         <View style={[styles.card, { width: PANEL_W }]}>
-          {/* Cover image block (unified style) */}
+          {/* Cover image */}
           <Text style={styles.subLabel}>Cover</Text>
           <View style={styles.imageBox}>
             <Image
-              source={{ uri: meetup?.imageUrl || DEFAULT_IMAGE_URL }}
+              source={{ uri: imageSrc }}
               style={{ width: "100%", height: "100%" }}
               resizeMode="cover"
             />
@@ -193,10 +239,7 @@ export default function ManageMyMeetupView() {
           <RowDisplay label="Time" value={formatDate(meetup?.date)} />
           <RowDisplay
             label="Participants"
-            value={
-              `${Array.isArray(meetup?.participants) ? meetup!.participants!.length : 0}` +
-              (meetup?.maxCapacity ? ` / ${meetup.maxCapacity}` : "")
-            }
+            value={`${participantsCount}` + (meetup?.maxCapacity ? ` / ${meetup.maxCapacity}` : "")}
           />
 
           <Text style={styles.subLabel}>Category</Text>
@@ -229,20 +272,13 @@ export default function ManageMyMeetupView() {
           </View>
 
           <Text style={styles.subLabel}>Location</Text>
-          <Text style={{ color: "#8fa7e6", marginBottom: 8 }}>
-            {(meetup?.location || "Unknown") +
-              (meetup?.locationGeo?.latitude != null &&
-              meetup?.locationGeo?.longitude != null
-                ? ` (${meetup.locationGeo.latitude.toFixed(5)}, ${meetup.locationGeo.longitude.toFixed(5)})`
-                : "")}
-          </Text>
+          <Text style={{ color: "#8fa7e6", marginBottom: 8 }}>{locationLabel}</Text>
         </View>
 
         {/* Participant list */}
         <View style={[styles.card, { width: PANEL_W }]}>
           <Text style={[styles.subLabel, { marginBottom: 8 }]}>Participant List:</Text>
 
-          {/* Non-blocking partial-failure hint */}
           {profilesPartialFailed && (
             <View style={styles.warnRow}>
               <Ionicons name="alert-circle-outline" size={16} color="#d84535" />
@@ -358,7 +394,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
 
-  // Cover image visual style (unified with other pages)
   imageBox: {
     width: "100%",
     height: 160,
@@ -368,7 +403,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // Non-blocking warning row for partial profile failures
   warnRow: {
     flexDirection: "row",
     alignItems: "center",

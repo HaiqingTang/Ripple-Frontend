@@ -1,375 +1,367 @@
+// app/(tabs)/Interest/meetupLocation.tsx
+
 import React, { useEffect, useState } from "react";
 import {
-  SafeAreaView,
   View,
   Text,
   StyleSheet,
-  Pressable,
+  TextInput,
+  TouchableOpacity,
   ScrollView,
+  Dimensions,
   Alert,
+  Platform,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter, useLocalSearchParams } from "expo-router";
-import MapView, { Marker } from "../../../components/MapViewCompat";
-import {
-  doc,
-  onSnapshot,
-  addDoc,
-  collection,
-  serverTimestamp,
-} from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
-import { db, auth } from "../../../firebase";
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from "../../../components/MapViewCompat";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-type MeetupDoc = {
-  title?: string;
-  description?: string;
-  location?: string;
-  locationGeo?: { latitude: number; longitude: number };
-  participants?: string[];
-  maxCapacity?: number | null;
-};
+// Firestore
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "../../../firebase";
 
-type LoadStatus = "idle" | "loading" | "error" | "ready";
+// Screen width for card sizing
+const { width } = Dimensions.get("window");
+const PANEL_W = Math.min(640, width - 28);
 
-export default function MeetupLocation1Page() {
-  const params = useLocalSearchParams();
-  const id =
-    typeof params.id === "string"
-      ? params.id
-      : Array.isArray(params.id)
-      ? params.id[0]
-      : undefined;
+// ---------- Helpers: robust geo parsing & formatting ----------
 
+// Accepts Firestore GeoPoint / {latitude, longitude} / {lat, lng} / [lat, lng] / "lat,lng"
+function normalizeCoords(val: any): { lat: number; lng: number } | null {
+  if (!val) return null;
+
+  // Firestore GeoPoint (class or serialized object), or {lat, lng}
+  if (
+    (typeof val?.latitude === "number" && typeof val?.longitude === "number") ||
+    (typeof val?.lat === "number" && typeof val?.lng === "number")
+  ) {
+    const lat = typeof val.latitude === "number" ? val.latitude : val.lat;
+    const lng = typeof val.longitude === "number" ? val.longitude : val.lng;
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }
+
+  // Array [lat, lng]
+  if (Array.isArray(val) && val.length >= 2) {
+    const [lat, lng] = val;
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }
+
+  // String "lat,lng"
+  if (typeof val === "string") {
+    const parts = val.split(",").map((s) => parseFloat(s.trim()));
+    if (parts.length >= 2 && parts.every((n) => Number.isFinite(n))) {
+      return { lat: parts[0], lng: parts[1] };
+    }
+    return null;
+  }
+
+  return null;
+}
+
+// Safely coerce to number with fallback
+function safeNumber(v: any, fallback: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+// Safely format coordinates to a display string
+function formatCoords(val: any): string {
+  const c = normalizeCoords(val);
+  return c ? `(${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})` : "";
+}
+
+export default function MeetupLocation() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
 
-  const [isAuthed, setIsAuthed] = useState<boolean>(false);
+  // Page state
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const [title, setTitle] = useState<string | null>(null);
-  const [desc, setDesc] = useState<string | null>(null);
-  const [participantsCount, setParticipantsCount] = useState<number | null>(null);
-  const [maxCapacity, setMaxCapacity] = useState<number | null>(null);
-  const [lat, setLat] = useState<number | null>(null);
-  const [lng, setLng] = useState<number | null>(null);
+  // Location name (free text) and coordinates shown on map
+  const [locationName, setLocationName] = useState<string>("");
+  const [region, setRegion] = useState<Region>({
+    // Default: Melbourne CBD-ish
+    latitude: -37.8136,
+    longitude: 144.9631,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
+  });
 
-  const [status, setStatus] = useState<LoadStatus>("idle");
-  const [errorMsg, setErrorMsg] = useState<string>("");
+  // UI state for geocoding
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [lastGeocodeAt, setLastGeocodeAt] = useState(0);
 
-  const [retryTick, setRetryTick] = useState<number>(0);
-
-  const logError = async (tag: string, details: any) => {
-    try {
-      await addDoc(collection(db, "telemetry_meetups"), {
-        tag,
-        details: JSON.stringify(details ?? {}),
-        meetupId: id ?? null,
-        at: serverTimestamp(),
-      });
-    } catch (e) {
-      console.warn("telemetry log failed:", e);
-    }
-  };
-
+  // Load current meetup doc and populate fields
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setIsAuthed(!!u);
-    });
-    return unsub;
-  }, []);
-
-  useEffect(() => {
-    if (!id) {
-      setStatus("error");
-      setErrorMsg("Invalid meetup id.");
-      logError("meetup_invalid_id", { params });
-      return;
-    }
-
-    setStatus("loading");
-    setErrorMsg("");
-
-    const ref = doc(db, "meetups", String(id));
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          setStatus("error");
-          setErrorMsg("Meetup not found.");
-          logError("meetup_not_found", { id });
-          return;
-        }
-
-        const data = snap.data() as MeetupDoc;
-
-        const nextTitle = data.title ?? "";
-        const nextDesc = data.description ?? data.location ?? "";
-
-        const p = Array.isArray(data.participants) ? data.participants : [];
-        const cap =
-          typeof data.maxCapacity === "number" ? data.maxCapacity : null;
-
-        const g = data.locationGeo;
-
-        if (
-          !g ||
-          typeof g.latitude !== "number" ||
-          typeof g.longitude !== "number"
-        ) {
-          setTitle(nextTitle);
-          setDesc(nextDesc);
-          setParticipantsCount(p.length);
-          setMaxCapacity(cap);
-          setLat(null);
-          setLng(null);
-          setStatus("error");
-          setErrorMsg("Missing or invalid meetup coordinates.");
-          logError("meetup_missing_locationGeo", { id, data });
-          return;
-        }
-
-        setTitle(nextTitle);
-        setDesc(nextDesc);
-        setParticipantsCount(p.length);
-        setMaxCapacity(cap);
-        setLat(g.latitude);
-        setLng(g.longitude);
-        setStatus("ready");
-        setErrorMsg("");
-      },
-      (err) => {
-        setStatus("error");
-        setErrorMsg(err?.message || "Failed to subscribe meetup.");
-        logError("meetup_onSnapshot_error", { id, message: err?.message });
+    (async () => {
+      if (!id) {
+        Alert.alert("Missing params", "No meetup id provided.");
+        router.back();
+        return;
       }
-    );
+      try {
+        const ref = doc(db, "meetups", String(id));
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          Alert.alert("Not found", "Meetup not found.", [{ text: "OK", onPress: () => router.back() }]);
+          return;
+        }
+        const data = snap.data() as any;
 
-    return () => unsub();
-  }, [id, retryTick]);
+        // Name: keep "Unknown" as-is if that's how it's stored
+        setLocationName(typeof data.location === "string" ? data.location : "");
 
-  const onBack = () => {
-    if (router.canGoBack()) router.back();
-  };
+        // Coordinates: robust multi-shape parsing; keep numeric region for UI safety
+        const coords = normalizeCoords(data.locationGeo);
+        setRegion((r) => ({
+          ...r,
+          latitude: safeNumber(coords?.lat, r.latitude),
+          longitude: safeNumber(coords?.lng, r.longitude),
+        }));
+      } catch (e: any) {
+        Alert.alert("Load failed", e?.message ?? "Unknown error", [{ text: "OK", onPress: () => router.back() }]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [id]);
 
-  const onRetry = () => {
-    setRetryTick((t) => t + 1);
-  };
+  // Geocode text -> coordinates (optional helper)
+  const handleGeocodeSubmit = async () => {
+    const q = locationName.trim();
+    if (!q) return;
 
-  const onCreate = () => {
-    if (!isAuthed) {
-      Alert.alert("Login required", "Please sign in to create a meetup.");
-      return;
+    // simple debounce to avoid rapid multiple calls
+    if (Date.now() - lastGeocodeAt < 1200) return;
+    setLastGeocodeAt(Date.now());
+
+    try {
+      setIsGeocoding(true);
+      const Location = await import("expo-location");
+      const results = await Location.geocodeAsync(q);
+      if (results && results.length > 0) {
+        const { latitude, longitude } = results[0];
+        setRegion((r) => ({ ...r, latitude, longitude }));
+      } else {
+        Alert.alert("Not found", "No coordinates found for this location.");
+      }
+    } catch {
+      Alert.alert(
+        "Geocoding unavailable",
+        "expo-location is not available in this client. You can still drag the map."
+      );
+    } finally {
+      setIsGeocoding(false);
     }
-    router.push("/(tabs)/Interest/newMeetup");
   };
 
-  if (status === "loading" || status === "idle") {
+  // Save location back to Firestore in a consistent shape
+  const onSave = async () => {
+    if (!id) return;
+    const locName = locationName.trim() || "Unknown";
+    const updates = {
+      location: locName,
+      // Persist a consistent canonical shape
+      locationGeo: {
+        latitude: region.latitude,
+        longitude: region.longitude,
+      },
+    };
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "meetups", String(id)), updates);
+      Alert.alert("Saved", "Location has been updated.", [{ text: "OK", onPress: () => router.back() }]);
+    } catch (e: any) {
+      Alert.alert("Save failed", e?.message ?? "Unknown error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <Pressable hitSlop={8} onPress={onBack} style={styles.iconBtn}>
-            <Ionicons name="chevron-back" size={22} color="#2c3e50" />
-          </Pressable>
-          <Text style={styles.title}>Meetups</Text>
-          {isAuthed ? (
-            <Pressable hitSlop={8} onPress={onCreate} style={styles.iconBtn}>
-              <Ionicons name="add" size={22} color="#3b82f6" />
-            </Pressable>
-          ) : (
-            <View style={styles.iconBtn} />
-          )}
-        </View>
-        <Text style={{ margin: 20 }}>Loading...</Text>
+      <SafeAreaView style={[styles.screen, { alignItems: "center", justifyContent: "center" }]}>
+        <ActivityIndicator />
+        <Text style={{ marginTop: 8, color: "#3b5aa9" }}>Loading...</Text>
       </SafeAreaView>
     );
   }
-
-  if (
-    status === "error" ||
-    title == null ||
-    desc == null ||
-    participantsCount == null
-  ) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <Pressable hitSlop={8} onPress={onBack} style={styles.iconBtn}>
-            <Ionicons name="chevron-back" size={22} color="#2c3e50" />
-          </Pressable>
-          <Text style={styles.title}>Meetups</Text>
-          {isAuthed ? (
-            <Pressable hitSlop={8} onPress={onCreate} style={styles.iconBtn}>
-              <Ionicons name="add" size={22} color="#3b82f6" />
-            </Pressable>
-          ) : (
-            <View style={styles.iconBtn} />
-          )}
-        </View>
-
-        <View style={styles.errorWrap}>
-          <Ionicons name="warning-outline" size={22} color="#b91c1c" />
-          <Text style={styles.errorTitle}>Failed to load meetup location</Text>
-          {!!errorMsg && <Text style={styles.errorMsg}>{errorMsg}</Text>}
-
-          <View style={styles.errorBtns}>
-            <Pressable onPress={onBack} style={[styles.cta, styles.ctaGhost]}>
-              <Ionicons name="chevron-back" size={16} color="#345BCE" />
-              <Text style={styles.ctaGhostText}>Back</Text>
-            </Pressable>
-
-            <Pressable onPress={onRetry} style={styles.cta}>
-              <Ionicons name="refresh" size={16} color="#fff" />
-              <Text style={styles.ctaText}>Retry</Text>
-            </Pressable>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const hasCoords = lat != null && lng != null;
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView
-        contentContainerStyle={{ paddingTop: 0, paddingBottom: 100 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <Pressable hitSlop={8} onPress={onBack} style={styles.iconBtn}>
-            <Ionicons name="chevron-back" size={22} color="#2c3e50" />
-          </Pressable>
-          <Text style={styles.title}>Meetups</Text>
-          {isAuthed ? (
-            <Pressable hitSlop={8} onPress={onCreate} style={styles.iconBtn}>
-              <Ionicons name="add" size={22} color="#3b82f6" />
-            </Pressable>
-          ) : (
-            <View style={styles.iconBtn} />
-          )}
-        </View>
+    <SafeAreaView style={styles.screen}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={22} />
+        </TouchableOpacity>
+        <Text style={styles.title}>Meetup Location</Text>
+        <View style={{ width: 32, height: 32 }} />
+      </View>
 
-        <View style={styles.mapWrap}>
-          {hasCoords ? (
+      <ScrollView contentContainerStyle={{ alignItems: "center", paddingBottom: 24 }}>
+        {/* Card */}
+        <View style={[styles.card, { width: PANEL_W }]}>
+          <Text style={styles.subLabel}>Search / Name</Text>
+          <View style={[styles.searchBox, { marginBottom: 12 }]}>
+            <Ionicons name="search" size={18} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Enter or edit the location name"
+              value={locationName}
+              onChangeText={setLocationName}
+              returnKeyType="search"
+              onSubmitEditing={handleGeocodeSubmit}
+              editable={!isGeocoding}
+            />
+            <TouchableOpacity
+              onPress={handleGeocodeSubmit}
+              disabled={isGeocoding}
+              style={{ paddingHorizontal: 8, paddingVertical: 4, opacity: isGeocoding ? 0.5 : 1 }}
+            >
+              <Text style={{ color: "#3b5aa9", fontWeight: "700" }}>{isGeocoding ? "..." : "Search"}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.subLabel}>Pin on map</Text>
+          <View style={styles.mapWrap}>
             <MapView
               style={styles.map}
-              initialRegion={{
-                latitude: lat!,
-                longitude: lng!,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              }}
+              {...(Platform.OS === "android" ? { provider: PROVIDER_GOOGLE } : {})}
+              region={region}
+              onRegionChangeComplete={setRegion}
             >
-              <Marker
-                coordinate={{ latitude: lat!, longitude: lng! }}
-                title={title!}
-                description={desc!}
-              />
+              <Marker coordinate={{ latitude: region.latitude, longitude: region.longitude }} />
             </MapView>
-          ) : (
-            <View style={styles.mapFallback}>
-              <Ionicons name="map-outline" size={22} color="#6b7280" />
-              <Text style={{ color: "#6b7280" }}>Map coordinates not available</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Introduction</Text>
-          <View style={styles.introCard}>
-            <Text style={styles.introText}>{desc}</Text>
           </View>
-          <Text style={styles.participants}>
-            Participants: {participantsCount}
-            {typeof maxCapacity === "number" ? ` / ${maxCapacity}` : ""}
+
+          <Text style={styles.coordText}>
+            {locationName || "Unknown"} {formatCoords({ latitude: region.latitude, longitude: region.longitude })}
           </Text>
+
+          {/* Save */}
+          <View style={styles.footerRow}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()} disabled={saving}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveBtn} onPress={onSave} disabled={saving}>
+              <Text style={styles.saveText}>{saving ? "Saving..." : "Save"}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const BG = "#D6E6FD";
-const CARD_BG = "#e9f0ff";
-const BLUE_TEXT = "#345BCE";
-
+// ---------- Styles ----------
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
+  screen: {
+    flex: 1,
+    backgroundColor: "#dbe7ff",
+  },
+
   header: {
+    paddingTop: 8,
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+
+  backBtn: {
+    width: 32,
+    height: 32,
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 20, fontWeight: "700", color: "#2c3e50" },
+
+  title: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#2c3e50",
+  },
+
+  card: {
+    backgroundColor: "#cfe0ff",
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 0,
+  },
+
+  subLabel: {
+    color: "#3b5aa9",
+    marginBottom: 6,
+    fontWeight: "600",
+  },
+
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderRadius: 22,
+    paddingHorizontal: 12,
+    height: 40,
+    elevation: 1,
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    marginTop: 6,
+  },
+
+  searchInput: {
+    marginLeft: 8,
+    flex: 1,
+  },
 
   mapWrap: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderRadius: 16,
+    borderRadius: 12,
     overflow: "hidden",
     height: 200,
-    backgroundColor: "#eef4ff",
+    marginBottom: 8,
   },
-  map: { width: "100%", height: "100%" },
-  mapFallback: {
+
+  map: {
     flex: 1,
-    minHeight: 200,
-    alignItems: "center",
-    justifyContent: "center",
-    rowGap: 6,
   },
 
-  section: {
-    marginTop: 12,
-    marginHorizontal: 16,
-    backgroundColor: "transparent",
+  coordText: {
+    textAlign: "center",
+    color: "#3b5aa9",
+    marginTop: 6,
+    fontWeight: "600",
   },
-  sectionTitle: { color: BLUE_TEXT, fontSize: 16, fontWeight: "800", marginBottom: 8 },
-  introCard: { backgroundColor: CARD_BG, borderRadius: 12, padding: 12 },
-  introText: { color: "#111827" },
-  participants: { marginTop: 12, color: BLUE_TEXT, fontWeight: "700" },
 
-  errorWrap: {
-    marginTop: 24,
-    marginHorizontal: 16,
-    backgroundColor: "#fff1f2",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#ffe4e6",
-    rowGap: 8,
-  },
-  errorTitle: { fontWeight: "800", color: "#991b1b", fontSize: 16 },
-  errorMsg: { color: "#7f1d1d" },
-  errorBtns: {
-    marginTop: 8,
+  footerRow: {
     flexDirection: "row",
-    columnGap: 12,
+    justifyContent: "space-between",
+    marginTop: 14,
   },
-  cta: {
-    flexDirection: "row",
-    alignItems: "center",
-    columnGap: 6,
-    backgroundColor: "#345BCE",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+
+  cancelBtn: {
+    backgroundColor: "#d8d0cb",
+    paddingVertical: 12,
+    paddingHorizontal: 22,
     borderRadius: 10,
   },
-  ctaText: { color: "#fff", fontWeight: "700" },
-  ctaGhost: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: BLUE_TEXT,
+  cancelText: {
+    color: "#5e5651",
+    fontWeight: "700",
   },
-  ctaGhostText: { color: BLUE_TEXT, fontWeight: "700" },
+
+  saveBtn: {
+    backgroundColor: "#d84535",
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 10,
+  },
+  saveText: {
+    color: "white",
+    fontWeight: "700",
+  },
 });

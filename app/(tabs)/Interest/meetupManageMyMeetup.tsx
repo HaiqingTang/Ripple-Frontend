@@ -13,7 +13,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 // Firestore
-import { collection, onSnapshot, query, where, deleteDoc, doc } from "firebase/firestore";
+import {
+  collection, onSnapshot, query, where, deleteDoc, doc,
+  getDoc, writeBatch, serverTimestamp
+} from "firebase/firestore";
 import { db, auth } from "../../../firebase";
 
 const { width } = Dimensions.get("window");
@@ -75,6 +78,15 @@ export default function MeetupManageMyMeetup() {
     return () => clearTimeout(t);
   }, [queryInput]);
 
+  useEffect(() => {
+    return () => {
+      if (pendingTimerRef.current) {
+        clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const filtered = useMemo(() => {
     const q = queryText.toLowerCase();
     if (!q) return items;
@@ -105,12 +117,42 @@ export default function MeetupManageMyMeetup() {
     if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
     pendingTimerRef.current = setTimeout(async () => {
       try {
-        await deleteDoc(doc(db, "meetups", id));
-        // onSnapshot will refresh the list; clear pending state
+        const meetupRef = doc(db, "meetups", id);
+        const snap = await getDoc(meetupRef);
+
+        if (!snap.exists()) {
+          setPendingDelete(null);
+          pendingTimerRef.current = null;
+          return;
+        }
+
+        const data = snap.data() as any | undefined;
+        const title = data?.title ?? it.title ?? "A meetup";
+        const currentUid = auth.currentUser?.uid ?? null;
+        const participants: string[] = Array.isArray(data?.participants) ? data!.participants : [];
+        const batch = writeBatch(db);
+
+        for (const uid of participants) {
+          if (currentUid && uid === currentUid) continue;
+
+          const notifRef = doc(collection(db, "users", uid, "notifications"));
+          batch.set(notifRef, {
+            type: "MEETUP_DELETED",
+            meetupId: id,
+            title,
+            canceledBy: currentUid,
+            canceledAt: serverTimestamp(),
+            read: false,
+          });
+        }
+
+        batch.delete(meetupRef);
+        await batch.commit();
+
         setPendingDelete(null);
         pendingTimerRef.current = null;
+        Alert.alert("Meetup deleted", `Notified ${Math.max(participants.length - 1, 0)} participant(s).`);
       } catch (e: any) {
-        // Rollback UI on failure
         setItems((prev) => {
           const next = [...prev, it];
           next.sort((a, b) => fromDisplayDate(b.date) - fromDisplayDate(a.date));

@@ -29,10 +29,52 @@ const DEFAULT_SPONSOR_NAME = "sponsor name";
 // Fixed categories (single-select)
 const CATEGORIES = ["Sports", "Music", "Lifestyle", "Study", "Travel", "Food", "Arts"] as const;
 
-// Base tags (multi-select). Users can add custom tags on top of these.
+// Base tags (multi-select)
 const BASE_TAGS = ["Sports", "Music", "Lifestyle", "Study"] as const;
 
-// Format a Date into "YYYY-MM-DD HH:mm"
+// ---- helpers (geo + date) ----
+
+// Accepts GeoPoint / {latitude, longitude} / {lat, lng} / [lat, lng] / "lat,lng"
+function normalizeCoords(val: any): { lat: number; lng: number } | null {
+  if (!val) return null;
+
+  // Firestore GeoPoint (class or plain object) and {lat,lng}
+  if (
+    (typeof val.latitude === "number" && typeof val.longitude === "number") ||
+    (typeof val.lat === "number" && typeof val.lng === "number")
+  ) {
+    const lat = typeof val.latitude === "number" ? val.latitude : val.lat;
+    const lng = typeof val.longitude === "number" ? val.longitude : val.lng;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    return null;
+  }
+
+  // Array [lat, lng]
+  if (Array.isArray(val) && val.length >= 2) {
+    const [lat, lng] = val;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    return null;
+  }
+
+  // String "lat,lng"
+  if (typeof val === "string") {
+    const parts = val.split(",").map((s) => parseFloat(s.trim()));
+    if (parts.length >= 2 && parts.every((n) => Number.isFinite(n))) {
+      return { lat: parts[0], lng: parts[1] };
+    }
+    return null;
+  }
+
+  return null;
+}
+
+// Safely coerce to number with fallback
+function safeNumber(v: any, fallback: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+// Format Date -> "YYYY-MM-DD HH:mm"
 function formatDateTime(d?: Date | null): string {
   if (!d || Number.isNaN(d.getTime())) return "-";
   const y = d.getFullYear();
@@ -67,9 +109,9 @@ export default function ManageMyMeetupEdit() {
   const [newTagText, setNewTagText] = useState("");
 
   const [selectedCategory, setSelectedCategory] = useState<string>("Lifestyle");
-
   const [locationName, setLocationName] = useState("");
 
+  // Region is always numeric so UI can safely call toFixed
   const [region, setRegion] = useState<Region>({
     latitude: -37.8,
     longitude: 144.966,
@@ -116,9 +158,13 @@ export default function ManageMyMeetupEdit() {
         }
         const data = snap.data() as any;
 
+        // Image
         setExistingImageUrl(typeof data.imageUrl === "string" ? data.imageUrl : null);
+
+        // Title
         setTitle(String(data.title ?? ""));
 
+        // Date
         let initDate: Date | null = null;
         if (data.date?.seconds) initDate = new Date(data.date.seconds * 1000);
         else if (typeof data.date === "string") {
@@ -129,27 +175,38 @@ export default function ManageMyMeetupEdit() {
         }
         setDateVal(initDate);
 
+        // Capacity
         setMaxCapInput(
           typeof data.maxCapacity === "number" ? String(data.maxCapacity) : ""
         );
+
+        // Description
         setDesc(String(data.description ?? "activity content"));
 
+        // Tags
         const initialTags =
           Array.isArray(data.tags) && data.tags.length
             ? data.tags.map(String)
             : ["Lifestyle"];
         setSelectedTags(initialTags);
 
+        // Category
         setSelectedCategory(
           typeof data.category === "string" && data.category ? data.category : "Lifestyle"
         );
 
+        // Location name (may be "Unknown" by design)
         setLocationName(String(data.location ?? ""));
+
+        // Location region (robust multi-shape support)
+        const coords = normalizeCoords(data.locationGeo);
         setRegion((r: Region) => ({
           ...r,
-          latitude: data.locationGeo?.latitude ?? r.latitude,
-          longitude: data.locationGeo?.longitude ?? r.longitude,
+          latitude: safeNumber(coords?.lat, r.latitude),
+          longitude: safeNumber(coords?.lng, r.longitude),
         }));
+
+        // Participants
         setParticipantsCount(
           Array.isArray(data.participants) ? data.participants.length : 0
         );
@@ -179,8 +236,10 @@ export default function ManageMyMeetupEdit() {
         return;
       }
       const data = snap.data() as any;
+
       setExistingImageUrl(typeof data.imageUrl === "string" ? data.imageUrl : null);
       setTitle(String(data.title ?? ""));
+
       let initDate: Date | null = null;
       if (data.date?.seconds) initDate = new Date(data.date.seconds * 1000);
       else if (typeof data.date === "string") {
@@ -190,20 +249,27 @@ export default function ManageMyMeetupEdit() {
         initDate = data.date;
       }
       setDateVal(initDate);
+
       setMaxCapInput(typeof data.maxCapacity === "number" ? String(data.maxCapacity) : "");
       setDesc(String(data.description ?? "activity content"));
+
       const initialTags =
         Array.isArray(data.tags) && data.tags.length ? data.tags.map(String) : ["Lifestyle"];
       setSelectedTags(initialTags);
+
       setSelectedCategory(
         typeof data.category === "string" && data.category ? data.category : "Lifestyle"
       );
+
       setLocationName(String(data.location ?? ""));
+
+      const coords = normalizeCoords(data.locationGeo);
       setRegion((r: Region) => ({
         ...r,
-        latitude: data.locationGeo?.latitude ?? r.latitude,
-        longitude: data.locationGeo?.longitude ?? r.longitude,
+        latitude: safeNumber(coords?.lat, r.latitude),
+        longitude: safeNumber(coords?.lng, r.longitude),
       }));
+
       setParticipantsCount(Array.isArray(data.participants) ? data.participants.length : 0);
     } catch (e: any) {
       Alert.alert("Load failed", e?.message ?? "Unknown error");
@@ -236,7 +302,7 @@ export default function ManageMyMeetupEdit() {
   const handleGeocodeSubmit = async () => {
     const q = locationName.trim();
     if (!q) return;
-    if (Date.now() - lastGeocodeAt < 1200) return;
+    if (Date.now() - lastGeocodeAt < 1200) return; // simple debounce
     setLastGeocodeAt(Date.now());
     try {
       setIsGeocoding(true);
@@ -289,7 +355,6 @@ export default function ManageMyMeetupEdit() {
     }
 
     try {
-      // ✅ 修正这里的参数顺序：localUri, mime, webFile, folder, setUploading
       const url = await uploadToCloudinary(
         imageUri,
         imageMime,
@@ -313,6 +378,7 @@ export default function ManageMyMeetupEdit() {
       return;
     }
 
+    // Date validation
     setDateError(null);
     if (!dateVal || Number.isNaN(dateVal.getTime())) {
       setDateError("Please choose a date and time");
@@ -324,6 +390,7 @@ export default function ManageMyMeetupEdit() {
     }
     const dateToSave = Timestamp.fromDate(dateVal);
 
+    // Capacity validation
     setCapError(null);
     const maxCap = parseInt(maxCapInput, 10);
     if (!maxCapInput.trim() || Number.isNaN(maxCap) || maxCap <= 0) {
@@ -339,7 +406,9 @@ export default function ManageMyMeetupEdit() {
       maxCapacity: maxCap,
       category: selectedCategory || "Lifestyle",
       tags: selectedTags.length ? selectedTags : ["Lifestyle"],
+      // Keep "Unknown" if user leaves it blank to match existing behavior
       location: locationName.trim() || "Unknown",
+      // Persist a consistent shape going forward
       locationGeo: { latitude: region.latitude, longitude: region.longitude },
       imageUrl: finalImageUrl,
       sponsorName: DEFAULT_SPONSOR_NAME,
@@ -366,7 +435,6 @@ export default function ManageMyMeetupEdit() {
     );
   }
 
-  // Combined tag list to render (base + custom)
   const allTags = [...BASE_TAGS, ...customTags];
 
   return (
@@ -385,11 +453,10 @@ export default function ManageMyMeetupEdit() {
         contentContainerStyle={{ alignItems: "center", paddingBottom: bottomPadding }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Top decorative search bar removed */}
-        {/* First content card starts here */}
+        {/* Card */}
         <View style={[styles.card, { width: PANEL_W }]}>
 
-          {/* Cover image change section keep old ui style */}
+          {/* Cover image */}
           <Text style={styles.subLabel}>Cover</Text>
           <View style={styles.imageBox}>
             <Image
@@ -417,7 +484,7 @@ export default function ManageMyMeetupEdit() {
 
           <LinedRow label="Title" value={title} onChange={setTitle} placeholder="Value" />
 
-          {/* Time (native picker) */}
+          {/* Time */}
           <View style={{ marginBottom: 12 }}>
             <Text style={styles.subLabel}>Time</Text>
             <TouchableOpacity
@@ -452,7 +519,7 @@ export default function ManageMyMeetupEdit() {
           />
           {!!capError && <Text style={styles.errorText}>{capError}</Text>}
 
-          {/* Category single-select */}
+          {/* Category */}
           <Text style={[styles.subLabel, { marginTop: 6 }]}>Category</Text>
           <View style={styles.tagRow}>
             {CATEGORIES.map((c) => {
@@ -472,6 +539,7 @@ export default function ManageMyMeetupEdit() {
             })}
           </View>
 
+          {/* Description */}
           <Text style={styles.subLabel}>Description</Text>
           <TextInput
             style={styles.textArea}
@@ -480,7 +548,7 @@ export default function ManageMyMeetupEdit() {
             onChangeText={setDesc}
           />
 
-          {/* Tags multi-select */}
+          {/* Tags */}
           <Text style={styles.subLabel}>Tags</Text>
           <View style={styles.tagRow}>
             {allTags.map((t) => {
@@ -509,11 +577,13 @@ export default function ManageMyMeetupEdit() {
             </TouchableOpacity>
           </View>
 
+          {/* Participants hint */}
           <Text style={[styles.subLabel, { marginTop: 6 }]}>
             Participants ({participantsCount})
           </Text>
           <Text style={styles.hintText}>Participants are managed elsewhere. Here you can edit max capacity.</Text>
 
+          {/* Location */}
           <Text style={[styles.subLabel, { marginTop: 6 }]}>Location</Text>
           <View style={[styles.searchBox, { marginBottom: 12 }]}>
             <Ionicons name="search" size={18} />
@@ -630,7 +700,6 @@ const styles = StyleSheet.create({
     color: "#2c3e50",
   },
 
-  // kept for location input box
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -654,7 +723,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#cfe0ff",
     borderRadius: 16,
     padding: 14,
-    marginTop: 0, // unified first card offset
+    marginTop: 0,
   },
 
   subLabel: {
@@ -788,10 +857,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
 
-  // inline error text add
   errorText: { color: "#d84535", marginBottom: 8, fontWeight: "700" },
 
-  // cover image box add
   imageBox: {
     width: "100%",
     height: 160,
@@ -801,7 +868,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  // small row for uploading badge add
   singleTagRow: {
     flexDirection: "row",
     alignItems: "center",
