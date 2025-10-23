@@ -13,13 +13,14 @@ import {
     TouchableWithoutFeedback,
     Alert,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppContext } from "@/context/AppContext";
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import ProfilePicture from "@/components/ProfilePicture";
-import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, Timestamp, doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 const { width } = Dimensions.get("window");
@@ -144,7 +145,11 @@ export default function ProfilePage() {
     const router = useRouter();
 
     const { userId, fullName, userName } = useAppContext();
-    const displayName = fullName || "User Name";
+    
+    // display name from Firestore users (same logic as Challenge page)
+    const [displayName, setDisplayName] = useState<string>(
+        auth.currentUser?.displayName?.trim().split(/\s+/)[0] || "there"
+    );
     const displayHandle = userName || "@username";
 
     const [posts, setPosts] = useState<Post[]>([]);
@@ -156,6 +161,25 @@ export default function ProfilePage() {
     const [selectedTab, setSelectedTab] = useState<TabType>("Posts");
 
     const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+
+    // Fetch display name from Firestore (same logic as Challenge page)
+    useEffect(() => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        const ref = doc(db, "users", uid);
+        const unsub = onSnapshot(
+            ref,
+            (snap) => {
+                const dn = (snap.data() as any)?.displayName as string | undefined;
+                if (dn && typeof dn === "string") {
+                    setDisplayName(dn.trim().split(/\s+/)[0] || "there");
+                }
+            },
+            // keep silent on error to avoid UI churn; header will keep current fallback
+            () => {}
+        );
+        return () => unsub();
+    }, []);
 
     // Fetch user posts from Firestore
     const fetchUserPosts = async (): Promise<Post[]> => {
@@ -279,7 +303,7 @@ export default function ProfilePage() {
                     onPress: async () => {
                         try {
                             await signOut(auth);
-                            router.replace('/auth/login');
+                            router.replace('/');
                         } catch (error) {
                             console.error('Sign out error:', error);
                             Alert.alert('Error', 'Failed to sign out. Please try again.');
@@ -291,12 +315,13 @@ export default function ProfilePage() {
     };
 
     return (
-        <ScrollView
-            style={styles.container}
-            stickyHeaderIndices={[2]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-        >
+        <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+            <ScrollView
+                style={styles.container}
+                stickyHeaderIndices={[2]}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+            >
             {/* Header */}
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Profile</Text>
@@ -428,11 +453,16 @@ export default function ProfilePage() {
                     </View>
                 </TouchableWithoutFeedback>
             </Modal>
-        </ScrollView>
+            </ScrollView>
+        </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
+    safeArea: {
+        flex: 1,
+        backgroundColor: "#DDE7FF",
+    },
     container: {
         flex: 1,
         backgroundColor: "#DDE7FF",

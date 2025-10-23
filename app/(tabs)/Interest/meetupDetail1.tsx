@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { doc, getDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import { db, auth } from "../../../firebase";
+import { useAppContext } from "@/context/AppContext";
 // Use expo-image for caching + placeholder
 import { Image as ExpoImage } from "expo-image";
 
@@ -24,6 +25,7 @@ type Meetup = {
   category?: string;
   creatorId?: string;
   participants: string[];
+  participantProfiles?: { id: string; name: string; avatarUrl: string | null; joinedAt: any }[];
   sponsorName?: string;
   tags?: string[];
   imageUrl?: string;
@@ -33,6 +35,7 @@ type Meetup = {
 export default function MeetupDetailPage() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { fullName, profilePictureUrl } = useAppContext();
   const id =
     typeof params.id === "string"
       ? params.id
@@ -120,10 +123,33 @@ export default function MeetupDetailPage() {
 
     try {
       const ref = doc(db, "meetups", meetup.id);
-      await updateDoc(ref, { participants: arrayUnion(auth.currentUser.uid) });
+      
+      // Create user profile using AppContext data (like Discussion system)
+      const cleanUserProfile = {
+        id: auth.currentUser.uid,
+        name: fullName || auth.currentUser.displayName || auth.currentUser.uid,
+        avatarUrl: profilePictureUrl || null, // Use avatar from AppContext
+        joinedAt: new Date(),
+      };
+
+      // Update both participants array and participantProfiles array
+      const updateData: any = {
+        participants: arrayUnion(auth.currentUser.uid),
+        // Always use arrayUnion to avoid overwriting existing profiles
+        participantProfiles: arrayUnion(cleanUserProfile),
+      };
+
+      await updateDoc(ref, updateData);
+      
       setMeetup((prev) =>
         prev
-          ? { ...prev, participants: [...prev.participants, auth.currentUser!.uid] }
+          ? { 
+              ...prev, 
+              participants: [...prev.participants, auth.currentUser!.uid],
+              participantProfiles: prev.participantProfiles 
+                ? [...prev.participantProfiles, cleanUserProfile]
+                : [cleanUserProfile]
+            }
           : prev
       );
       Alert.alert("Success", "You have joined this meetup");

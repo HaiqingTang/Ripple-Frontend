@@ -13,6 +13,7 @@ import { Link, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { auth, db } from "../../../firebase";
 import { doc, onSnapshot } from "firebase/firestore";
+import { useAppContext } from "@/context/AppContext";
 
 type ChallengeItem = {
   key: string;
@@ -46,6 +47,7 @@ const ROUTE_BY_KEY: Record<string, { pathname: string; params: { category: strin
 
 export default function ChallengeIndex() {
   const router = useRouter();
+  const { profilePictureUrl } = useAppContext();
 
   // display name from Firestore users
   const [displayName, setDisplayName] = useState<string>(
@@ -108,10 +110,18 @@ export default function ChallengeIndex() {
             <Text style={styles.headerTitle}>
               Hey {displayName},{"\n"}Ready for some <Text style={styles.headerTitleEm}>challenge?</Text>
             </Text>
-            <Image
-              source={{ uri: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=200&auto=format&fit=crop" }}
-              style={styles.headerImage}
-            />
+            {profilePictureUrl ? (
+              <Image
+                source={{ uri: profilePictureUrl }}
+                style={styles.headerImage}
+              />
+            ) : (
+              <View style={[styles.headerImage, { backgroundColor: "#5C95E9", alignItems: "center", justifyContent: "center" }]}>
+                <Text style={{ color: "white", fontSize: 24, fontWeight: "800" }}>
+                  {displayName.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.customizeContainer}>

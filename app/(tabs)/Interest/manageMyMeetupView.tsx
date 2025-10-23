@@ -28,7 +28,8 @@ type Meetup = {
   description?: string;
   date?: any; // Firestore Timestamp | string | Date
   maxCapacity?: number | null;
-  participants?: string[];
+  participants?: string[]; // Keep for backward compatibility
+  participantProfiles?: ParticipantProfile[]; // New enhanced structure
   category?: string;
   tags?: string[];
   location?: string | null;
@@ -40,6 +41,13 @@ type Meetup = {
     | null;
   imageUrl?: string;
   sponsorName?: string;
+};
+
+type ParticipantProfile = {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+  joinedAt?: any; // Firestore Timestamp
 };
 
 type Profile = {
@@ -71,6 +79,7 @@ function initialFromId(id: string) {
   const c = id.replace(/[^A-Za-z0-9]/g, "").charAt(0).toUpperCase();
   return c || "U";
 }
+
 
 function normalizeCoords(val: any): { lat: number; lng: number } | null {
   if (!val) return null;
@@ -144,14 +153,37 @@ export default function ManageMyMeetupView() {
     })();
   }, [id]);
 
-  // load participant profiles (best-effort)
+  // load participant profiles (enhanced with new structure)
   useEffect(() => {
     (async () => {
-      if (!meetup?.participants || meetup.participants.length === 0) {
+      if (!meetup) {
         setProfiles([]);
         setProfilesPartialFailed(false);
         return;
       }
+
+      // Check if we have the new participantProfiles structure
+      if (meetup.participantProfiles && meetup.participantProfiles.length > 0) {
+        // Use the new structure - no additional queries needed!
+        const profiles = meetup.participantProfiles.map(p => ({
+          id: p.id,
+          name: p.name,
+          avatarUrl: p.avatarUrl,
+        }));
+        setProfiles(profiles);
+        setProfilesPartialFailed(false);
+        setLoadingProfiles(false);
+        return;
+      }
+
+      // Fallback to old method for backward compatibility
+      if (!meetup.participants || meetup.participants.length === 0) {
+        setProfiles([]);
+        setProfilesPartialFailed(false);
+        setLoadingProfiles(false);
+        return;
+      }
+
       setLoadingProfiles(true);
       let partial = false;
       try {
@@ -185,7 +217,7 @@ export default function ManageMyMeetupView() {
         setLoadingProfiles(false);
       }
     })();
-  }, [meetup?.participants]);
+  }, [meetup?.participants, meetup?.participantProfiles]);
 
   const tags = useMemo(() => Array.isArray(meetup?.tags) ? meetup!.tags! : [], [meetup?.tags]);
   const category = meetup?.category || "-";
@@ -205,9 +237,8 @@ export default function ManageMyMeetupView() {
     (meetup?.location && typeof meetup.location === "string" ? meetup.location : "Unknown") +
     formatCoords(meetup?.locationGeo);
 
-  const participantsCount = Array.isArray(meetup?.participants)
-    ? meetup!.participants!.length
-    : 0;
+  const participantsCount = meetup?.participantProfiles?.length || 
+    (Array.isArray(meetup?.participants) ? meetup!.participants!.length : 0);
 
   const imageSrc = meetup?.imageUrl || DEFAULT_IMAGE_URL;
 
@@ -222,7 +253,7 @@ export default function ManageMyMeetupView() {
         <View style={{ width: 32, height: 32 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ alignItems: "center", paddingBottom: 28 }}>
+      <ScrollView contentContainerStyle={{ alignItems: "center", paddingBottom: 100 }}>
         {/* First card */}
         <View style={[styles.card, { width: PANEL_W }]}>
           {/* Cover image */}

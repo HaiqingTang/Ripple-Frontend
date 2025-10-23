@@ -31,7 +31,7 @@ export default function InterestIndex() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
-      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
+      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Hero */}
         <View style={styles.hero}>
           <Text style={styles.heroTitle}>

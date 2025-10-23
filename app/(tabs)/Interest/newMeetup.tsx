@@ -25,10 +25,13 @@ import * as ImagePicker from "expo-image-picker";
 import {
   addDoc,
   collection,
+  doc,
+  getDoc,
   Timestamp,
 } from "firebase/firestore"; // onPublish default date - time is required; we do not import serverTimestamp
 import { db, auth } from "../../../firebase";
 import { uploadToCloudinary } from "../../../utils/upload";
+import { useAppContext } from "@/context/AppContext";
 
 const { width } = Dimensions.get("window");
 const PANEL_W = Math.min(640, width - 28);
@@ -57,6 +60,7 @@ function formatDateTime(d?: Date | null): string {
 
 export default function NewMeetup() {
   const router = useRouter();
+  const { fullName, profilePictureUrl } = useAppContext();
   const navigation = useNavigation();
 
   const backOrHome = () => {
@@ -269,6 +273,14 @@ const uploadImageAndGetUrl = async (_uid: string): Promise<string> => {
       // image upload - upload first if user selected an image
       const finalImageUrl = await uploadImageAndGetUrl(uid);
 
+      // Create creator profile using AppContext data (like Discussion system)
+      const creatorProfile = {
+        id: uid,
+        name: fullName || auth.currentUser?.displayName || uid,
+        avatarUrl: profilePictureUrl || null, // Use avatar from AppContext
+        joinedAt: new Date(),
+      };
+
       // Build doc body with explicit category and tags
       const docBody = {
         title,
@@ -276,6 +288,7 @@ const uploadImageAndGetUrl = async (_uid: string): Promise<string> => {
         date: dateToSave,
         creatorId: uid,
         participants: [uid],
+        participantProfiles: [creatorProfile], // Include creator's profile
         maxCapacity, // safe integer after validation above
         category: selectedCategory || "Lifestyle",
         tags: selectedTags.length ? selectedTags : ["Lifestyle"],
