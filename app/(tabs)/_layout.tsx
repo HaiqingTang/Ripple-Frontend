@@ -19,7 +19,6 @@ export default function TabsLayout() {
         tabBarActiveTintColor: COLORS.active,
         tabBarInactiveTintColor: COLORS.inactive,
         tabBarStyle: {
-          // 关键改动：贴紧底部
           position: "absolute",
           left: 0,
           right: 0,
