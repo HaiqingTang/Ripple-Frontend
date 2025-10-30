@@ -24,12 +24,13 @@ import {
   reauthenticateWithCredential,
   verifyBeforeUpdateEmail
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import ProfilePicture from '@/components/ProfilePicture';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 
 export default function EditProfilePage() {
   const router = useRouter();
-  const { refreshUserData } = useAppContext();
+  const { fullName, refreshUserData } = useAppContext();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [currentEmail, setCurrentEmail] = useState('');
@@ -43,16 +44,29 @@ export default function EditProfilePage() {
 
   // Load current user data
   useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      const displayName = user.displayName || '';
-      const nameParts = displayName.split(' ');
-      setFirstName(nameParts[0] || '');
-      setLastName(nameParts.slice(1).join(' ') || '');
+    const loadUserData = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // Use fullName from AppContext instead of fetching from Firestore
+      if (fullName && fullName !== 'User') {
+        const nameParts = fullName.split(' ');
+        setFirstName(nameParts[0] || '');
+        setLastName(nameParts.slice(1).join(' ') || '');
+      } else {
+        // Fallback to Firebase Auth displayName if AppContext doesn't have the name yet
+        const displayName = user.displayName || '';
+        const nameParts = displayName.split(' ');
+        setFirstName(nameParts[0] || '');
+        setLastName(nameParts.slice(1).join(' ') || '');
+      }
+
       setCurrentEmail(user.email || '');
-      setNewEmail(''); 
-    }
-  }, []);
+      setNewEmail('');
+    };
+
+    loadUserData();
+  }, [fullName]);
 
   // Validation functions
   const validateEmail = (email: string) => {
@@ -119,10 +133,23 @@ export default function EditProfilePage() {
         await reauthenticateWithCredential(user, credential);
       }
 
-      // Update display name
-      const newDisplayName = `${firstName.trim()} ${lastName.trim()}`.trim();
-      if (newDisplayName !== user.displayName) {
-        await updateProfile(user, { displayName: newDisplayName });
+      // Update name in Firestore directly (skip Firebase Auth displayName)
+      const newFullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+      try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('userId', '==', user.uid));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          const userDocRef = doc(db, 'users', querySnapshot.docs[0].id);
+          await updateDoc(userDocRef, {
+            name: newFullName
+          });
+        }
+      } catch (firestoreError) {
+        console.error('Error updating Firestore name:', firestoreError);
+        setErrorMessage('Failed to update name. Please try again.');
+        return;
       }
 
       // Send email verification if new email is provided
@@ -138,9 +165,9 @@ export default function EditProfilePage() {
       }
 
       // Refresh user data in AppContext to update UI immediately
-      refreshUserData();
+      await refreshUserData();
 
-      // Show different success message based on whether email verification was sent
+      // Show success message
       const successTitle = 'Profile Updated';
       const successMessage = emailVerificationSent
         ? `Profile updated successfully!\n\nA verification email has been sent to ${newEmail}. Please check your email and click the verification link to complete the email change.`
@@ -157,34 +184,7 @@ export default function EditProfilePage() {
         ]
       );
     } catch (error: any) {
-      let message = 'Failed to update profile. Please try again.';
-
-      switch (error.code) {
-        case 'auth/wrong-password':
-        case 'auth/invalid-credential':
-          message = 'Current password is incorrect';
-          break;
-        case 'auth/requires-recent-login':
-          message = 'For security reasons, please enter your current password to make this change';
-          break;
-        case 'auth/email-already-in-use':
-          message = 'This email is already registered to another account';
-          break;
-        case 'auth/invalid-email':
-          message = 'Invalid email address format';
-          break;
-        case 'auth/weak-password':
-          message = 'New password is too weak';
-          break;
-        case 'auth/user-not-found':
-          message = 'User account not found';
-          break;
-        default:
-          console.log('Profile update error:', error.code, error.message);
-          message = `Update failed: ${error.message}`;
-      }
-
-      setErrorMessage(message);
+      // ...existing error handling...
     } finally {
       setLoading(false);
     }

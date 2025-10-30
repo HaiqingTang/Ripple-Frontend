@@ -29,19 +29,41 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
       const usersRef = collection(db, 'users');
       const q = query(usersRef, where('userId', '==', uid));
       const querySnapshot = await getDocs(q);
-
+  
       if (querySnapshot.empty) {
         setProfilePictureUrl('');
+        // If no user document found, fallback to email-based name
+        const user = auth.currentUser;
+        if (user) {
+          const emailName = user.email?.split('@')[0] || 'User';
+          setFullName(emailName);
+        }
         return;
       }
-
+  
       if (querySnapshot.docs.length > 1) {
         console.warn('Multiple user documents found for userId:', uid);
       }
-
+  
       const userDoc = querySnapshot.docs[0];
       const userData = userDoc.data();
-
+  
+      // Set fullName from Firestore data - read from 'name' field that signup stores
+      if (userData.name) {
+        setFullName(userData.name);
+      } else if (userData.fullName) {
+        setFullName(userData.fullName);
+      } else if (userData.firstName && userData.lastName) {
+        setFullName(`${userData.firstName} ${userData.lastName}`);
+      } else {
+        // Fallback to email-based name
+        const user = auth.currentUser;
+        if (user) {
+          const emailName = user.email?.split('@')[0] || 'User';
+          setFullName(emailName);
+        }
+      }
+  
       if (userData.profilePictureBase64 && typeof userData.profilePictureBase64 === 'string' && userData.profilePictureBase64.trim() !== '') {
         // Validate and convert Base64 data to data URI for display
         try {
@@ -82,13 +104,13 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const refreshUserData = async () => {
     const user = auth.currentUser;
     if (user) {
-	    // Fetch the latest data from Firebase
-	    await user.reload();
+      // Fetch the latest data from Firebase
+      await user.reload();
       const name = user.email?.split('@')[0] || 'user';
       setUserName(name);
-      const userDisplayName = user.displayName || 'User';
-      setFullName(userDisplayName);
-      loadUserProfile(user.uid);
+      
+      // Load fullName from Firestore instead of Firebase Auth displayName
+      await loadUserProfile(user.uid);
     }
   };
 
@@ -98,9 +120,9 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
       if (user) {
         const name = user.email?.split('@')[0] || 'user';
         setUserName(name);
-				const userDisplayName = user.displayName || 'User';
-				setFullName(userDisplayName);
-				setUserId(user.uid);
+        setUserId(user.uid);
+        
+        // Load fullName from Firestore instead of Firebase Auth displayName
         await loadUserProfile(user.uid);
       } else {
         setUserName('User');
@@ -108,7 +130,6 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
         setUserId('');
         setProfilePictureUrl('');
       }
-
     });
     return () => unsub();
   }, []);

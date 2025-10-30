@@ -11,7 +11,7 @@ import SortFilterBar, { SortBy } from "./components/SortFilterBar";
 type Post = {
   id: string;
   title: string;
-  author: string;
+  authorId: string;
   createdAt: string;     
   commentCount?: number;
   likeCount?: number;
@@ -186,7 +186,7 @@ export default function DiscussionIndex() {
               key={post.id}
               id={post.id}
               title={post.title}
-              author={post.author}
+              authorId={post.authorId}
               createdAt={post.createdAt}
               commentCount={post.commentCount || 0}
             />
