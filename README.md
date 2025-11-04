@@ -35,6 +35,19 @@ npm run reset-project
 
 This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
 
+## Features
+
+### Upload Rate Limiting
+
+This app implements session-based upload rate limiting to prevent accidental DoS attacks and protect Firebase Firestore:
+
+- **50 uploads per session** with automatic 2-hour reset
+- User-friendly error messages when limits are reached
+- Persistent tracking across app restarts
+- No impact on legitimate user workflows
+
+📖 **[View Upload Rate Limiting Documentation](docs/UPLOAD_RATE_LIMITING.md)**
+
 ## Learn more
 
 To learn more about developing your project with Expo, look at the following resources:

@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { checkUploadAllowed, incrementUploadCount } from './uploadLimiter';
 
 export interface ImagePickerResult {
   success: boolean;
@@ -127,6 +128,12 @@ export const uploadProfilePicture = async (
   base64Data: string
 ): Promise<ImageUploadResult> => {
   try {
+    // Check upload rate limit first
+    const limitStatus = await checkUploadAllowed();
+    if (!limitStatus.allowed) {
+      return { success: false, error: limitStatus.error };
+    }
+
     // Validate input parameters
     if (!base64Data || typeof base64Data !== 'string' || base64Data.trim() === '') {
       return { success: false, error: 'Invalid image data provided' };
@@ -166,6 +173,9 @@ export const uploadProfilePicture = async (
       },
       { merge: true }
     );
+
+    // Increment upload count only after successful upload
+    await incrementUploadCount();
 
     return { success: true, base64Data };
   } catch (error) {
