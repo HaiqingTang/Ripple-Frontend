@@ -1,14 +1,17 @@
-import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { sharedStyles, COLORS, createStatStyle } from '@/styles/sharedStyles';
 import { useDiscussion } from '../_layout';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import React, { useState, useEffect } from 'react';
+
 
 export interface PostCardProps {
   id: string;
   title: string;
-  author?: string;
+  authorId: string;
   createdAt: string;
   commentCount: number;
 }
@@ -19,15 +22,38 @@ export interface PostCardProps {
 const PostCard = React.memo<PostCardProps>(({ 
   id, 
   title, 
-  author, 
+  authorId, 
   createdAt, 
   commentCount 
 }) => {
   const router = useRouter();
+  const [authorName, setAuthorName] = useState<string>('Loading...');
   const { isPostLiked, getPostLikes, togglePostLike } = useDiscussion();
   
   const liked = isPostLiked(id);
   const likeCount = getPostLikes(id);
+
+  useEffect(() => {
+    const fetchAuthorName = async () => {
+      try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('userId', '==', authorId));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          const userData = querySnapshot.docs[0].data();
+          setAuthorName(userData.name || 'Unknown User');
+        } else {
+          setAuthorName('Unknown User');
+        }
+      } catch (error) {
+        console.error('Error fetching author name:', error);
+        setAuthorName('Unknown User');
+      }
+    };
+
+    fetchAuthorName();
+  }, [authorId]);
 
   const handlePress = React.useCallback(() => {
     router.push(`/Discussion/detail?id=${id}`);
@@ -45,7 +71,7 @@ const PostCard = React.memo<PostCardProps>(({
       >
         <Text style={sharedStyles.cardTitle}>{title}</Text>
         <Text style={sharedStyles.cardMeta}>
-          {author} • {new Date(createdAt).toLocaleString()}
+          {authorName} • {new Date(createdAt).toLocaleString()}
         </Text>
       </TouchableOpacity>
 

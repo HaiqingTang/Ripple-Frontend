@@ -1,51 +1,82 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Image } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useDiscussion } from "./_layout";
 import { useAppContext } from "@/context/AppContext";
 import { sharedStyles, COLORS } from "@/styles/sharedStyles";
 import PostStats from "./components/PostStats";
+import { getDoc, doc } from "firebase/firestore";
+import { db } from '@/lib/firebase';
 
 /**
  * Memoized Comment component for better performance
+ * Dynamically fetches author's full name using authorId
  */
 const Comment = React.memo<{ 
-  author: string; 
+  authorId: string; 
   text: string; 
   createdAt: string;
   authorAvatar?: string;
-}>(({ author, text, createdAt, authorAvatar }) => (
-  <View style={sharedStyles.comment}>
-    {authorAvatar ? (
-      <Image 
-        source={{ uri: authorAvatar }}
-        style={[sharedStyles.avatar, { borderRadius: 18 }]}
-      />
-    ) : (
-      <View style={sharedStyles.avatar} />
-    )}
-    <View style={{ flex: 1 }}>
-      <Text style={{ fontWeight: "700" }}>
-        {author}{" "}
-        <Text style={{ fontWeight: "400", color: COLORS.textMuted }}>
-          {new Date(createdAt).toLocaleString()}
+}>(({ authorId, text, createdAt, authorAvatar }) => {
+  const [authorName, setAuthorName] = useState<string>("Loading...");
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchAuthorName() {
+      if (!authorId) {
+        if (isMounted) setAuthorName("Unknown User");
+        return;
+      }
+      try {
+        const userDoc = await getDoc(doc(db, "users", authorId));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          if (isMounted) setAuthorName(userData.name || userData.fullName || "Unknown User");
+        } else {
+          if (isMounted) setAuthorName("Unknown User");
+        }
+      } catch (error) {
+        if (isMounted) setAuthorName("Unknown User");
+      }
+    }
+    fetchAuthorName();
+    return () => { isMounted = false; };
+  }, [authorId]);
+
+  return (
+    <View style={sharedStyles.comment}>
+      {authorAvatar ? (
+        <Image 
+          source={{ uri: authorAvatar }}
+          style={[sharedStyles.avatar, { borderRadius: 18 }]}
+        />
+      ) : (
+        <View style={sharedStyles.avatar} />
+      )}
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontWeight: "700" }}>
+          {authorName}{" "}
+          <Text style={{ fontWeight: "400", color: COLORS.textMuted }}>
+            {new Date(createdAt).toLocaleString()}
+          </Text>
         </Text>
-      </Text>
-      <Text style={{ marginTop: 6 }}>{text}</Text>
+        <Text style={{ marginTop: 6 }}>{text}</Text>
+      </View>
     </View>
-  </View>
-));
+  );
+});
 Comment.displayName = 'Comment';
 
 /**
  * Optimized Discussion Detail component
+ * Dynamically fetches post author's full name using post.authorId
  */
 export default function DiscussionDetail() {
   const { id } = useLocalSearchParams() as { id?: string };
   const { getPost, getCommentsForPost, addComment } = useDiscussion();
   const { profilePictureUrl } = useAppContext();
   const [text, setText] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [postAuthorName, setPostAuthorName] = useState<string>("Loading...");
 
   const post = id ? getPost(String(id)) : undefined;
   const comments = React.useMemo(() => 
@@ -53,9 +84,32 @@ export default function DiscussionDetail() {
     [id, getCommentsForPost]
   );
 
+  // Fetch post author's full name
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchPostAuthorName() {
+      if (!post?.authorId) {
+        if (isMounted) setPostAuthorName(post?.author || "Unknown User");
+        return;
+      }
+      try {
+        const userDoc = await getDoc(doc(db, "users", post.authorId));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          if (isMounted) setPostAuthorName(userData.name || userData.fullName || "Unknown User");
+        } else {
+          if (isMounted) setPostAuthorName("Unknown User");
+        }
+      } catch (error) {
+        if (isMounted) setPostAuthorName("Unknown User");
+      }
+    }
+    fetchPostAuthorName();
+    return () => { isMounted = false; };
+  }, [post?.authorId, post?.author]);
+
   const handleAddComment = React.useCallback(async () => {
     if (!text.trim() || !post) return;
-    
     try {
       await addComment({ postId: post.id, text }); 
       setText("");
@@ -82,7 +136,7 @@ export default function DiscussionDetail() {
       <ScrollView style={sharedStyles.contentPadding}>
         <Text style={sharedStyles.postTitle}>{post.title}</Text>
         <Text style={sharedStyles.postMeta}>
-          {post.author} • {new Date(post.createdAt).toLocaleString()}
+          {postAuthorName} • {new Date(post.createdAt).toLocaleString()}
         </Text>
 
         {/* Display the image if available */}
@@ -107,7 +161,7 @@ export default function DiscussionDetail() {
           {comments.map((comment) => (
             <Comment
               key={comment.id}
-              author={comment.author}
+              authorId={comment.authorId}
               text={comment.text}
               createdAt={comment.createdAt}
               authorAvatar={comment.authorAvatar}

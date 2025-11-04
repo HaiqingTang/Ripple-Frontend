@@ -148,10 +148,9 @@ export default function ProfilePage() {
     
     // display name from Firestore users (same logic as Challenge page)
     const [displayName, setDisplayName] = useState<string>(
-        auth.currentUser?.displayName?.trim().split(/\s+/)[0] || "there"
+        fullName || "User"
     );
-    const displayHandle = userName || "@username";
-
+    const [displayHandle, setDisplayHandle] = useState<string>( userName || "@username");
     const [posts, setPosts] = useState<Post[]>([]);
     const [likedPosts, setLikedPosts] = useState<Post[]>([]);
     const [postCount, setPostCount] = useState(0);

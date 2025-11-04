@@ -11,17 +11,15 @@ import {
 } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
-import { useColorScheme } from "react-native";
-import { Colors } from "@/constants/Colors";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useAppContext } from "@/context/AppContext";
 import { useDiscussion } from "./_layout";
 import * as ImageManipulator from "expo-image-manipulator";
+import { COLORS } from "@/styles/sharedStyles";
 
 export default function CreatePostScreen() {
-  const colorScheme = useColorScheme();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [image, setImage] = useState<string | null>(null);
@@ -40,7 +38,7 @@ export default function CreatePostScreen() {
   // Back to discussion/search page
   const handleGoBack = () => {
     if (isPublishing) return; // avoid leaving while posting
-    router.replace("/Discussion");
+    router.back();
   };
 
   // Pop-up window for publish confirmation
@@ -75,13 +73,10 @@ export default function CreatePostScreen() {
         authorId: userId,
         author: fullName,
         imageBase64: base64Image ?? undefined,
-        
-        // address: address || undefined,
       });
   
       setShowConfirmModal(false);
 
-      
       Alert.alert(
         "Published",
         "Your post has been published successfully.",
@@ -102,7 +97,6 @@ export default function CreatePostScreen() {
         { cancelable: false }
       );
 
-      
       setTitle("");
       setContent("");
       setImage(null);
@@ -179,16 +173,13 @@ export default function CreatePostScreen() {
     setShowAddressModal(false);
   };
 
-  const currentColorScheme = colorScheme ?? "light";
-  const colors = Colors[currentColorScheme];
-
   return (
     <ThemedView style={styles.container}>
       {/* Head navigation bar */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity style={styles.backButton} onPress={handleGoBack} disabled={isPublishing}>
-            <Ionicons name="close" size={24} color={colors.tint} />
+            <Ionicons name="close" size={24} color={COLORS.primary} />
           </TouchableOpacity>
 
           <View style={styles.centerTitle}>
@@ -198,7 +189,7 @@ export default function CreatePostScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.publishButton, { backgroundColor: colors.tint }]}
+            style={[styles.publishButton, { backgroundColor: COLORS.primary }]}
             onPress={handlePublish}
             disabled={isPublishing}
           >
@@ -216,17 +207,13 @@ export default function CreatePostScreen() {
             style={[
               styles.input,
               {
-                backgroundColor:
-                  currentColorScheme === "dark" ? "#333" : "#f5f5f5",
-                color: currentColorScheme === "dark" ? "#fff" : "#000",
-                borderColor:
-                  currentColorScheme === "dark" ? "#555" : "#ddd",
+                backgroundColor: "#f5f5f5",
+                color: "#000",
+                borderColor: "#ddd",
               },
             ]}
             placeholder="Enter topic title"
-            placeholderTextColor={
-              currentColorScheme === "dark" ? "#888" : "#999"
-            }
+            placeholderTextColor="#999"
             value={title}
             onChangeText={setTitle}
           />
@@ -237,17 +224,13 @@ export default function CreatePostScreen() {
             style={[
               styles.textArea,
               {
-                backgroundColor:
-                  currentColorScheme === "dark" ? "#333" : "#f5f5f5",
-                color: currentColorScheme === "dark" ? "#fff" : "#000",
-                borderColor:
-                  currentColorScheme === "dark" ? "#555" : "#ddd",
+                backgroundColor: "#f5f5f5",
+                color: "#000",
+                borderColor: "#ddd",
               },
             ]}
             placeholder="Enter your thoughts"
-            placeholderTextColor={
-              currentColorScheme === "dark" ? "#888" : "#999"
-            }
+            placeholderTextColor="#999"
             value={content}
             onChangeText={setContent}
             multiline
@@ -258,11 +241,11 @@ export default function CreatePostScreen() {
 
         {/* Add image */}
         <TouchableOpacity
-          style={[styles.actionButton, { borderColor: colors.tint }]}
+          style={[styles.actionButton, { borderColor: COLORS.primary }]}
           onPress={handleImageSelect}
           disabled={isPublishing}
         >
-          <ThemedText style={{ color: colors.tint }}>Add Image</ThemedText>
+          <ThemedText style={{ color: COLORS.primary }}>Add Image</ThemedText>
         </TouchableOpacity>
 
         {/* Conditionally render the image */}
@@ -275,11 +258,11 @@ export default function CreatePostScreen() {
 
         {/* Add address */}
         <TouchableOpacity
-          style={[styles.actionButton, { borderColor: colors.tint }]}
+          style={[styles.actionButton, { borderColor: COLORS.primary }]}
           onPress={handleAddressSelect}
           disabled={isPublishing}
         >
-          <ThemedText style={{ color: colors.tint }}>Select Address</ThemedText>
+          <ThemedText style={{ color: COLORS.primary }}>Select Address</ThemedText>
         </TouchableOpacity>
 
         {address ? (
@@ -316,7 +299,7 @@ export default function CreatePostScreen() {
                 style={[
                   styles.modalButton, 
                   { 
-                    backgroundColor: colors.tint,
+                    backgroundColor: COLORS.primary,
                     opacity: isPublishing ? 0.6 : 1
                   }
                 ]}
@@ -352,18 +335,14 @@ export default function CreatePostScreen() {
               style={[
                 styles.input,
                 {
-                  backgroundColor:
-                    currentColorScheme === "dark" ? "#333" : "#f5f5f5",
-                  color: currentColorScheme === "dark" ? "#fff" : "#000",
-                  borderColor:
-                    currentColorScheme === "dark" ? "#555" : "#ddd",
+                  backgroundColor: "#f5f5f5",
+                  color: "#000",
+                  borderColor: "#ddd",
                   marginBottom: 20,
                 },
               ]}
               placeholder="Enter address here..."
-              placeholderTextColor={
-                currentColorScheme === "dark" ? "#888" : "#999"
-              }
+              placeholderTextColor="#999"
               value={address}
               onChangeText={setAddress}
               autoFocus={true}
@@ -378,7 +357,7 @@ export default function CreatePostScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.tint }]}
+                style={[styles.modalButton, { backgroundColor: COLORS.primary }]}
                 onPress={confirmAddressInput}
               >
                 <ThemedText style={styles.confirmButtonText}>Confirm</ThemedText>
