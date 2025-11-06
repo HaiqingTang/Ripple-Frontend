@@ -20,6 +20,7 @@ import JournalIcon from '@/assets/images/journaling.png';
 import {useAppContext} from '@/context/AppContext';
 import {addDoc, collection} from "@firebase/firestore";
 import {db} from "@/lib/firebase";
+import {checkUploadAllowed, incrementUploadCount} from "@/lib/uploadLimiter";
 
 const {width} = Dimensions.get('window');
 const BLUE_BG = '#DDE7FF';
@@ -90,6 +91,15 @@ export default function PersonalLog() {
 			}
 		}
 
+		// Check upload rate limit if there's an image
+		if (journalPhoto) {
+			const limitStatus = await checkUploadAllowed();
+			if (!limitStatus.allowed) {
+				Alert.alert('Upload Limit Reached', limitStatus.error || 'You have reached your upload limit for this session.');
+				return;
+			}
+		}
+
 		const logData = {
 			date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
 			weekday: dayOfWeek,
@@ -109,6 +119,11 @@ export default function PersonalLog() {
 				userId,
 				...logData,
 			});
+			
+			// Increment upload count only after successful save and only if there was an image
+			if (journalPhoto) {
+				await incrementUploadCount();
+			}
 		} catch (error) {
 			console.error(error); // TODO: debug purposes, remove from prod
 			Alert.alert('Error', 'Failed to save your log. Please try again.');
