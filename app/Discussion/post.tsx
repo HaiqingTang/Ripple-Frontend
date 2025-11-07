@@ -58,7 +58,7 @@ export default function CreatePostScreen() {
   
     try {
       // Extract base64 data from the image URI if an image is selected
-      let base64Image = null;
+      let base64Image: string | null = null;
       if (image) {
         const match = image.match(/^data:image\/[a-z]+;base64,(.+)$/);
         if (match && match[1]) {
@@ -66,14 +66,27 @@ export default function CreatePostScreen() {
         }
       }
   
-      // Add the image base64 string to the post data
-      const newPost = await addPost({
+      // Build post data - only include imageBase64 if there's an image
+      // Firebase Firestore doesn't accept undefined values
+      const postData: {
+        title: string;
+        content: string;
+        authorId: string;
+        author: string;
+        imageBase64?: string;
+      } = {
         title,
         content,
         authorId: userId,
         author: fullName,
-        imageBase64: base64Image ?? undefined,
-      });
+      };
+      
+      // Only add imageBase64 if we have an image
+      if (base64Image) {
+        postData.imageBase64 = base64Image;
+      }
+  
+      const newPost = await addPost(postData);
   
       setShowConfirmModal(false);
 
